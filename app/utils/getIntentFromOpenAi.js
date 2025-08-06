@@ -3,6 +3,7 @@ const apiListData = require("../../apiDetails");
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
+// Get last bot-generated context with matching intent
 function getLastContext(session) {
 	const reversed = [...(session.history || [])].reverse();
 	for (const entry of reversed) {
@@ -16,6 +17,7 @@ function getLastContext(session) {
 	return null;
 }
 
+// Merge all context params from session history
 function gatherMergedParams(session) {
 	const merged = {};
 	for (const entry of session.history || []) {
@@ -27,32 +29,23 @@ function gatherMergedParams(session) {
 }
 
 async function getIntentFromOpenAI(userMessage, session) {
+	// Step 1: Ask GPT to identify intent and basic params
 	const systemPrompt = `
 You are an assistant that maps user queries to API operations.
 
-Below are the available APIs:
+Available APIs:
 ${apiListData.map((api, i) => `${i + 1}. ${api.name}: ${api.description}`).join("\n")}
 
-If the user's message clearly maps to one of these API operations, respond in this exact JSON format:
+Based on the user's message, respond in JSON:
 {
-  "apiName": "<exact matching API name from above>",
+  "apiName": "<exact API name>",
   "params": {
-    // extracted params like StationId, driverID, etc.
+    // extracted fields from user's request
   }
 }
 
-You can also extract advanced filters like:
-- "onlyField": if the user wants only like minQualification or hoursPerShift
-- "filter": if the user asks for "maximum" or "minimum" values
-
-
-If the user's message does NOT correspond to any of these API operations (e.g. it's a question about features or general talk), respond with:
-{
-  "apiName": null,
-  "params": {}
-}
-
-Do not add any explanation. Only respond with valid JSON.
+Only return JSON. No explanations. If nothing matches, return:
+{ "apiName": null, "params": {} }
 `;
 
 	const completion = await openai.chat.completions.create({
@@ -73,90 +66,57 @@ Do not add any explanation. Only respond with valid JSON.
 	}
 
 	const matchedApi = apiListData.find((api) => api.name === extracted.apiName);
-
 	if (!matchedApi || extracted.apiName === null) {
-		const fallbackPrompt = `
-The user sent the message: "${userMessage}"
-
-You are a smart assistant that helps users interact with various APIs for driver and scheduling operations.
-
-Available APIs:
-${apiListData.map((api, i) => `${i + 1}. ${api.name}: ${api.description}`).join("\n")}
-
-If the message is just a greeting or small talk (e.g. "hi", "how are you", "what's the date today"), reply politely and naturally.
-
-If the message seems related to driver/scheduling operations but doesn't match an API exactly, explain that you can help with tasks like:
-${apiListData.map((api) => `- ${api.description}`).join("\n")}
-
-Don't invent new APIs. Be helpful and concise.
-
-Respond only with plain text (no JSON).
-`;
-
-		const fallbackResponse = await openai.chat.completions.create({
-			model: "gpt-4",
-			messages: [{ role: "system", content: fallbackPrompt }],
-			temperature: 0.7,
-		});
-
-		const fallbackMessage = fallbackResponse.choices[0].message.content.trim();
-		return {
-			error: "No API matched",
-			fallbackMessage,
-		};
+		return { error: "No API matched" };
 	}
 
 	let params = extracted.params || {};
 	let missingFields = matchedApi.requiredFields.filter((f) => !params[f]);
 
-	// Step 1: Try from last context (only matching intent)
+	// Step 2a: Fill from matching previous context
 	if (missingFields.length) {
 		const lastContext = getLastContext(session);
-		if (lastContext?.lastIntent === extracted.apiName) {
+		if (lastContext?.lastIntent === matchedApi.name) {
 			for (const field of missingFields) {
 				if (lastContext.lastParams[field]) {
 					params[field] = lastContext.lastParams[field];
 				}
 			}
 		}
-
 		missingFields = matchedApi.requiredFields.filter((f) => !params[f]);
 	}
 
-	// Step 2: Try from merged history
+	// Step 2b: Fill from merged history
 	if (missingFields.length) {
-		const historicalParams = gatherMergedParams(session);
+		const merged = gatherMergedParams(session);
 		for (const field of missingFields) {
-			if (historicalParams[field]) {
-				params[field] = historicalParams[field];
+			if (merged[field]) {
+				params[field] = merged[field];
 			}
 		}
-
 		missingFields = matchedApi.requiredFields.filter((f) => !params[f]);
 	}
 
-	// Step 3: Ask GPT to infer from full chat
+	// Step 2c: Use GPT to resolve missing fields from history
 	if (missingFields.length) {
-		const contextHistoryText = session.history.map((h) => `${h.sender}: ${h.message}`).join("\n");
+		const contextText = session.history.map((h) => `${h.sender}: ${h.message}`).join("\n");
 
 		const resolutionPrompt = `
-You are a smart assistant. The user is trying to use API "${
-			matchedApi.name
-		}" which requires fields: ${matchedApi.requiredFields.join(", ")}.
-The current message is: "${userMessage}"
+You are a smart assistant helping resolve missing required fields for API "${matchedApi.name}".
+Required fields: ${matchedApi.requiredFields.join(", ")}
+User message: "${userMessage}"
 
-Try to infer the missing fields (${missingFields.join(", ")}) using this chat history:
+Try to infer the values for: ${missingFields.join(", ")} using chat history:
 
-${contextHistoryText}
+${contextText}
 
-Respond ONLY in JSON like this:
+Respond ONLY in JSON:
 {
   "resolved": {
-    "field1": "value1",
-    ...
+    "field1": "value1"
   }
 }
-If you can't resolve, return an empty object.
+If nothing can be resolved, return: { "resolved": {} }
 `;
 
 		const resolutionResp = await openai.chat.completions.create({
@@ -175,7 +135,6 @@ If you can't resolve, return an empty object.
 
 		params = { ...params, ...resolvedData };
 		missingFields = matchedApi.requiredFields.filter((f) => !params[f]);
-
 		if (missingFields.length) {
 			return {
 				error: `Missing required fields: ${missingFields.join(", ")}`,
@@ -186,12 +145,14 @@ If you can't resolve, return an empty object.
 		}
 	}
 
-	// Execute the API
+	// Step 3: Execute API and return full raw response
 	try {
-		const apiResponse = await matchedApi.handler(params);
+		// const apiResponse = await matchedApi.handler(params);
+		const apiResponse = await matchedApi.handler(params, userMessage);
 		return {
 			api: matchedApi,
 			params,
+			userMessage,
 			apiResponse,
 		};
 	} catch (err) {

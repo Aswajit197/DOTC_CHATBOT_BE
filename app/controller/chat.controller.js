@@ -41,8 +41,9 @@ chat.sendMessage = async (req, res) => {
 			return res.json({ response: intentResult.error });
 		}
 
+		const { api, params, userMessage, apiResponse } = intentResult;
 		// Format and send normal API response
-		const reply = await formatResponseWithOpenAi(intentResult.api, intentResult.apiResponse);
+		const reply = await formatResponseWithOpenAi(api, userMessage, apiResponse, params);
 
 		session.history.push({
 			sender: "bot",
