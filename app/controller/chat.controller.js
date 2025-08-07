@@ -1,4 +1,3 @@
-const formatResponseWithOpenAi = require("../utils/formatReponseWithOpenAi");
 const getIntentFromOpenAI = require("../utils/getIntentFromOpenAi");
 const Session = require("../model/session.model");
 
@@ -30,6 +29,16 @@ chat.sendMessage = async (req, res) => {
 			return res.json({ response: intentResult.fallbackMessage });
 		}
 
+		if (intentResult.error === "Missing required fields" && intentResult.fallbackMessage) {
+			session.history.push({
+				sender: "bot",
+				message: intentResult.fallbackMessage,
+				timestamp: new Date(),
+			});
+			await session.save();
+			return res.json({ response: intentResult.fallbackMessage });
+		}
+
 		// Handle generic error
 		if (intentResult.error) {
 			session.history.push({
@@ -41,23 +50,20 @@ chat.sendMessage = async (req, res) => {
 			return res.json({ response: intentResult.error });
 		}
 
-		const { api, params, userMessage, apiResponse } = intentResult;
-		// Format and send normal API response
-		const reply = await formatResponseWithOpenAi(api, userMessage, apiResponse, params);
+		const { api, params, formattedReply } = intentResult;
 
 		session.history.push({
 			sender: "bot",
-			message: reply,
+			message: formattedReply,
 			context: {
-				lastIntent: intentResult.api?.name,
-				lastParams: intentResult.params,
+				lastIntent: api?.name,
+				lastParams: params,
 			},
 			timestamp: new Date(),
 		});
 
 		await session.save();
-
-		return res.json({ response: reply });
+		return res.json({ response: formattedReply });
 	} catch (err) {
 		console.error("sendMessage error:", err);
 		res.status(500).json({ error: "Internal server error" });
@@ -67,10 +73,6 @@ chat.sendMessage = async (req, res) => {
 chat.createSession = async (req, res) => {
 	try {
 		let { sessionId, clientId } = req.body;
-
-		// If either sessionId or clientId is missing, but the other is present, use it for both
-		if (!sessionId && clientId) sessionId = clientId;
-		if (!clientId && sessionId) clientId = sessionId;
 
 		// If both are missing, return error
 		if (!sessionId || !clientId) {
@@ -101,7 +103,8 @@ chat.createSession = async (req, res) => {
 		// Create new session
 		const session = await Session.create({
 			sessionId,
-			clientId,
+			ClientId: clientId,
+			StationId: clientId,
 			history: [greetingMessage],
 		});
 

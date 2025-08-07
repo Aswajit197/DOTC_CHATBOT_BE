@@ -18,7 +18,6 @@ ${JSON.stringify(actualData, null, 2)}
 
 Now return the processed response in the same format matching user's message intent.
 `;
-
 		const completion = await openai.chat.completions.create({
 			model: "gpt-4",
 			messages: [

@@ -1,5 +1,5 @@
 const axios = require("axios");
-const getResponseAccordingToUserIntent = require("./app/utils/getResponseAccordingToUserIntent ");
+const processIntentAndFormatResponse = require("./app/utils/ProcessIntentAndFormatResult");
 
 const API_BASE = process.env.API_BASE_URL;
 
@@ -26,8 +26,12 @@ module.exports = [
 						hours: item?.hours,
 					})) || [];
 
-				const finalResponse = await getResponseAccordingToUserIntent({
+				return await processIntentAndFormatResponse({
 					userMessage,
+					api: {
+						name: "GetDriverWeeklyWorkingHrList",
+						description: "Returns a list of drivers with their total weekly working hours preference for the given station.",
+					},
 					exampleResponse: {
 						driversWeeklyWorkingHrList: [
 							{ driverID: 1482, hours: 30 },
@@ -35,9 +39,8 @@ module.exports = [
 						],
 					},
 					actualData: { driversWeeklyWorkingHrList: driverList },
+					params,
 				});
-
-				return finalResponse;
 			} catch (err) {
 				return {
 					error: true,
@@ -68,15 +71,18 @@ module.exports = [
 						factor: item.factor,
 					})) || [];
 
-				const finalResponse = await getResponseAccordingToUserIntent({
+				return await processIntentAndFormatResponse({
 					userMessage,
+					api: {
+						name: "GetDayFactor",
+						description: "Returns priority factors for each day of the week.",
+					},
 					exampleResponse: {
 						dayFactors: [{ id: 2, dayName: "Monday", factor: 2 }],
 					},
 					actualData: { dayFactors },
+					params,
 				});
-
-				return finalResponse;
 			} catch (err) {
 				return {
 					error: true,
@@ -114,8 +120,12 @@ module.exports = [
 						hoursPerShift: item?.hoursPerShift,
 					})) || [];
 
-				const finalResponse = await getResponseAccordingToUserIntent({
+				return await processIntentAndFormatResponse({
 					userMessage,
+					api: {
+						name: "GetSchedulingShiftTypeList",
+						description: "Returns available shift types and their details for scheduling.",
+					},
 					exampleResponse: {
 						shiftTypeList: [
 							{
@@ -128,8 +138,6 @@ module.exports = [
 					},
 					actualData: { shiftTypeList },
 				});
-
-				return finalResponse;
 			} catch (err) {
 				return {
 					error: true,
@@ -138,75 +146,171 @@ module.exports = [
 			}
 		},
 	},
+
+	//4. GetLMDPDayPreferenceList
+	{
+		name: "GetLMDPDayPreferenceList",
+		description:
+			"Fetches driver's (LMDP) day preference list for each weak days ,If a day is provided, returns only that day's data. Supports filtering by given asked day or multiple day",
+		requiredFields: ["DriverId", "ClientId"],
+		exampleResponse: {
+			DayPreferenceList: [
+				{
+					DriverId: 4536,
+					day: "Sun",
+					preference: 2,
+				},
+			],
+		},
+		handler: async (params, userMessage) => {
+			if (!params?.DriverId) return { missingFields: ["DriverId"] };
+			if (!params?.ClientId) return { missingFields: ["ClientId"] };
+
+			try {
+				const { data } = await axios.get(
+					`${API_BASE}/GetLMDPDayPreferenceList?DriverId=${params.DriverId}&ClientId=${params.ClientId}`
+				);
+
+				console.log(data, "response Data");
+				let DayPreferenceList = data?.data?.map((item) => ({
+					DriverId: item?.driverId,
+					day: item?.day,
+					preference: item?.preference,
+				}));
+
+				return await processIntentAndFormatResponse({
+					userMessage,
+					api: {
+						name: "GetSchedulingShiftTypeList",
+						description: "Returns available shift types and their details for scheduling.",
+					},
+					exampleResponse: {
+						DayPreferenceList: [
+							{
+								DriverId: 4536,
+								day: "Sun",
+								preference: 2,
+							},
+						],
+					},
+					actualData: { DayPreferenceList },
+				});
+			} catch (err) {
+				return {
+					error: true,
+					message: err.response?.data?.message || "Failed to fetch scheduling shift types.",
+				};
+			}
+		},
+	},
+
+	//5. GetDriverOTPreferenceList
+	{
+		name: "GetDriverOTPreferenceList",
+		description: "Returns OTP preference for each drivers",
+		requiredFields: ["StationId"],
+		exampleResponse: {
+			DriversOTPPreferenceList: [
+				{
+					DriverId: 4536,
+					preference: 2,
+				},
+			],
+		},
+		handler: async (params, userMessage) => {
+			if (!params?.StationId) return { missingFields: ["StationId"] };
+
+			try {
+				const { data } = await axios.get(
+					`https://dotc-delivery.azurewebsites.net/GetDriverOTPreferenceList?StationId=${params.StationId}`
+				);
+
+				let DriversOTPPreferenceList = data?.data?.map((item) => ({
+					DriverId: item?.driverId,
+					preference: item?.preference,
+				}));
+
+				return await processIntentAndFormatResponse({
+					userMessage,
+					api: {
+						name: "GetDriverOTPreferenceList",
+						description: "Returns OTP preference for each drivers",
+					},
+					exampleResponse: {
+						DriversOTPPreferenceList: [
+							{
+								DriverId: 4536,
+								preference: 2,
+							},
+						],
+					},
+					actualData: { DriversOTPPreferenceList },
+				});
+			} catch (err) {
+				return {
+					error: true,
+					message: err.response?.data?.message || "Failed to fetch drivers OTP preference list",
+				};
+			}
+		},
+	},
+	//6. GetLMDPMaxQualificationsList
+	{
+		name: "GetLMDPMaxQualificationsList",
+		description: "Returns drivers(LMDP) qualifications ",
+		requiredFields: ["ClientId","FromDate","ToDate"],
+		exampleResponse: {
+			DriversOTPPreferenceList: [
+				{
+					DriverId: 4536,
+					qualification: 2,
+				},
+			],
+		},
+		handler: async (params, userMessage) => {
+			if (!params?.ClientId) return { missingFields: ["ClientId"] };
+			if (!params?.FromDate) return { missingFields: ["FromDate"] };
+			if (!params?.ToDate) return { missingFields: ["ToDate"] };
+
+			console.log(params)
+			console.log(
+				`https://dotc-delivery.azurewebsites.net/GetLMDPMaxQualificationsList?ClientId=${params?.ClientId}&FromDate=${params?.FromDate}&ToDate=${params?.ToDate}`
+			);
+
+			try {
+				const { data } = await axios.get(
+					`https://dotc-delivery.azurewebsites.net/GetLMDPMaxQualificationsList?ClientId=${params?.ClientId}&FromDate=${params?.FromDate}&ToDate=${params?.ToDate}`
+				);
+	
+
+				console.log(data, "response Data");
+				let DriversMaxQualificationList = data?.data?.map((item) => ({
+					DriverId: item?.driverId,
+					qualification: item?.qualification,
+				}));
+
+				return await processIntentAndFormatResponse({
+					userMessage,
+					api: {
+						name: "DriversMaxQualificationList",
+						description: "Returns drivers(LMDP) qualification lists",
+					},
+					exampleResponse: {
+						DriversMaxQualificationList: [
+							{
+								DriverId: 4536,
+								qualification: 2,
+							},
+						],
+					},
+					actualData: { DriversMaxQualificationList },
+				});
+			} catch (err) {
+				return {
+					error: true,
+					message: err.response?.data?.message || "Failed to fetch drivers Drivers MaxQualification list",
+				};
+			}
+		},
+	},
 ];
-
-//GetLMDPDayPreferenceList
-// {
-// 	name: "GetLMDPDayPreferenceList",
-// 	description:
-// 		"Fetches driver's preference list for each weak days ,If a day is provided, returns only that day's preference. Supports filtering by oldPreference and preference",
-// 	requiredFields: ["DriverId", "ClientId"],
-// 	optionalFields: ["preference", "onlyField", "oldPreference"],
-// 	exampleResponse: {
-// 		DayPreferenceList: [
-// 			{
-// 				driverId: 4536,
-// 				day: "Sun",
-// 				oldPreference: 0,
-// 				preference: 2,
-// 				deliveryDate: "0001-01-01T00:00:00",
-// 			},
-// 		],
-// 	},
-// 	handler: async (params) => {
-// 		if (!params?.DriverId) return { missingFields: ["DriverId"] };
-// 		if (!params?.ClientId) return { missingFields: ["ClientId"] };
-
-// 		try {
-// 			const { data } = await axios.get(
-// 				`${API_BASE}/GetLMDPDayPreferenceList?DriverId=${params.ClientId}&ClientId=${params.DriverId}`
-// 			);
-// 			let DayPreferenceList = data?.data?.map((item) => ({
-// 				driverId: item?.driverId,
-// 				day: item?.day,
-// 				oldPreference: item?.oldPreference,
-// 				preference: item?.preference,
-// 				deliveryDate: item?.deliveryDate,
-// 			}));
-
-// 			if (params?.shiftTitle) {
-// 				const shiftTitleLower = params.shiftTitle.toLowerCase();
-// 				shiftTypeList = shiftTypeList.filter((shift) => shift.shiftTitle?.toLowerCase() === shiftTitleLower);
-// 			}
-
-// 			if (params?.onlyField) {
-// 				const validFields = ["minQualification", "hoursPerShift"];
-// 				if (!validFields.includes(params.onlyField)) {
-// 					return { error: true, message: `Invalid onlyField. Allowed: ${validFields.join(", ")}` };
-// 				}
-
-// 				// Support 'max' or 'min' filter
-// 				if (params?.filter === "max") {
-// 					const maxVal = Math.max(...shiftTypeList.map((s) => s[params.onlyField]));
-// 					shiftTypeList = shiftTypeList.filter((s) => s[params.onlyField] === maxVal);
-// 				} else if (params?.filter === "min") {
-// 					const minVal = Math.min(...shiftTypeList.map((s) => s[params.onlyField]));
-// 					shiftTypeList = shiftTypeList.filter((s) => s[params.onlyField] === minVal);
-// 				}
-
-// 				// Return shiftTitle + requested field
-// 				shiftTypeList = shiftTypeList.map((shift) => ({
-// 					shiftTitle: shift.shiftTitle,
-// 					[params.onlyField]: shift[params.onlyField],
-// 				}));
-// 			}
-
-// 			return { shiftTypeList };
-// 		} catch (err) {
-// 			return {
-// 				error: true,
-// 				message: err.response?.data?.message || "Failed to fetch scheduling shift types.",
-// 			};
-// 		}
-// 	},
-// },

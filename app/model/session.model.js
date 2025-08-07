@@ -3,7 +3,8 @@ const mongoose = require("mongoose");
 
 const sessionSchema = new mongoose.Schema(
 	{
-		clientId: { type: String, required: true },
+		ClientId: { type: String, required: true },
+		StationId: { type: String },
 		sessionId: { type: String, required: true, unique: true },
 		history: [{ sender: String, message: String, context: {}, timestamp: Date }],
 		createdAt: {
