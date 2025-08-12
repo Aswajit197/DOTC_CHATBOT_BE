@@ -29,43 +29,39 @@ function gatherMergedParams(session) {
 	return merged;
 }
 
-async function getIntentFromOpenAI(userMessage, session, { onStream } = {}) {
+async function getIntentFromOpenAI(userMessage, session) {
 	const systemPrompt = `
-You are an assistant that maps user queries to API operations.
+	You are an assistant that maps user queries to API operations.
 
-Available APIs:
-${apiListData
-	.map(
-		(api, i) =>
-			`${i + 1}. ${api.name}: ${api.description}
-     Required fields: ${api.requiredFields && api.requiredFields.length ? api.requiredFields.join(", ") : "None"}`
-	)
-	.join("\n")}
+	Available APIs:
+	${apiListData.map((api, i) => `${i + 1}. ${api.name}: ${api.description} :${api.requiredFields}`).join("\n")}
 
-Instructions:
-- Identify the most appropriate API based on the user's message.
-- Only extract parameters explicitly mentioned in the message.
-- DO NOT assume or infer values like ClientId or StationId  unless they are explicitly stated in the user's message.
-- For missing required parameters, leave them out. Do NOT invent values. The system will inject them later from session data.
-- Match "apiName" EXACTLY to the name from the Available APIs list above.
+	Instructions:
+	- Identify the most appropriate API based on the user's message.
+	- Extract only the parameters explicitly mentioned in the message.
+	- Do NOT assume or infer values like ClientId or SessionId from the message unless they are explicitly included.
+	- For missing required parameters (like ClientId or SessionId), do not include them in "params". The system will later inject them from the session if available.
+	- Only extract what is present in the user message itself.
 
-Respond in EXACTLY the following JSON format:
-{
-  "apiName": "<exact API name from above or null>",
-  "params": { /* extracted parameters from user message */ }
-}
+	Respond in EXACTLY the following JSON format:
+	{
+	  "apiName": "<exact API name from above>",
+	  "params": {
+	    // extracted parameters based on user message
+	  }
+	}
 
-If the user's message is casual, small talk, or does not match any API intent, respond like:
-{
-  "apiName": null,
-  "params": {}
-}
+	If the user's message is casual, small talk, or does not match any API intent, respond like:
+	{
+	  "apiName": null,
+	  "params": {}
+	}
 
-Important:
-- DO NOT explain your reasoning.
-- DO NOT add comments or extra text.
-- Only return valid JSON as per the above structure.
-`;
+	Important:
+	- DO NOT explain your reasoning.
+	- DO NOT add comments or extra text.
+	- Only return valid JSON as per the above structure.
+	`;
 
 	const completion = await openai.chat.completions.create({
 		model: "gpt-4",
@@ -76,7 +72,7 @@ Important:
 		temperature: 0,
 	});
 
-	// console.log("Tokens used for intent extraction:", completion.usage);
+	console.log("Tokens used for intent extraction:", completion.usage);
 
 	let extracted;
 
@@ -87,7 +83,10 @@ Important:
 		return { error: "OpenAI parsing failed" };
 	}
 
+	console.log(extracted, "extracted");
 	const matchedApi = apiListData.find((api) => api.name === extracted.apiName);
+
+	console.log(matchedApi, "matched api");
 
 	// Fallback case: No matching API
 	if (!matchedApi || extracted.apiName === null) {
@@ -247,9 +246,7 @@ Respond ONLY with plain text.
 
 	// Step 3: All fields ready → call API
 	try {
-		console.log(matchedApi);
-		// const apiResponse = await matchedApi.handler(params, userMessage);
-		const apiResponse = await matchedApi.handler(params, userMessage, onStream);
+		const apiResponse = await matchedApi.handler(params, userMessage);
 		return {
 			api: matchedApi,
 			params,
@@ -262,4 +259,3 @@ Respond ONLY with plain text.
 }
 
 module.exports = getIntentFromOpenAI;
-

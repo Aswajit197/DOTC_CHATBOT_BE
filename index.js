@@ -24,7 +24,7 @@ app.use(cors());
 app.use("/api", router);
 
 mongoose
-	.connect("mongodb://localhost:27017/dotcchatbot")
+	.connect(process.env.MONGO_URL)
 	.then(() => console.log("MongoDB connected"))
 	.catch((err) => console.error("MongoDB error:", err));
 
