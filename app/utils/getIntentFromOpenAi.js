@@ -87,7 +87,10 @@ Important:
 		return { error: "OpenAI parsing failed" };
 	}
 
+	console.log(extracted);
+
 	const matchedApi = apiListData.find((api) => api.name === extracted.apiName);
+	console.log(matchedApi);
 
 	// Fallback case: No matching API
 	if (!matchedApi || extracted.apiName === null) {
@@ -144,6 +147,43 @@ Respond ONLY with plain text.
 	}
 	let missingFields = matchedApi.requiredFields.filter((f) => !params[f]);
 
+	//  before trying to fetch from last context:
+	if (missingFields.length) {
+		try {
+			// Create a shallow copy so we don't mutate original params
+			const tempParams = { ...params };
+
+			// Try calling the handler to see if it fills defaults or can proceed
+			const tempResult = await matchedApi.handler(tempParams, userMessage, onStream);
+
+			console.log(tempResult, "tempResult from handler pre-check");
+
+			if (!tempResult?.missingFields) {
+				// ✅ Handler already handled everything and likely made the API call
+				return {
+					api: matchedApi,
+					params: tempParams,
+					formattedReply: tempResult?.userReply,
+				};
+			} else {
+				// Handler might have reduced missing fields — sync them back
+				for (const f of matchedApi.requiredFields) {
+					if (!params[f] && tempParams[f]) {
+						params[f] = tempParams[f];
+					}
+				}
+			}
+
+			// Recalculate missing fields after handler auto-fill
+			missingFields = matchedApi.requiredFields.filter((f) => !params[f]);
+		} catch (err) {
+			console.warn("Pre-run handler param auto-fill check failed:", err.message);
+		}
+	}
+
+	console.log("entered here...........")
+
+	//try to fetch missing param from last context from session
 	if (missingFields.length && matchedApi?.name !== "GetLMDPMaxQualificationsList") {
 		const lastContext = getLastContext(session);
 		if (lastContext?.lastIntent === matchedApi.name) {
@@ -235,6 +275,8 @@ Respond ONLY with plain text.
 
 			const fallbackMessage = fallbackResponse.choices[0].message.content.trim();
 
+			console.log(fallbackMessage, "fallback message");
+
 			return {
 				error: "Missing required fields",
 				requires: missingFields,
@@ -262,4 +304,3 @@ Respond ONLY with plain text.
 }
 
 module.exports = getIntentFromOpenAI;
-

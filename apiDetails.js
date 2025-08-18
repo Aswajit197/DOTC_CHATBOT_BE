@@ -6,15 +6,10 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const API_BASE = process.env.API_BASE_URL;
 
 module.exports = [
-	/**
-	 * @param {Object} params - API parameters
-	 * @param {string} userMessage - User's chat message
-	 * @param {function} [onStream] - Optional streaming callback for partial GPT output
-	 */
 	// 1. GetDriverWeeklyWorkingHrList
 	{
 		name: "GetDriverWeeklyWorkingHrList",
-		description: "Returns a list of drivers with their total weekly working hours preference for the given station.",
+		description: "Returns a list of drivers with their total weekly working hours for the given station.",
 		requiredFields: ["StationId"],
 		exampleResponse: {
 			driversWeeklyWorkingHrList: [
@@ -28,13 +23,12 @@ module.exports = [
 			try {
 				const { data } = await axios.get(`${API_BASE}/GetDriverWeeklyWorkingHrList?StationId=${params.StationId}`);
 
-
 				const driversWeeklyWorkingHrList =
 					data?.data?.map((item) => ({
 						driverID: item?.driverId,
 						hours: item?.hours,
 					})) || [];
-				
+
 				console.log(driversWeeklyWorkingHrList);
 
 				return await processIntentAndFormatResponse({
@@ -72,21 +66,16 @@ module.exports = [
 			dayFactors: [{ id: 2, dayName: "Monday", factor: 2 }],
 		},
 		handler: async (params, userMessage, onStream) => {
-			console.log(params,"params")
-			console.log(userMessage, "userMessage");
 			if (!params?.ClientId) return { missingFields: ["ClientId"] };
 
 			try {
 				const { data } = await axios.get(`${API_BASE}/GetDayFactor?ClientId=${params.ClientId}`);
-				console.log(data,"response")
 				const dayFactors =
 					data?.data?.map((item) => ({
 						id: item.id,
 						dayName: item.dayName,
 						factor: item.factor,
 					})) || [];
-				
-				console.log(dayFactors)
 
 				return await processIntentAndFormatResponse({
 					userMessage,
@@ -113,7 +102,8 @@ module.exports = [
 	// 3. GetSchedulingShiftTypeList
 	{
 		name: "GetSchedulingShiftTypeList",
-		description: "Returns available shift types and their details for scheduling.",
+		description:
+			"Returns available shift types and their details for scheduling , including minimum qualification (minQualification) and hours per shift ",
 		requiredFields: ["ClientId"],
 		exampleResponse: {
 			shiftTypeList: [
@@ -242,6 +232,8 @@ module.exports = [
 					`https://dotc-delivery.azurewebsites.net/GetDriverOTPreferenceList?StationId=${params.StationId}`
 				);
 
+				console.log(data);
+
 				let DriversOTPPreferenceList = data?.data?.map((item) => ({
 					DriverId: item?.driverId,
 					preference: item?.preference,
@@ -276,7 +268,7 @@ module.exports = [
 	{
 		name: "GetLMDPMaxQualificationsList",
 		description:
-			"Retrieves the maximum qualifications of all drivers for a specific ClientId within a specified weekly date range (FromDate to ToDate). This is based on a Sunday–Saturday week.",
+			"Retrieves the qualifications of all drivers for a specific ClientId within a specified weekly date range (FromDate to ToDate). This is based on a Sunday–Saturday week.",
 		requiredFields: ["ClientId", "FromDate", "ToDate"],
 		exampleResponse: {
 			DriversMaxQualificationList: [{ DriverId: 4536, qualification: 2 }],
@@ -413,4 +405,110 @@ Respond in JSON only:
 			}
 		},
 	},
+
+	//7.GetBlobShiftDriverData
+	{
+		name: "GetBlobShiftDriverData",
+		description:
+			"Returns total hours scheduled between weeks 25 and 33 of all LMDPs broken down by shift type , list of drivers with their name and  shift type(like Parcel Van , Step Van , Walker ,Box Truck etc..) with hours like for a given range of week like 25 to 33",
+		requiredFields: ["WeekStarting", "WeekEnding", "Year", "ClientId"],
+		exampleResponse: {
+			driversWeeklyWorkingHrList: [
+				// { driverName: "ALEXANDER DAVIS", morning: 120, evening: 90, night: 65 },
+				// { driverName: "ALONDRA GONZALEZ", morning: 40, evening: 90, night: 165 },
+				{
+					driverId: 5520,
+					driverName: "ALEJANDRO LAYA",
+					shifts: {
+						"Parcel Van": 0,
+						"Step Van": 280,
+						Walker: 32,
+						"Box Truck": 0,
+					},
+				},
+				{
+					driverId: 1482,
+					driverName: "Alejandro Reyes",
+					shifts: {
+						"Parcel Van": 0,
+						"Step Van": 0,
+						Walker: 128,
+						"Box Truck": 0,
+					},
+				},
+			],
+		},
+		handler: async (params, userMessage, onStream) => {
+			if (!params?.WeekStarting) return { missingFields: ["WeekStarting"] };
+			if (!params?.WeekEnding) return { missingFields: ["WeekEnding"] };
+			if (!params?.ClientId) return { missingFields: ["ClientId"] };
+			// Auto-fill current year if missing
+			if (!params?.Year) {
+				params.Year = new Date().getFullYear();
+			}
+
+			try {
+				console.log("called at", Date.now());
+				const { data } = await axios.get(
+					`${API_BASE}/GetBlobShiftDriverData?WeekStarting=${params?.WeekStarting}&WeekEnding=${params?.WeekEnding}&Year=${params?.Year}&ClientId=${params?.ClientId}`
+				);
+
+				const driversTotalScheduledHours =
+					data?.data?.map((item) => ({
+						driverId: item?.driverId,
+						driverName: item?.driverName,
+						shifts: item?.shifts,
+					})) || [];
+
+				return await processIntentAndFormatResponse({
+					userMessage,
+					api: {
+						name: "GetBlobShiftDriverData",
+						description:
+							"Returns total hours scheduled between weeks 25 and 33 of all LMDPs broken down by shift type , list of drivers with their name and  shift type(like Parcel Van , Step Van , Walker ,Box Truck etc..) with hours like for a given range of week like 25 to 33",
+					},
+					exampleResponse: {
+						driversTotalScheduledHours: [
+							// { driverName: "ALEXANDER DAVIS", morning: 120, evening: 90, night: 65 },
+							// { driverName: "ALONDRA GONZALEZ", morning: 40, evening: 90, night: 165 },
+							{
+								driverId: 5520,
+								driverName: "ALEJANDRO LAYA",
+								shifts: {
+									"Parcel Van": 0,
+									"Step Van": 280,
+									Walker: 32,
+									"Box Truck": 0,
+								},
+							},
+							{
+								driverId: 1482,
+								driverName: "Alejandro Reyes",
+								shifts: {
+									"Parcel Van": 0,
+									"Step Van": 0,
+									Walker: 128,
+									"Box Truck": 0,
+								},
+							},
+						],
+					},
+					actualData: driversTotalScheduledHours,
+					params,
+					onStream,
+				});
+			} catch (err) {
+				return {
+					error: true,
+					message: err.response?.data?.message || "Failed to fetch drivers' working hours list.",
+				};
+			}
+		},
+	},
 ];
+
+
+
+
+
+ 
