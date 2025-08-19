@@ -7,18 +7,18 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
  */
 const processIntentAndFormatResponse = async ({ userMessage, api, exampleResponse, actualData, params = {}, onStream }) => {
 	let fullText = "";
+	let streamedText = "";
 	let jsonPart = "";
 	let inJsonSection = false;
+
 	try {
 		const prompt = `
 You're a smart assistant. Your task is to:
-1. Understand the user's intent from their message.
-2. Filter/transform the provided API data accordingly.
-3. When the ${userMessage} / user request includes a numeric threshold 
-   (e.g., "at least 800 hours", maximum, minimum, average, sum, greater, less), 
-   you MUST strictly filter the Raw API Data so that only items meeting that condition remain.
-4. Never include items that fail the condition, even partially.
-5. Generate a user-friendly response that directly answers the user's message.
+1. Understand the user's intent from their message
+2. Filter/transform the provided API data accordingly
+3.When the ${userMessage} / user request includes a numeric threshold (e.g., "at least 800 hours"),maximum , minimum , average , sum , greater , less , average you MUST strictly filter the Raw API Data so that only items meeting that condition remain.
+4.Never include items that fail the condition, even partially.
+5. Generate a user-friendly response that directly answers the user's message
 
 ---
 
@@ -41,19 +41,13 @@ ${JSON.stringify(actualData, null, 2)}
 ---
 
 ### Instructions
-- First, write ONLY the clear, conversational reply \`userReply\` in plain text.
-- Always start with a short sentence introducing what the data shows.
-- Then format the data clearly:
-  * If it's a **flat list** (like weekdays or drivers), show each item on a new line with a dash (-).
-  * If it's a **nested object** (like "shifts"), show the parent (e.g., "Driver 5040 (YOVANNY TAPIA):") 
-    and then indent or list its keys/values on new lines with dashes:
-      - Parcel Van: 0
-      - Step Van: 0
-      - Walker: 432
-      - Box Truck: 0
+- First, write ONLY the clear, conversational reply userReply in plain text — exactly how you’d say it to a user.  
+- Use bullet points for lists.
 - Do not include any JSON or metadata in this part.
-- Do not use Markdown (**bold**, _, code, etc).
+- Use bullet points for lists.
+- Do not include any Markdown formatting (like **bold**, _italic_, code, etc).
 - Output plain text only for this section.
+- Perform this filtering before producing the JSON output.
 
 - After finishing the plain text reply, output a new line with:
   ###JSON###
@@ -64,6 +58,7 @@ ${JSON.stringify(actualData, null, 2)}
 }
 `;
 
+		// Start streaming
 		const completion = await openai.chat.completions.create({
 			model: "gpt-4o-mini",
 			messages: [{ role: "user", content: prompt }],
@@ -80,22 +75,20 @@ ${JSON.stringify(actualData, null, 2)}
 			// Detect JSON marker start
 			if (!inJsonSection && fullText.includes("###JSON###")) {
 				inJsonSection = true;
-				continue; // skip marker itself
+				continue; // Do not send marker or anything after it
 			}
 
 			if (!inJsonSection) {
-				const cleaned = delta.replace(/###\s*JSON\s*###/gi, "");
-				if (cleaned) {
-					const formatted = cleaned
-						// Add missing space between lowercase → UPPERCASE
-						.replace(/([a-z])([A-Z])/g, "$1 $2")
-						// Add space between number + letters (702hours → 702 hours)
-						.replace(/(\d)([A-Za-z])/g, "$1 $2")
-						// Add space between letters + number (hours702 → hours 702)
-						.replace(/([a-zA-Z])(\d)/g, "$1 $2");
-					// 🚫 Removed forced bullet regex
+				// Prevent partial marker like "###" or "JSON" leaking
+				const cleaned = delta
+					.replace(/###\s*JSON\s*###/gi, "")
+					.replace(/JSON/gi, "") // 👈 remove dangling JSON
+					.replace(/#+/g, "")
+					.trim();
 
-					if (onStream) onStream(formatted);
+				if (cleaned) {
+					streamedText += cleaned;
+					if (onStream) onStream(cleaned);
 				}
 			} else {
 				// Capture JSON quietly

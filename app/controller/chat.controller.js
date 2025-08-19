@@ -5,7 +5,6 @@ const apiListData = require("../../apiDetails");
 // Admin Controller
 const chat = {};
 
-
 chat.sendMessage = async (req, res) => {
 	try {
 		const { sessionId, message } = req.body;
@@ -31,15 +30,8 @@ chat.sendMessage = async (req, res) => {
 		// Detect intent & stream partials
 		const intentResult = await getIntentFromOpenAI(message, session, {
 			onStream: (chunk) => {
-				// Ensure markers like ###JSON### are removed for partials
-				const cleanedChunk = chunk
-					.replace(/###\s*JSON\s*###/gi, "")
-					.replace(/JSON/gi, "") // 👈 remove plain JSON leakage
-					.replace(/#+/g, "")
-					.trim();
-
-				if (cleanedChunk) {
-					res.write(`data: ${JSON.stringify({ type: "partial", text: cleanedChunk })}\n\n`);
+				if (chunk) {
+					res.write(`data: ${JSON.stringify({ type: "partial", text: chunk })}\n\n`);
 				}
 			},
 		});
@@ -79,7 +71,7 @@ chat.sendMessage = async (req, res) => {
 		}
 
 		// Send final successful response
-		res.write(`data: ${JSON.stringify({ type: "final", response: intentResult.formattedReply })}\n\n`);
+		// res.write(`data: ${JSON.stringify({ type: "final", response: intentResult.formattedReply })}\n\n`);
 		res.end();
 
 		// Save bot message
@@ -99,7 +91,6 @@ chat.sendMessage = async (req, res) => {
 		res.end();
 	}
 };
-
 
 chat.createSession = async (req, res) => {
 	try {
@@ -136,7 +127,7 @@ chat.createSession = async (req, res) => {
 			ClientId: clientId,
 			StationId: clientId,
 			history: [greetingMessage],
-			apiDetailsHistory: apiListData 
+			apiDetailsHistory: apiListData,
 		});
 
 		res.json({ message: "Session created successfully", session });
@@ -145,6 +136,5 @@ chat.createSession = async (req, res) => {
 		res.status(500).json({ err, error: "Chat session creation failed" });
 	}
 };
-
 
 module.exports = chat;

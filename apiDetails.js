@@ -59,7 +59,8 @@ module.exports = [
 	// 2. GetDayFactor
 	{
 		name: "GetDayFactor",
-		description: "Returns priority factors for each day of the week.",
+		description:
+			"Returns priority factors for each day of the week.  If a day is provided, returns only that day's data. Supports filtering by given asked day or multiple day",
 		requiredFields: ["ClientId"],
 		optionalFields: ["dayName"],
 		exampleResponse: {
@@ -161,7 +162,7 @@ module.exports = [
 	{
 		name: "GetLMDPDayPreferenceList",
 		description:
-			"Fetches driver's  day preference list for each weak days ,If a day is provided, returns only that day's data. Supports filtering by given asked day or multiple day",
+			"Fetches driver's day preference list for each weak days , If a day is provided, returns only that day's data. Supports filtering by given asked day or multiple day",
 		requiredFields: ["DriverId", "ClientId"],
 		exampleResponse: {
 			DayPreferenceList: [
@@ -410,7 +411,7 @@ Respond in JSON only:
 	{
 		name: "GetBlobShiftDriverData",
 		description:
-			"Returns total hours scheduled between weeks 25 and 33 of all LMDPs broken down by shift type , list of drivers with their name and  shift type(like Parcel Van , Step Van , Walker ,Box Truck etc..) with hours like for a given range of week like 25 to 33",
+			"Returns total hours scheduled (for each shift type) between weeks 25(start week number) and 33(end Week number) of all LMDPs broken down by shift type , list of drivers with their name and  shift type(like Parcel Van , Step Van , Walker ,Box Truck etc..) with hours like for a given range of week like 25 to 33",
 		requiredFields: ["WeekStarting", "WeekEnding", "Year", "ClientId"],
 		exampleResponse: {
 			driversWeeklyWorkingHrList: [
@@ -465,7 +466,7 @@ Respond in JSON only:
 					api: {
 						name: "GetBlobShiftDriverData",
 						description:
-							"Returns total hours scheduled between weeks 25 and 33 of all LMDPs broken down by shift type , list of drivers with their name and  shift type(like Parcel Van , Step Van , Walker ,Box Truck etc..) with hours like for a given range of week like 25 to 33",
+							"Returns total hours scheduled (for each shift type) between weeks 25(start week number) and 33(end Week number) of all LMDPs broken down by shift type , list of drivers with their name and  shift type(like Parcel Van , Step Van , Walker ,Box Truck etc..) with hours like for a given range of week like 25 to 33",
 					},
 					exampleResponse: {
 						driversTotalScheduledHours: [
@@ -506,9 +507,3 @@ Respond in JSON only:
 		},
 	},
 ];
-
-
-
-
-
- 

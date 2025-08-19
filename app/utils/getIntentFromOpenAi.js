@@ -87,10 +87,7 @@ Important:
 		return { error: "OpenAI parsing failed" };
 	}
 
-	console.log(extracted);
-
 	const matchedApi = apiListData.find((api) => api.name === extracted.apiName);
-	console.log(matchedApi);
 
 	// Fallback case: No matching API
 	if (!matchedApi || extracted.apiName === null) {
@@ -156,8 +153,6 @@ Respond ONLY with plain text.
 			// Try calling the handler to see if it fills defaults or can proceed
 			const tempResult = await matchedApi.handler(tempParams, userMessage, onStream);
 
-			console.log(tempResult, "tempResult from handler pre-check");
-
 			if (!tempResult?.missingFields) {
 				// ✅ Handler already handled everything and likely made the API call
 				return {
@@ -180,8 +175,6 @@ Respond ONLY with plain text.
 			console.warn("Pre-run handler param auto-fill check failed:", err.message);
 		}
 	}
-
-	console.log("entered here...........")
 
 	//try to fetch missing param from last context from session
 	if (missingFields.length && matchedApi?.name !== "GetLMDPMaxQualificationsList") {
@@ -241,13 +234,8 @@ If nothing found, return: { "resolved": {} }
 		} catch (err) {
 			console.warn("Could not parse field resolution JSON.");
 		}
-
-		console.log(resolvedData, "resolved data");
-
 		params = { ...params, ...resolvedData };
 		missingFields = matchedApi.requiredFields.filter((f) => !params[f]);
-
-		console.log(params, "resolved params");
 
 		if (missingFields.length) {
 			// Generate a helpful fallback message using OpenAI
@@ -274,8 +262,6 @@ Respond ONLY with plain text.
 			});
 
 			const fallbackMessage = fallbackResponse.choices[0].message.content.trim();
-
-			console.log(fallbackMessage, "fallback message");
 
 			return {
 				error: "Missing required fields",
