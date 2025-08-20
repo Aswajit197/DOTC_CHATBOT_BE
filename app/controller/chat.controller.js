@@ -36,6 +36,8 @@ chat.sendMessage = async (req, res) => {
 			},
 		});
 
+		// console.log(intentResult,"intentResult")
+
 		// --- Fallback handling before sending final ---
 		if (intentResult.error === "No API matched" && intentResult.fallbackMessage) {
 			session.history.push({
@@ -110,7 +112,7 @@ chat.createSession = async (req, res) => {
 		const greetingMessage = {
 			sender: "bot",
 			message:
-				"Hi there! 👋 I'm your assistant. Ask me anything related to your tasks, drivers, or station work and I’ll help you out!",
+				"Hi Jim! 👋 I'm your SchedAI assistant. Ask me anything related to your tasks, drivers, or station work and I’ll help you out!",
 			context: {
 				lastParams: {
 					sessionId,

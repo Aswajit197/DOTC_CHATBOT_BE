@@ -19,7 +19,7 @@ const sessionSchema = new mongoose.Schema(
 			{
 				sender: String,
 				message: String,
-				context: {},
+				context: {},   //stores intent and params
 				timestamp: Date,
 			},
 		],

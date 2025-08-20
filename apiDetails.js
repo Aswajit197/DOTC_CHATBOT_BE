@@ -18,8 +18,7 @@ module.exports = [
 			],
 		},
 		handler: async (params, userMessage, onStream) => {
-			if (!params?.StationId) return { missingFields: ["StationId"] };
-
+			if (!params?.StationId) params.StationId = 2;
 			try {
 				const { data } = await axios.get(`${API_BASE}/GetDriverWeeklyWorkingHrList?StationId=${params.StationId}`);
 
@@ -29,7 +28,7 @@ module.exports = [
 						hours: item?.hours,
 					})) || [];
 
-				console.log(driversWeeklyWorkingHrList);
+				// console.log(driversWeeklyWorkingHrList);
 
 				return await processIntentAndFormatResponse({
 					userMessage,
@@ -67,16 +66,20 @@ module.exports = [
 			dayFactors: [{ id: 2, dayName: "Monday", factor: 2 }],
 		},
 		handler: async (params, userMessage, onStream) => {
-			if (!params?.ClientId) return { missingFields: ["ClientId"] };
+			// console.log(params,"params in getdayfactor handler")
+			if (!params?.ClientId) params.ClientId = 2;
 
 			try {
 				const { data } = await axios.get(`${API_BASE}/GetDayFactor?ClientId=${params.ClientId}`);
+				// console.log(data)
 				const dayFactors =
 					data?.data?.map((item) => ({
 						id: item.id,
 						dayName: item.dayName,
 						factor: item.factor,
 					})) || [];
+
+				// console.log(dayFactors)
 
 				return await processIntentAndFormatResponse({
 					userMessage,
@@ -117,7 +120,7 @@ module.exports = [
 			],
 		},
 		handler: async (params, userMessage, onStream) => {
-			if (!params?.ClientId) return { missingFields: ["ClientId"] };
+			if (!params?.ClientId) params.ClientId = 2;
 
 			try {
 				const { data } = await axios.get(`${API_BASE}/GetSchedulingShiftTypeList?ClientId=${params.ClientId}`);
@@ -174,8 +177,8 @@ module.exports = [
 			],
 		},
 		handler: async (params, userMessage, onStream) => {
+			if (!params?.ClientId) params.ClientId = 2;
 			if (!params?.DriverId) return { missingFields: ["DriverId"] };
-			if (!params?.ClientId) return { missingFields: ["ClientId"] };
 
 			try {
 				const { data } = await axios.get(
@@ -226,14 +229,14 @@ module.exports = [
 			DriversOTPPreferenceList: [{ DriverId: 4536, preference: 2 }],
 		},
 		handler: async (params, userMessage, onStream) => {
-			if (!params?.StationId) return { missingFields: ["StationId"] };
+			if (!params?.StationId) params.StationId = 2;
 
 			try {
 				const { data } = await axios.get(
 					`https://dotc-delivery.azurewebsites.net/GetDriverOTPreferenceList?StationId=${params.StationId}`
 				);
 
-				console.log(data);
+				// console.log(data);
 
 				let DriversOTPPreferenceList = data?.data?.map((item) => ({
 					DriverId: item?.driverId,
@@ -357,7 +360,7 @@ Respond in JSON only:
 
 			// 3️⃣ Final param validation
 			const missingFields = [];
-			if (!params?.ClientId) missingFields.push("ClientId");
+			if (!params?.ClientId) params.ClientId = 2;
 			if (!params?.FromDate) missingFields.push("FromDate");
 			if (!params?.ToDate) missingFields.push("ToDate");
 
@@ -365,10 +368,10 @@ Respond in JSON only:
 				return { missingFields };
 			}
 
-			console.log(params);
-			console.log(
-				`https://dotc-delivery.azurewebsites.net/GetLMDPMaxQualificationsList?ClientId=${params.ClientId}&FromDate=${params.FromDate}&ToDate=${params.ToDate}`
-			);
+			// console.log(params);
+			// console.log(
+			// 	`https://dotc-delivery.azurewebsites.net/GetLMDPMaxQualificationsList?ClientId=${params.ClientId}&FromDate=${params.FromDate}&ToDate=${params.ToDate}`
+			// );
 
 			// 4️⃣ API call
 			try {
@@ -415,8 +418,6 @@ Respond in JSON only:
 		requiredFields: ["WeekStarting", "WeekEnding", "Year", "ClientId"],
 		exampleResponse: {
 			driversWeeklyWorkingHrList: [
-				// { driverName: "ALEXANDER DAVIS", morning: 120, evening: 90, night: 65 },
-				// { driverName: "ALONDRA GONZALEZ", morning: 40, evening: 90, night: 165 },
 				{
 					driverId: 5520,
 					driverName: "ALEJANDRO LAYA",
@@ -440,16 +441,15 @@ Respond in JSON only:
 			],
 		},
 		handler: async (params, userMessage, onStream) => {
+			if (!params?.ClientId !== 2) params.ClientId = 2;
 			if (!params?.WeekStarting) return { missingFields: ["WeekStarting"] };
 			if (!params?.WeekEnding) return { missingFields: ["WeekEnding"] };
-			if (!params?.ClientId) return { missingFields: ["ClientId"] };
 			// Auto-fill current year if missing
 			if (!params?.Year) {
 				params.Year = new Date().getFullYear();
 			}
 
 			try {
-				console.log("called at", Date.now());
 				const { data } = await axios.get(
 					`${API_BASE}/GetBlobShiftDriverData?WeekStarting=${params?.WeekStarting}&WeekEnding=${params?.WeekEnding}&Year=${params?.Year}&ClientId=${params?.ClientId}`
 				);
@@ -470,8 +470,6 @@ Respond in JSON only:
 					},
 					exampleResponse: {
 						driversTotalScheduledHours: [
-							// { driverName: "ALEXANDER DAVIS", morning: 120, evening: 90, night: 65 },
-							// { driverName: "ALONDRA GONZALEZ", morning: 40, evening: 90, night: 165 },
 							{
 								driverId: 5520,
 								driverName: "ALEJANDRO LAYA",
@@ -502,6 +500,203 @@ Respond in JSON only:
 				return {
 					error: true,
 					message: err.response?.data?.message || "Failed to fetch drivers' working hours list.",
+				};
+			}
+		},
+	},
+	//8.GetTimeOffRequestForBackend
+	{
+		name: "GetTimeOffRequestForBackend",
+		description:
+			"returns list of driver's time-off requests, including details such as driver name, request dates, reason for leave, and the current status (approved, declined, or pending). It is used to check when drivers have requested time off and whether those requests were accepted or not.",
+		requiredFields: ["ClientId"],
+		exampleResponse: {
+			driversOffRequestList: [
+				{
+					driverId: 5520,
+					driverName: "ALEJANDRO LAYA",
+					dateStart: "2025-03-05T00:00:00",
+					dateEnd: "2025-02-10T00:00:00",
+					requestReason: "request reason here",
+					requestStatus: "Declined",
+				},
+			],
+		},
+		handler: async (params, userMessage, onStream) => {
+			if (!params?.ClientId !== 2) params.ClientId = 2;
+
+			try {
+				const { data } = await axios.get(`${API_BASE}/GetTimeOffRequestForBackend?ClientId=${params?.ClientId}`);
+
+				const driversOffRequestList =
+					data?.data?.map((item) => ({
+						driverId: item?.driverId,
+						driverName: item?.driverName,
+						dateStart: item?.dateStart,
+						dateEnd: item?.dateEnd,
+						requestReason: item?.requestReason,
+						requestStatus: item?.requestStatus,
+					})) || [];
+
+				return await processIntentAndFormatResponse({
+					userMessage,
+					api: {
+						name: "GetTimeOffRequestForBackend",
+						description:
+							"returns list of driver's time-off requests, including details such as driver name, request dates, reason for leave, and the current status (approved, declined, or pending). It is used to check when drivers have requested time off and whether those requests were accepted or not.",
+					},
+					exampleResponse: {
+						driversOffRequestList: [
+							{
+								driverId: 5520,
+								driverName: "ALEJANDRO LAYA",
+								dateStart: "2025-03-05T00:00:00",
+								dateEnd: "2025-02-10T00:00:00",
+								requestReason: "request reason here",
+								requestStatus: "Declined",
+							},
+						],
+					},
+					actualData: driversOffRequestList,
+					params,
+					onStream,
+				});
+			} catch (err) {
+				return {
+					error: true,
+					message: err.response?.data?.message || "Failed to fetch drivers' time-off requests list.",
+				};
+			}
+		},
+	},
+	//9.GetLocationListForBackEnd
+	{
+		name: "GetLocationListForBackEnd",
+		description:
+			"returns a list of available locations for LMDPs along with their details, including name, address, city, state, zip code, type, and active status. It is used to identify and retrieve information about all operational locations in the system.",
+		requiredFields: ["ClientId"],
+		exampleResponse: {
+			locationLists: [
+				{
+					locationId: 163,
+					locationName: "DBK1",
+					locationAddress: "1 Bulova Ave",
+					locationCity: "Woodside",
+					locationZip: "11357",
+					locationState: "New York",
+				},
+			],
+		},
+		handler: async (params, userMessage, onStream) => {
+			if (!params?.ClientId !== 2) params.ClientId = 2;
+
+			try {
+				const { data } = await axios.get(`${API_BASE}/GetLocationListForBackEnd?ClientId=${params?.ClientId}`);
+
+				const locationLists =
+					data?.data?.map((item) => ({
+						locationId: item?.locationId,
+						locationName: item?.locationName,
+						locationAddress: item?.locationAddress,
+						locationCity: item?.locationCity,
+						locationZip: item?.locationZip,
+						locationState: item?.locationState,
+					})) || [];
+
+				return await processIntentAndFormatResponse({
+					userMessage,
+					api: {
+						name: "GetLocationListForBackEnd",
+						description:
+							"returns a list of available locations for LMDPs along with their details, including name, address, city, state, zip code, type, and active status. It is used to identify and retrieve information about all operational locations in the system.",
+					},
+					exampleResponse: {
+						locationLists: [
+							{
+								locationId: 163,
+								locationName: "DBK1",
+								locationAddress: "1 Bulova Ave",
+								locationCity: "Woodside",
+								locationZip: "11357",
+								locationState: "New York",
+							},
+						],
+					},
+					actualData: locationLists,
+					params,
+					onStream,
+				});
+			} catch (err) {
+				return {
+					error: true,
+					message: err.response?.data?.message || "Failed to fetch available locations for LMDPs.",
+				};
+			}
+		},
+	},
+	//10.GetSchedAlignEngineLMDPPermissions
+	{
+		name: "GetSchedAlignEngineLMDPPermissions",
+		description:
+			"returns the default scheduling and permission settings defined by the manager. It includes rules such as the maximum allowed unavailable days, maximum time-off length, whether weekend availability is required, and permissions for approving neutral or open shift requests. This API is used to understand the scheduling policies and restrictions that apply to drivers.",
+		requiredFields: ["ClientId"],
+		exampleResponse: {
+			permissionList: [
+				{
+					maxDaysUnavailable: 2,
+					requireWeekendDay: false,
+					maxTimeOffLength: 2,
+					approveNeutralRequests: true,
+					requireOpenShiftApproval: false,
+					canCreateLDMPGroups: false,
+					chatResponsesVisible: false,
+				},
+			],
+		},
+		handler: async (params, userMessage, onStream) => {
+			if (!params?.ClientId !== 2) params.ClientId = 2;
+
+			try {
+				const { data } = await axios.get(`${API_BASE}/GetLocationListForBackEnd?ClientId=${params?.ClientId}`);
+
+				const permissionList =
+					data?.data?.map((item) => ({
+						maxDaysUnavailable: item?.maxDaysUnavailable,
+						requireWeekendDay: item?.requireWeekendDay,
+						maxTimeOffLength: item?.maxTimeOffLength,
+						approveNeutralRequests: item?.approveNeutralRequests,
+						canCreateLDMPGroups: item?.canCreateLDMPGroups,
+						chatResponsesVisible: item?.chatResponsesVisible,
+					})) || [];
+
+				return await processIntentAndFormatResponse({
+					userMessage,
+					api: {
+						name: "GetSchedAlignEngineLMDPPermissions",
+						description:
+							"returns the default scheduling and permission settings defined by the manager. It includes rules such as the maximum allowed unavailable days, maximum time-off length, whether weekend availability is required, and permissions for approving neutral or open shift requests. This API is used to understand the scheduling policies and restrictions that apply to drivers.",
+					},
+					exampleResponse: {
+						permissionList: [
+							{
+								maxDaysUnavailable: 2,
+								requireWeekendDay: false,
+								maxTimeOffLength: 2,
+								approveNeutralRequests: true,
+								requireOpenShiftApproval: false,
+								canCreateLDMPGroups: false,
+								chatResponsesVisible: false,
+							},
+						],
+					},
+					actualData: permissionList,
+					params,
+					onStream,
+				});
+			} catch (err) {
+				return {
+					error: true,
+					message: err.response?.data?.message || "Failed to fetch  default scheduling and permission settings.",
 				};
 			}
 		},

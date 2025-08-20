@@ -6,6 +6,7 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
  * then captures JSON silently and returns at the end.
  */
 const processIntentAndFormatResponse = async ({ userMessage, api, exampleResponse, actualData, params = {}, onStream }) => {
+
 	let fullText = "";
 	let jsonPart = "";
 	let inJsonSection = false;
@@ -93,7 +94,6 @@ ${JSON.stringify(actualData, null, 2)}
 						.replace(/(\d)([A-Za-z])/g, "$1 $2")
 						// Add space between letters + number (hours702 → hours 702)
 						.replace(/([a-zA-Z])(\d)/g, "$1 $2");
-					// 🚫 Removed forced bullet regex
 
 					if (onStream) onStream(formatted);
 				}

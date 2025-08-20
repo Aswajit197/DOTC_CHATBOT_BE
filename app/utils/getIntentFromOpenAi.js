@@ -25,7 +25,7 @@ function gatherMergedParams(session) {
 			Object.assign(merged, entry.context.lastParams);
 		}
 	}
-	console.log(merged, "merged params");
+	// console.log(merged, "merged params");
 	return merged;
 }
 
@@ -45,7 +45,7 @@ ${apiListData
 Instructions:
 - Identify the most appropriate API based on the user's message.
 - Only extract parameters explicitly mentioned in the message.
-- DO NOT assume or infer values like ClientId or StationId  unless they are explicitly stated in the user's message.
+- DO NOT assume or infer values like ClientId or StationId  unless they are explicitly stated in the user's message like for clientId 2 or for stationId 2 , if any number is there try to resolve from user message like for other params or user looking for any filter like driverId / LMDP ID.
 - For missing required parameters, leave them out. Do NOT invent values. The system will inject them later from session data.
 - Match "apiName" EXACTLY to the name from the Available APIs list above.
 
@@ -89,6 +89,8 @@ Important:
 
 	const matchedApi = apiListData.find((api) => api.name === extracted.apiName);
 
+	// console.log(matchedApi)
+
 	// Fallback case: No matching API
 	if (!matchedApi || extracted.apiName === null) {
 		const fallbackPrompt = `
@@ -121,6 +123,7 @@ Respond ONLY with plain text.
 
 	// Proceed with matched API and param handling
 	let params = extracted.params || {};
+	// console.log(params, "extracted params");
 	// 🔹 Normalize parameter keys to match requiredFields casing
 	if (matchedApi?.requiredFields?.length) {
 		const normalized = {};
@@ -200,6 +203,7 @@ Respond ONLY with plain text.
 	}
 
 	if (missingFields.length && matchedApi?.name !== "GetLMDPMaxQualificationsList") {
+		// console.log("checking missing fields using bot");
 		const contextText = session.history.map((h) => `${h.sender}: ${h.message}`).join("\n");
 
 		const resolutionPrompt = `
@@ -275,8 +279,7 @@ Respond ONLY with plain text.
 
 	// Step 3: All fields ready → call API
 	try {
-		console.log(matchedApi);
-		// const apiResponse = await matchedApi.handler(params, userMessage);
+		// console.log(matchedApi);
 		const apiResponse = await matchedApi.handler(params, userMessage, onStream);
 		return {
 			api: matchedApi,
