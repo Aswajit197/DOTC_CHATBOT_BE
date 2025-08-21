@@ -13,8 +13,8 @@ module.exports = [
 		requiredFields: ["StationId"],
 		exampleResponse: {
 			driversWeeklyWorkingHrList: [
-				{ driverID: 1482, hours: 30 },
-				{ driverID: 5527, hours: 40 },
+				{ driverName: "Alejandro Reyes", hours: 30 },
+				{ driverName: "Hele Reyes", hours: 40 },
 			],
 		},
 		handler: async (params, userMessage, onStream) => {
@@ -24,7 +24,7 @@ module.exports = [
 
 				const driversWeeklyWorkingHrList =
 					data?.data?.map((item) => ({
-						driverID: item?.driverId,
+						driverName: item?.driverName,
 						hours: item?.hours,
 					})) || [];
 
@@ -38,8 +38,8 @@ module.exports = [
 					},
 					exampleResponse: {
 						driversWeeklyWorkingHrList: [
-							{ driverID: 1482, hours: 30 },
-							{ driverID: 5527, hours: 40 },
+							{ driverName: "Alejandro Reyes", hours: 30 },
+							{ driverName: "Hele Reyes", hours: 40 },
 						],
 					},
 					actualData: driversWeeklyWorkingHrList,
@@ -170,7 +170,7 @@ module.exports = [
 		exampleResponse: {
 			DayPreferenceList: [
 				{
-					DriverId: 4536,
+					driverName: "JORGE VALENCIA",
 					day: "Sun",
 					preference: 2,
 				},
@@ -186,7 +186,7 @@ module.exports = [
 				);
 
 				let DayPreferenceList = data?.data?.map((item) => ({
-					DriverId: item?.driverId,
+					driverName: item?.driverName,
 					day: item?.day,
 					preference: item?.preference,
 				}));
@@ -200,7 +200,7 @@ module.exports = [
 					exampleResponse: {
 						DayPreferenceList: [
 							{
-								DriverId: 4536,
+								driverName: "JORGE VALENCIA",
 								day: "Sun",
 								preference: 2,
 							},
@@ -226,7 +226,7 @@ module.exports = [
 			"Retrieves each driver's OT (Overtime Preference) settings for a given StationId. This does NOT include qualifications or weekly date ranges — only the preference values.",
 		requiredFields: ["StationId"],
 		exampleResponse: {
-			DriversOTPPreferenceList: [{ DriverId: 4536, preference: 2 }],
+			DriversOTPPreferenceList: [{ driverName: "JORGE VALENCIA", preference: 2 }],
 		},
 		handler: async (params, userMessage, onStream) => {
 			if (!params?.StationId) params.StationId = 2;
@@ -239,7 +239,7 @@ module.exports = [
 				// console.log(data);
 
 				let DriversOTPPreferenceList = data?.data?.map((item) => ({
-					DriverId: item?.driverId,
+					driverName: item?.driverName,
 					preference: item?.preference,
 				}));
 
@@ -252,7 +252,7 @@ module.exports = [
 					exampleResponse: {
 						DriversOTPPreferenceList: [
 							{
-								DriverId: 4536,
+								driverName: "JORGE VALENCIA",
 								preference: 2,
 							},
 						],
@@ -275,7 +275,7 @@ module.exports = [
 			"Retrieves the qualifications of all drivers for a specific ClientId within a specified weekly date range (FromDate to ToDate). This is based on a Sunday–Saturday week.",
 		requiredFields: ["ClientId", "FromDate", "ToDate"],
 		exampleResponse: {
-			DriversMaxQualificationList: [{ DriverId: 4536, qualification: 2 }],
+			DriversMaxQualificationList: [{ driverName: "JORGE VALENCIA", qualification: 2 }],
 		},
 		handler: async (params, userMessage, onStream) => {
 			// If FromDate/ToDate missing
@@ -380,7 +380,7 @@ Respond in JSON only:
 				);
 
 				let DriversMaxQualificationList = data?.data?.map((item) => ({
-					DriverId: item?.driverId,
+					driverName: item?.driverName,
 					qualification: item?.qualification,
 				}));
 
@@ -393,7 +393,7 @@ Respond in JSON only:
 					exampleResponse: {
 						DriversMaxQualificationList: [
 							{
-								DriverId: 4536,
+								driverName: "JORGE VALENCIA",
 								qualification: 2,
 							},
 						],
@@ -419,7 +419,6 @@ Respond in JSON only:
 		exampleResponse: {
 			driversWeeklyWorkingHrList: [
 				{
-					driverId: 5520,
 					driverName: "ALEJANDRO LAYA",
 					shifts: {
 						"Parcel Van": 0,
@@ -429,7 +428,6 @@ Respond in JSON only:
 					},
 				},
 				{
-					driverId: 1482,
 					driverName: "Alejandro Reyes",
 					shifts: {
 						"Parcel Van": 0,
@@ -456,7 +454,6 @@ Respond in JSON only:
 
 				const driversTotalScheduledHours =
 					data?.data?.map((item) => ({
-						driverId: item?.driverId,
 						driverName: item?.driverName,
 						shifts: item?.shifts,
 					})) || [];
@@ -471,7 +468,6 @@ Respond in JSON only:
 					exampleResponse: {
 						driversTotalScheduledHours: [
 							{
-								driverId: 5520,
 								driverName: "ALEJANDRO LAYA",
 								shifts: {
 									"Parcel Van": 0,
@@ -481,7 +477,6 @@ Respond in JSON only:
 								},
 							},
 							{
-								driverId: 1482,
 								driverName: "Alejandro Reyes",
 								shifts: {
 									"Parcel Van": 0,
@@ -513,7 +508,6 @@ Respond in JSON only:
 		exampleResponse: {
 			driversOffRequestList: [
 				{
-					driverId: 5520,
 					driverName: "ALEJANDRO LAYA",
 					dateStart: "2025-03-05T00:00:00",
 					dateEnd: "2025-02-10T00:00:00",
@@ -530,7 +524,6 @@ Respond in JSON only:
 
 				const driversOffRequestList =
 					data?.data?.map((item) => ({
-						driverId: item?.driverId,
 						driverName: item?.driverName,
 						dateStart: item?.dateStart,
 						dateEnd: item?.dateEnd,
@@ -548,7 +541,6 @@ Respond in JSON only:
 					exampleResponse: {
 						driversOffRequestList: [
 							{
-								driverId: 5520,
 								driverName: "ALEJANDRO LAYA",
 								dateStart: "2025-03-05T00:00:00",
 								dateEnd: "2025-02-10T00:00:00",
@@ -697,6 +689,66 @@ Respond in JSON only:
 				return {
 					error: true,
 					message: err.response?.data?.message || "Failed to fetch  default scheduling and permission settings.",
+				};
+			}
+		},
+	},
+
+	//11.GetDriverByClientId
+	{
+		name: "GetDriverByClientId",
+		description:
+			"retrieves the list of drivers associated with a client, including each driver’s ID, name, mobile number, email, and unique identifier. It is used to identify and access driver details linked to a specific client. Use when user asks for driver contact or ID details , return in table format",
+		requiredFields: ["ClientId"],
+		exampleResponse: {
+			driverList: [
+				{
+					firstName: "Alejandro",
+					lastName: "Rayes",
+					mobilePhone: 9178334663,
+					email: "tincho76ny@gmail.com",
+				},
+			],
+		},
+		handler: async (params, userMessage, onStream) => {
+			if (!params?.ClientId !== 2) params.ClientId = 2;
+
+			try {
+				const { data } = await axios.get(`${API_BASE}/GetDriverByClientId?ClientId=${params?.ClientId}`);
+
+				const driverList =
+					data?.data?.map((item) => ({
+						firstName: item.firstName,
+						lastName: item.lastName,
+						mobilePhone: item.mobilePhone,
+						email: item.email,
+					})) || [];
+
+				return await processIntentAndFormatResponse({
+					userMessage,
+					api: {
+						name: "GetDriverByClientId",
+						description:
+							"retrieves the list of drivers associated with a client, including each driver’s ID, name, mobile number, email, and unique identifier. It is used to identify and access driver details linked to a specific client. Use when user asks for driver contact or ID details , return in table format",
+					},
+					exampleResponse: {
+						driverList: [
+							{
+								firstName: "Alejandro",
+								lastName: "Rayes",
+								mobilePhone: 9178334663,
+								email: "tincho76ny@gmail.com",
+							},
+						],
+					},
+					actualData: driverList,
+					params,
+					onStream,
+				});
+			} catch (err) {
+				return {
+					error: true,
+					message: err.response?.data?.message || "Failed to fetch list of drivers associated with a client.",
 				};
 			}
 		},

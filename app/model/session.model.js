@@ -5,7 +5,7 @@ const apiDetailsSchema = new mongoose.Schema(
 		name: { type: String, required: true },
 		description: { type: String, required: true },
 		requiredFields: [{ type: String }], 
-		exampleResponse: { type: mongoose.Schema.Types.Mixed }, // can hold any object/array
+		exampleResponse: { type: mongoose.Schema.Types.Mixed },
 	},
 	{ _id: false }
 );
@@ -19,11 +19,12 @@ const sessionSchema = new mongoose.Schema(
 			{
 				sender: String,
 				message: String,
-				context: {},   //stores intent and params
+				context: {},
 				timestamp: Date,
 			},
 		],
-		apiDetailsHistory: [apiDetailsSchema], 
+		apiDetailsHistory: [apiDetailsSchema],
+		lastFilteredResponse: { type: mongoose.Schema.Types.Mixed },
 		createdAt: {
 			type: Date,
 			default: Date.now,
