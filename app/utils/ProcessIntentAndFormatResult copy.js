@@ -5,20 +5,32 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
  * Streams GPT's partial plain text response until "###JSON###",
  * then captures JSON silently and returns at the end.
  */
-const processIntentAndFormatResponse = async ({ userMessage, api, exampleResponse, actualData, params = {}, onStream }) => {
+const processIntentAndFormatResponse = async ({
+	userMessage,
+	api,
+	exampleResponse,
+	actualData,
+	params = {},
+	session,
+	onStream,
+}) => {
 	let fullText = "";
-	let streamedText = "";
 	let jsonPart = "";
 	let inJsonSection = false;
+
+	console.log(session._id, "session id");
+	// new ObjectId('68a7114941fb47898a5607cd') session id
 
 	try {
 		const prompt = `
 You're a smart assistant. Your task is to:
-1. Understand the user's intent from their message
-2. Filter/transform the provided API data accordingly
-3.When the ${userMessage} / user request includes a numeric threshold (e.g., "at least 800 hours"),maximum , minimum , average , sum , greater , less , average you MUST strictly filter the Raw API Data so that only items meeting that condition remain.
-4.Never include items that fail the condition, even partially.
-5. Generate a user-friendly response that directly answers the user's message
+1. Understand the user's intent from their message.
+2. Filter/transform the provided API data accordingly.
+3. When the user request ("${userMessage}") includes a numeric threshold 
+   (e.g., "at least 800 hours", maximum, minimum, average, sum, greater, less), 
+   you MUST strictly filter the Raw API Data so that only items meeting that condition remain.
+4. Never include items that fail the condition, even partially.
+5. Generate a user-friendly response that directly answers the user's message.
 
 ---
 
@@ -41,24 +53,26 @@ ${JSON.stringify(actualData, null, 2)}
 ---
 
 ### Instructions
-- First, write ONLY the clear, conversational reply userReply in plain text — exactly how you’d say it to a user.  
-- Use bullet points for lists.
-- Do not include any JSON or metadata in this part.
-- Use bullet points for lists.
-- Do not include any Markdown formatting (like **bold**, _italic_, code, etc).
-- Output plain text only for this section.
-- Perform this filtering before producing the JSON output.
+Decide the HTML output format dynamically based on intent and API description:
 
-- After finishing the plain text reply, output a new line with:
-  ###JSON###
-- Then output ONLY the JSON object in this format:
+- If the **user message** explicitly asks for "table", "tabular" or if the **API description** indicates tabular data, then format the reply as an HTML <table> with <thead>, <tbody>, <tr>, <th>, <td>.
+- If the data is best represented as a **list**, use <ul><li>...</li></ul>.
+- if userMessage intent is for specific one driver id or LMDP ID try to send in list format .
+- try to provide complete list always if user content  contains any filter action
+- If the data is descriptive or narrative, use <p>...</p>.
+- if the data contains date string send in proper user readable format
+- Always start with a <p> introduction sentence before table or list.
+- Do not include Markdown, plain text, or JSON in this section. Only valid HTML.
+
+After finishing the HTML reply, output a new line with exactly:
+###JSON###
+
+Then output ONLY the JSON object in this format:
 {
   "filteredResponse": { ...matching exampleResponse structure... },
-  "userReply": "<same reply text as above>"
+  "userReply": "<same HTML reply as above>"
 }
 `;
-
-		// Start streaming
 		const completion = await openai.chat.completions.create({
 			model: "gpt-4o-mini",
 			messages: [{ role: "user", content: prompt }],
@@ -75,20 +89,21 @@ ${JSON.stringify(actualData, null, 2)}
 			// Detect JSON marker start
 			if (!inJsonSection && fullText.includes("###JSON###")) {
 				inJsonSection = true;
-				continue; // Do not send marker or anything after it
+				continue; // skip marker itself
 			}
 
 			if (!inJsonSection) {
-				// Prevent partial marker like "###" or "JSON" leaking
-				const cleaned = delta
-					.replace(/###\s*JSON\s*###/gi, "")
-					.replace(/JSON/gi, "") // 👈 remove dangling JSON
-					.replace(/#+/g, "")
-					.trim();
-
+				const cleaned = delta.replace(/###\s*JSON\s*###/gi, "");
 				if (cleaned) {
-					streamedText += cleaned;
-					if (onStream) onStream(cleaned);
+					const formatted = cleaned
+						// Add missing space between lowercase → UPPERCASE
+						.replace(/([a-z])([A-Z])/g, "$1 $2")
+						// Add space between number + letters (702hours → 702 hours)
+						.replace(/(\d)([A-Za-z])/g, "$1 $2")
+						// Add space between letters + number (hours702 → hours 702)
+						.replace(/([a-zA-Z])(\d)/g, "$1 $2");
+
+					if (onStream) onStream(formatted);
 				}
 			} else {
 				// Capture JSON quietly

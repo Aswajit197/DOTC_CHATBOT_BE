@@ -516,7 +516,7 @@ Respond in JSON only:
 				},
 			],
 		},
-		handler: async (params, userMessage, onStream) => {
+		handler: async (params, userMessage, session, onStream) => {
 			if (!params?.ClientId !== 2) params.ClientId = 2;
 
 			try {
@@ -551,6 +551,7 @@ Respond in JSON only:
 					},
 					actualData: driversOffRequestList,
 					params,
+					session,
 					onStream,
 				});
 			} catch (err) {

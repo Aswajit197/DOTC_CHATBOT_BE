@@ -4,7 +4,7 @@ const apiDetailsSchema = new mongoose.Schema(
 	{
 		name: { type: String, required: true },
 		description: { type: String, required: true },
-		requiredFields: [{ type: String }], 
+		requiredFields: [{ type: String }],
 		exampleResponse: { type: mongoose.Schema.Types.Mixed },
 	},
 	{ _id: false }
@@ -24,7 +24,7 @@ const sessionSchema = new mongoose.Schema(
 			},
 		],
 		apiDetailsHistory: [apiDetailsSchema],
-		lastFilteredResponse: { type: mongoose.Schema.Types.Mixed },
+		lastResponseMessage: { type: String },
 		createdAt: {
 			type: Date,
 			default: Date.now,

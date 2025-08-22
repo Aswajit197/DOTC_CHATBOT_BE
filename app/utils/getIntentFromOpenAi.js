@@ -280,7 +280,7 @@ Respond ONLY with plain text.
 	// Step 3: All fields ready → call API
 	try {
 		// console.log(matchedApi);
-		const apiResponse = await matchedApi.handler(params, userMessage, onStream);
+		const apiResponse = await matchedApi.handler(params, userMessage, session, onStream);
 		return {
 			api: matchedApi,
 			params,

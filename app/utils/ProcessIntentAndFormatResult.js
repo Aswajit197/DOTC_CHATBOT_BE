@@ -1,16 +1,25 @@
 const { OpenAI } = require("openai");
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const Session = require("../model/session.model");
 
 /**
- * Streams GPT's partial plain text response until "###JSON###",
- * then captures JSON silently and returns at the end.
+ * Streams GPT's partial plain text response until "###END###",
+ * and returns the full HTML reply at the end.
  */
-const processIntentAndFormatResponse = async ({ userMessage, api, exampleResponse, actualData, params = {}, onStream }) => {
+const processIntentAndFormatResponse = async ({
+	userMessage,
+	api,
+	exampleResponse,
+	actualData,
+	params = {},
+	session,
+	onStream,
+}) => {
 	let fullText = "";
-	let jsonPart = "";
-	let inJsonSection = false;
 
-	// - if userMessage intent if for specific one driver id or LMDP ID try to send in list format .
+	console.log(session._id, "session id");
+	// new ObjectId('68a7114941fb47898a5607cd') session id
+
 	try {
 		const prompt = `
 You're a smart assistant. Your task is to:
@@ -47,21 +56,19 @@ Decide the HTML output format dynamically based on intent and API description:
 
 - If the **user message** explicitly asks for "table", "tabular" or if the **API description** indicates tabular data, then format the reply as an HTML <table> with <thead>, <tbody>, <tr>, <th>, <td>.
 - If the data is best represented as a **list**, use <ul><li>...</li></ul>.
-- try to provide complete list always if user content  contains any filter action
+- If userMessage intent is for specific one driver id or LMDP ID try to send in list format.
+- Try to provide complete list/table always if user content contains any filter action.
 - If the data is descriptive or narrative, use <p>...</p>.
-- if the data contains date string send in proper user readable format
+- If the data contains date string send in proper user readable format.
 - Always start with a <p> introduction sentence before table or list.
+- After the table or list, always add:
+  <p class="followup-message">Would you like me to turn this into a visualization, such as a graph or chart?</p>
 - Do not include Markdown, plain text, or JSON in this section. Only valid HTML.
 
 After finishing the HTML reply, output a new line with exactly:
-###JSON###
-
-Then output ONLY the JSON object in this format:
-{
-  "filteredResponse": { ...matching exampleResponse structure... },
-  "userReply": "<same HTML reply as above>"
-}
+###END###
 `;
+
 		const completion = await openai.chat.completions.create({
 			model: "gpt-4o-mini",
 			messages: [{ role: "user", content: prompt }],
@@ -75,46 +82,36 @@ Then output ONLY the JSON object in this format:
 
 			fullText += delta;
 
-			// Detect JSON marker start
-			if (!inJsonSection && fullText.includes("###JSON###")) {
-				inJsonSection = true;
-				continue; // skip marker itself
-			}
+			// Stop when END marker appears
+			if (fullText.includes("###END###")) break;
 
-			if (!inJsonSection) {
-				const cleaned = delta.replace(/###\s*JSON\s*###/gi, "");
-				if (cleaned) {
-					const formatted = cleaned
-						// Add missing space between lowercase → UPPERCASE
-						.replace(/([a-z])([A-Z])/g, "$1 $2")
-						// Add space between number + letters (702hours → 702 hours)
-						.replace(/(\d)([A-Za-z])/g, "$1 $2")
-						// Add space between letters + number (hours702 → hours 702)
-						.replace(/([a-zA-Z])(\d)/g, "$1 $2");
+			const cleaned = delta.replace(/###\s*END\s*###/gi, "");
+			if (cleaned) {
+				const formatted = cleaned
+					// Add missing space between lowercase → UPPERCASE
+					.replace(/([a-z])([A-Z])/g, "$1 $2")
+					// Add space between number + letters (702hours → 702 hours)
+					.replace(/(\d)([A-Za-z])/g, "$1 $2")
+					// Add space between letters + number (hours702 → hours 702)
+					.replace(/([a-zA-Z])(\d)/g, "$1 $2");
 
-					if (onStream) onStream(formatted);
-				}
-			} else {
-				// Capture JSON quietly
-				jsonPart += delta;
+				if (onStream) onStream(formatted);
 			}
 		}
 
-		// Parse JSON part
-		const parsed = JSON.parse(jsonPart.trim());
-		// console.log(parsed.filteredResponse, "parsed json");
-		if (!parsed.filteredResponse || !parsed.userReply) {
-			throw new Error("Incomplete structured response from GPT");
-		}
+		const finalReply = fullText.replace(/###END###/g, "").trim();
 
-		parsed.params = params;
-		parsed.api = api;
+		// ✅ Save the last reply in session
+		await Session.updateOne({ _id: session._id }, { $set: { lastResponseMessage: finalReply } });
 
-		return parsed;
+		return {
+			userReply: fullText.replace(/###END###/g, "").trim(),
+			params,
+			api,
+		};
 	} catch (err) {
 		console.error("processIntentAndFormatResponse error:", err.message);
 		return {
-			filteredResponse: actualData,
 			userReply: "Here's the available data. (Intent-based personalization failed.)",
 			params,
 			api,
