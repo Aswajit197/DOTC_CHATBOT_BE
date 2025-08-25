@@ -1,0 +1,58 @@
+[	
+	{
+		"name": "GetDriverWeeklyWorkingHrList",
+		"description": "Returns a list of drivers with their total weekly working hours preference for the given station.",
+		"requiredFields": ["StationId"]
+	},
+	{
+		"name": "GetDayFactor",
+		"description": "Returns priority factors for each day of the week.  If a day is provided, returns only that day's data. Supports filtering by given asked day or multiple day",
+		"requiredFields": ["ClientId"],
+		"optionalFields": ["dayName"]
+	},
+	{
+		"name": "GetSchedulingShiftTypeList",
+		"description": "Returns available shift types and their details for scheduling , including minimum qualification (minQualification) and hours per shift ",
+		"requiredFields": ["ClientId"]
+	},
+	{
+		"name": "GetLMDPDayPreferenceList",
+		"description": "Fetches driver's day preference list for each weak days , If a day is provided, returns only that day's data. Supports filtering by given asked day or multiple day",
+		"requiredFields": ["DriverId", "ClientId"]
+	},
+	{
+		"name": "GetDriverOTPreferenceList",
+		"description": "Retrieves each driver's OT (Overtime Preference) settings for a given StationId. This does NOT include qualifications or weekly date ranges — only the preference values.",
+		"requiredFields": ["StationId"]
+	},
+	{
+		"name": "GetLMDPMaxQualificationsList",
+		"description": "Retrieves the qualifications of all drivers for a specific ClientId within a specified weekly date range (FromDate to ToDate). This is based on a Sunday–Saturday week.",
+		"requiredFields": ["ClientId", "FromDate", "ToDate"]
+	},
+	{
+		"name": "GetBlobShiftDriverData",
+		"description": "Returns total hours scheduled (for each shift type) between weeks 25(start week number) and 33(end Week number) of all LMDPs broken down by shift type , list of drivers with their name and  shift type(like Parcel Van , Step Van , Walker ,Box Truck etc..) with hours like for a given range of week like 25 to 33",
+		"requiredFields": ["WeekStarting", "WeekEnding", "Year", "ClientId"]
+	},
+	{
+		"name": "GetTimeOffRequestForBackend",
+		"description": "returns list of driver's time-off requests, including details such as driver name, request dates, reason for leave, and the current status (approved, declined, or pending). It is used to check when drivers have requested time off and whether those requests were accepted or not.",
+		"requiredFields": ["ClientId"]
+	},
+	{
+		"name": "GetLocationListForBackEnd",
+		"description": "returns a list of available locations for LMDPs along with their details, including name, address, city, state, zip code, type, and active status. It is used to identify and retrieve information about all operational locations in the system.",
+		"requiredFields": ["ClientId"]
+	},
+	{
+		"name": "GetSchedAlignEngineLMDPPermissions",
+		"description": "returns the default scheduling and permission settings defined by the manager. It includes rules such as the maximum allowed unavailable days, maximum time-off length, whether weekend availability is required, and permissions for approving neutral or open shift requests. This API is used to understand the scheduling policies and restrictions that apply to drivers.",
+		"requiredFields": ["ClientId"]
+	},
+	{
+		"name": "GetDriverByClientId",
+		"description": "retrieves the list of drivers associated with a client, including each driver’s ID, name, mobile number, email, and unique identifier. It is used to identify and access driver details linked to a specific client. Use when user asks for driver contact or ID details , return in table format",
+		"requiredFields": ["ClientId"]
+	}
+]

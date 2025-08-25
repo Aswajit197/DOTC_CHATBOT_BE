@@ -36,7 +36,7 @@ Reply to the user based on their message and the data above.
 `;
 
 	const completion = await openai.chat.completions.create({
-		model: "gpt-4",
+		model: "gpt-4o-mini",
 		messages: [{ role: "user", content: prompt }],
 		temperature: 0.5,
 	});

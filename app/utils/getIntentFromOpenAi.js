@@ -1,5 +1,6 @@
 const { OpenAI } = require("openai");
 const apiListData = require("../../apiDetails");
+const { searchAPIs } = require("./searchEmbeddings");
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -29,46 +30,61 @@ function gatherMergedParams(session) {
 	return merged;
 }
 
-async function getIntentFromOpenAI(userMessage, session, { onStream } = {}) {
+async function getIntentFromOpenAI(userMessage, session, lastFive, { onStream } = {}) {
+
+	const topApis = await searchAPIs(userMessage);
+
 	const systemPrompt = `
 You are an assistant that maps user queries to API operations.
 
 Available APIs:
-${apiListData
-	.map(
-		(api, i) =>
-			`${i + 1}. ${api.name}: ${api.description}
+${topApis.map(
+    (api, i) =>
+      `${i + 1}. ${api.name}: ${api.description}
      Required fields: ${api.requiredFields && api.requiredFields.length ? api.requiredFields.join(", ") : "None"}`
-	)
-	.join("\n")}
+  )
+  .join("\n")}
+
+Conversation context (last 5 messages):
+${lastFive.map(m => `${m.sender}: ${m.message}`).join("\n")}
 
 Instructions:
-- Identify the most appropriate API based on the user's message.
-- Only extract parameters explicitly mentioned in the message.
-- DO NOT assume or infer values like ClientId or StationId  unless they are explicitly stated in the user's message like for clientId 2 or for stationId 2 , if any number is there try to resolve from user message like for other params or user looking for any filter like driverId / LMDP ID.
-- For missing required parameters, leave them out. Do NOT invent values. The system will inject them later from session data.
-- Match "apiName" EXACTLY to the name from the Available APIs list above.
+- Decide first if the current user message is **independent** (a fresh query) or **dependent** (requires context from prior conversation).
+  * Independent → It can be handled on its own without needing earlier responses.
+  * Dependent → The meaning depends on what was said earlier (e.g., "show me the same for yesterday", "and for driver 12", "what about station 5", etc.).
 
-Respond in EXACTLY the following JSON format:
+- If Independent:
+   * Identify the most appropriate API from the Available APIs list.
+   * Extract parameters only if they are explicitly in the message.
+   * Do NOT assume or invent values (like ClientId, StationId, etc).
+   * For missing required fields, leave them empty.
+
+- If Dependent:
+   * Set "dependent": true in the response.
+   * Do not resolve intent right now. Just mark it as dependent so the system can combine history + this message.
+
+Respond in EXACTLY this JSON format:
 {
   "apiName": "<exact API name from above or null>",
-  "params": { /* extracted parameters from user message */ }
+  "params": { /* extracted params */ },
+  "dependent": <true or false>
 }
 
-If the user's message is casual, small talk, or does not match any API intent, respond like:
+If the user's message is casual, small talk, or not related to any API, respond:
 {
   "apiName": null,
-  "params": {}
+  "params": {},
+  "dependent": false
 }
 
 Important:
 - DO NOT explain your reasoning.
 - DO NOT add comments or extra text.
-- Only return valid JSON as per the above structure.
+- Output valid JSON only.
 `;
 
 	const completion = await openai.chat.completions.create({
-		model: "gpt-4",
+		model: "gpt-3.5-turbo",
 		messages: [
 			{ role: "system", content: systemPrompt },
 			{ role: "user", content: userMessage },
@@ -96,7 +112,7 @@ Important:
 		const fallbackPrompt = `
 The user sent this message: "${userMessage}"
 
-You're a helpful assistant for a DRIVER MANAGEMENT PLATFORM.
+You're a helpful assistant for a LMDP and DELIVERY MANAGEMENT PLATFORM.
 
 1. If this is a casual message (greeting/small talk like "hi", "how are you", "what's the date"), respond politely and naturally.
 2. If it's not casual but related to drivers/platform, explain what you can help with — like:
@@ -108,7 +124,7 @@ Respond ONLY with plain text.
 `;
 
 		const fallbackResponse = await openai.chat.completions.create({
-			model: "gpt-4",
+			model: "gpt-3.5-turbo",
 			messages: [{ role: "system", content: fallbackPrompt }],
 			temperature: 0.7,
 		});
@@ -226,7 +242,7 @@ If nothing found, return: { "resolved": {} }
 `;
 
 		const resolutionResp = await openai.chat.completions.create({
-			model: "gpt-4",
+			model: "gpt-3.5-turbo",
 			messages: [{ role: "system", content: resolutionPrompt }],
 			temperature: 0,
 		});
@@ -260,7 +276,7 @@ Respond ONLY with plain text.
 `;
 
 			const fallbackResponse = await openai.chat.completions.create({
-				model: "gpt-4",
+				model: "gpt-3.5-turbo",
 				messages: [{ role: "system", content: fallbackHelpPrompt }],
 				temperature: 0.7,
 			});
@@ -293,3 +309,19 @@ Respond ONLY with plain text.
 }
 
 module.exports = getIntentFromOpenAI;
+
+
+// ques  -->  ques -->  intent matching  --> intent matched  -->  call api  -->  api response
+// 								    --> itent not matched  -->  ques + last response  --> graph  --> frontend handle  
+// 																					  --> not graph  --> fallback
+
+// User asks something →
+// 	You call OpenAI (intent matcher) → it decides:
+// 		Is it new (independent)?
+// 		Or dependent on history?
+
+// 	If new intent → extract intent → hit API → call OpenAI again to generate final response.
+
+// 	If dependent on history → combine previous response + current question → ask OpenAI again →
+// 		If graph → generate graph.
+// 		Else → hit API or respond accordingly.
