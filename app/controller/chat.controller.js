@@ -27,10 +27,8 @@ chat.sendMessage = async (req, res) => {
 		session.history.push({ sender: "user", message, timestamp: new Date() });
 		await session.save();
 
-		const lastFive = session.history.slice(-3);
-
 		// Detect intent & stream partials
-		const intentResult = await getIntentFromOpenAI(message, session, lastFive, {
+		const intentResult = await getIntentFromOpenAI(message, session, {
 			onStream: (chunk) => {
 				if (chunk) {
 					res.write(`data: ${JSON.stringify({ type: "partial", text: chunk })}\n\n`);
@@ -72,6 +70,12 @@ chat.sendMessage = async (req, res) => {
 			await session.save();
 			res.write(`data: ${JSON.stringify({ type: "final", response: intentResult.error })}\n\n`);
 			return res.end();
+		}
+
+		if (intentResult.type === "visualization") {
+			res.write(`data: ${JSON.stringify({ type: "visualization", data: intentResult.data })}\n\n`);
+			res.end();
+			return;
 		}
 
 		// Send final successful response

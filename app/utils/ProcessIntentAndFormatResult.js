@@ -18,7 +18,6 @@ const processIntentAndFormatResponse = async ({
 	let fullText = "";
 
 	console.log(session._id, "session id");
-	// new ObjectId('68a7114941fb47898a5607cd') session id
 
 	try {
 		const prompt = `
@@ -102,7 +101,17 @@ After finishing the HTML reply, output a new line with exactly:
 		const finalReply = fullText.replace(/###END###/g, "").trim();
 
 		// ✅ Save the last reply in session
-		await Session.updateOne({ _id: session._id }, { $set: { lastResponseMessage: finalReply } });
+		await Session.updateOne(
+			{ _id: session._id },
+			{
+				$set: {
+					lastResponseMessage: finalReply,
+					lastSuccessUserMessage: userMessage,
+					lastSuccessIntent: api?.name || null,
+					lastSuccessApiResponse: actualData,
+				},
+			}
+		);
 
 		return {
 			userReply: fullText.replace(/###END###/g, "").trim(),
@@ -110,6 +119,7 @@ After finishing the HTML reply, output a new line with exactly:
 			api,
 		};
 	} catch (err) {
+		console.log(err)
 		console.error("processIntentAndFormatResponse error:", err.message);
 		return {
 			userReply: "Here's the available data. (Intent-based personalization failed.)",

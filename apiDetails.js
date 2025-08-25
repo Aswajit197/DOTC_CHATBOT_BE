@@ -17,7 +17,7 @@ module.exports = [
 				{ driverName: "Hele Reyes", hours: 40 },
 			],
 		},
-		handler: async (params, userMessage, onStream) => {
+		handler: async (params, userMessage, session, onStream) => {
 			if (!params?.StationId) params.StationId = 2;
 			try {
 				const { data } = await axios.get(`${API_BASE}/GetDriverWeeklyWorkingHrList?StationId=${params.StationId}`);
@@ -44,6 +44,7 @@ module.exports = [
 					},
 					actualData: driversWeeklyWorkingHrList,
 					params,
+					session,
 					onStream,
 				});
 			} catch (err) {
@@ -65,7 +66,7 @@ module.exports = [
 		exampleResponse: {
 			dayFactors: [{ id: 2, dayName: "Monday", factor: 2 }],
 		},
-		handler: async (params, userMessage, onStream) => {
+		handler: async (params, userMessage, session, onStream) => {
 			// console.log(params,"params in getdayfactor handler")
 			if (!params?.ClientId) params.ClientId = 2;
 
@@ -92,6 +93,7 @@ module.exports = [
 					},
 					actualData: dayFactors,
 					params,
+					session,
 					onStream,
 				});
 			} catch (err) {
@@ -119,7 +121,7 @@ module.exports = [
 				},
 			],
 		},
-		handler: async (params, userMessage, onStream) => {
+		handler: async (params, userMessage, session, onStream) => {
 			if (!params?.ClientId) params.ClientId = 2;
 
 			try {
@@ -150,6 +152,7 @@ module.exports = [
 					},
 					actualData: shiftTypeList,
 					params,
+					session,
 					onStream,
 				});
 			} catch (err) {
@@ -176,7 +179,7 @@ module.exports = [
 				},
 			],
 		},
-		handler: async (params, userMessage, onStream) => {
+		handler: async (params, userMessage, session, onStream) => {
 			if (!params?.ClientId) params.ClientId = 2;
 			if (!params?.DriverId) return { missingFields: ["DriverId"] };
 
@@ -208,6 +211,7 @@ module.exports = [
 					},
 					actualData: DayPreferenceList,
 					params,
+					session,
 					onStream,
 				});
 			} catch (err) {
@@ -228,7 +232,7 @@ module.exports = [
 		exampleResponse: {
 			DriversOTPPreferenceList: [{ driverName: "JORGE VALENCIA", preference: 2 }],
 		},
-		handler: async (params, userMessage, onStream) => {
+		handler: async (params, userMessage, session, onStream) => {
 			if (!params?.StationId) params.StationId = 2;
 
 			try {
@@ -258,6 +262,8 @@ module.exports = [
 						],
 					},
 					actualData: DriversOTPPreferenceList,
+					params,
+					session,
 					onStream,
 				});
 			} catch (err) {
@@ -277,7 +283,7 @@ module.exports = [
 		exampleResponse: {
 			DriversMaxQualificationList: [{ driverName: "JORGE VALENCIA", qualification: 2 }],
 		},
-		handler: async (params, userMessage, onStream) => {
+		handler: async (params, userMessage, session, onStream) => {
 			// If FromDate/ToDate missing
 			if (!params?.FromDate || !params?.ToDate) {
 				const today = new Date();
@@ -399,6 +405,8 @@ Respond in JSON only:
 						],
 					},
 					actualData: DriversMaxQualificationList,
+					params,
+					session,
 					onStream,
 				});
 			} catch (err) {
@@ -438,7 +446,7 @@ Respond in JSON only:
 				},
 			],
 		},
-		handler: async (params, userMessage, onStream) => {
+		handler: async (params, userMessage, session, onStream) => {
 			if (!params?.ClientId !== 2) params.ClientId = 2;
 			if (!params?.WeekStarting) return { missingFields: ["WeekStarting"] };
 			if (!params?.WeekEnding) return { missingFields: ["WeekEnding"] };
@@ -489,6 +497,7 @@ Respond in JSON only:
 					},
 					actualData: driversTotalScheduledHours,
 					params,
+					session,
 					onStream,
 				});
 			} catch (err) {
@@ -580,7 +589,7 @@ Respond in JSON only:
 				},
 			],
 		},
-		handler: async (params, userMessage, onStream) => {
+		handler: async (params, userMessage, session, onStream) => {
 			if (!params?.ClientId !== 2) params.ClientId = 2;
 
 			try {
@@ -617,6 +626,7 @@ Respond in JSON only:
 					},
 					actualData: locationLists,
 					params,
+					session,
 					onStream,
 				});
 			} catch (err) {
@@ -646,7 +656,7 @@ Respond in JSON only:
 				},
 			],
 		},
-		handler: async (params, userMessage, onStream) => {
+		handler: async (params, userMessage, session, onStream) => {
 			if (!params?.ClientId !== 2) params.ClientId = 2;
 
 			try {
@@ -684,6 +694,7 @@ Respond in JSON only:
 					},
 					actualData: permissionList,
 					params,
+					session,
 					onStream,
 				});
 			} catch (err) {
@@ -711,7 +722,7 @@ Respond in JSON only:
 				},
 			],
 		},
-		handler: async (params, userMessage, onStream) => {
+		handler: async (params, userMessage, session, onStream) => {
 			if (!params?.ClientId !== 2) params.ClientId = 2;
 
 			try {
@@ -744,6 +755,7 @@ Respond in JSON only:
 					},
 					actualData: driverList,
 					params,
+					session,
 					onStream,
 				});
 			} catch (err) {

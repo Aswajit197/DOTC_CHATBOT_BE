@@ -25,6 +25,9 @@ const sessionSchema = new mongoose.Schema(
 		],
 		apiDetailsHistory: [apiDetailsSchema],
 		lastResponseMessage: { type: String },
+		lastSuccessUserMessage: { type: String },
+		lastSuccessIntent: { type: String },
+		lastSuccessApiResponse: { type: mongoose.Schema.Types.Mixed },
 		createdAt: {
 			type: Date,
 			default: Date.now,

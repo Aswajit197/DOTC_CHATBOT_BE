@@ -1,73 +1,84 @@
 const { OpenAI } = require("openai");
 const apiListData = require("../../apiDetails");
 const { searchAPIs } = require("./searchEmbeddings");
+const getGraphJsonFromLastResponse = require("./getGraphJsonFromLastReponse");
+const refineResponseFromLastResponse = require("./refineResponseFromLastResponse");
+const { handleParamsForApi } = require("./handleParamsForApis");
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-// Get last bot-generated context with matching intent
-function getLastContext(session) {
-	const reversed = [...(session.history || [])].reverse();
-	for (const entry of reversed) {
-		if (entry.sender === "bot" && entry.context?.lastIntent && entry.context?.lastParams) {
-			return {
-				lastIntent: entry.context.lastIntent,
-				lastParams: entry.context.lastParams,
-			};
-		}
-	}
-	return null;
-}
-
-// Merge all context params from session history
-function gatherMergedParams(session) {
-	const merged = {};
-	for (const entry of session.history || []) {
-		if (entry.context?.lastParams) {
-			Object.assign(merged, entry.context.lastParams);
-		}
-	}
-	// console.log(merged, "merged params");
-	return merged;
-}
-
-async function getIntentFromOpenAI(userMessage, session, lastFive, { onStream } = {}) {
-
+async function getIntentFromOpenAI(userMessage, session, { onStream } = {}) {
 	const topApis = await searchAPIs(userMessage);
 
 	const systemPrompt = `
 You are an assistant that maps user queries to API operations.
 
 Available APIs:
-${topApis.map(
-    (api, i) =>
-      `${i + 1}. ${api.name}: ${api.description}
+${topApis
+	.map(
+		(api, i) =>
+			`${i + 1}. ${api.name}: ${api.description}
      Required fields: ${api.requiredFields && api.requiredFields.length ? api.requiredFields.join(", ") : "None"}`
-  )
-  .join("\n")}
+	)
+	.join("\n")}
 
-Conversation context (last 5 messages):
-${lastFive.map(m => `${m.sender}: ${m.message}`).join("\n")}
+Session context:
+- Last assistant response (HTML): ${session.lastResponseMessage || "None"}
+- Last successful user message: ${session.lastSuccessUserMessage || "None"}
+- Last successful API intent: ${session.lastSuccessIntent || "None"}
+
+Current user message:
+"${userMessage}"
 
 Instructions:
-- Decide first if the current user message is **independent** (a fresh query) or **dependent** (requires context from prior conversation).
+- Decide first if the current user message is **independent** (a fresh query) or **dependent** (requires context from session or prior assistant response).
   * Independent → It can be handled on its own without needing earlier responses.
-  * Dependent → The meaning depends on what was said earlier (e.g., "show me the same for yesterday", "and for driver 12", "what about station 5", etc.).
+  * Dependent → The meaning depends on what was said earlier (e.g., "show me the same for yesterday", "and for driver 12", "what about station 5", "remove some specific column/data from the table/list", "visualize as graph", etc.).
 
 - If Independent:
    * Identify the most appropriate API from the Available APIs list.
    * Extract parameters only if they are explicitly in the message.
    * Do NOT assume or invent values (like ClientId, StationId, etc).
    * For missing required fields, leave them empty.
+   
+### Special Case: Visualization Follow-up
+If the user message is a short confirmation (examples: "yes", "yeah", "sure", "ok", "give me a chart", "show me a graph", "plot it", "visualize it")
+AND the prior assistant message ended with:
+<p class="followup-message">Would you like me to turn this into a visualization, such as a graph or chart?</p>
 
-- If Dependent:
-   * Set "dependent": true in the response.
-   * Do not resolve intent right now. Just mark it as dependent so the system can combine history + this message.
+→ Then classify this as a **dependent follow-up for visualization**.
+
+→ Return JSON in this format:
+{
+  "apiName": null,
+  "params": {},
+  "dependent": true,
+  "type": "visualization_request"
+}
+
+### Dependent (General Refinements)
+If the user message modifies or refines the last assistant response or successful API result, such as:
+- Filtering data (e.g., "only show approved", "exclude declined")
+- Adding/removing columns or fields (e.g., "remove StartDate", "just show driver name and status")
+- Sorting, grouping, or reformatting the displayed result
+- Asking for the same data with small changes (e.g., "for yesterday", "for driver 12")
+
+→ Then classify this as a **dependent refinement**.
+
+→ Return JSON in this format:
+{
+  "apiName": null,
+  "params": {},
+  "dependent": true,
+  "type": "refinement_request"
+}
 
 Respond in EXACTLY this JSON format:
 {
   "apiName": "<exact API name from above or null>",
   "params": { /* extracted params */ },
-  "dependent": <true or false>
+  "dependent": <true or false>,
+  "type": "<string or null>" // "visualization_request", "refinement_request", or null
 }
 
 If the user's message is casual, small talk, or not related to any API, respond:
@@ -92,22 +103,33 @@ Important:
 		temperature: 0,
 	});
 
-	// console.log("Tokens used for intent extraction:", completion.usage);
-
 	let extracted;
 
 	try {
 		extracted = JSON.parse(completion.choices[0].message.content.trim());
+		console.log(extracted, "extracted");
 	} catch (err) {
 		console.error("Failed to parse OpenAI response:", err);
 		return { error: "OpenAI parsing failed" };
 	}
 
+	// If dependent, route based on type
+	if (extracted.dependent) {
+		if (extracted.type === "visualization_request") {
+			return await getGraphJsonFromLastResponse(userMessage, session, { onStream });
+		} else if (extracted.type === "refinement_request") {
+			return await refineResponseFromLastResponse(userMessage, session, { onStream });
+		} else {
+			// fallback for unknown dependent type
+			return { error: "Unknown dependent request type" };
+		}
+	}
+
 	const matchedApi = apiListData.find((api) => api.name === extracted.apiName);
 
-	// console.log(matchedApi)
+	// console.log(matchedApi);
 
-	// Fallback case: No matching API
+	// Fallback case: No matching API   responding user with a proper fallback message
 	if (!matchedApi || extracted.apiName === null) {
 		const fallbackPrompt = `
 The user sent this message: "${userMessage}"
@@ -140,126 +162,31 @@ Respond ONLY with plain text.
 	// Proceed with matched API and param handling
 	let params = extracted.params || {};
 	// console.log(params, "extracted params");
-	// 🔹 Normalize parameter keys to match requiredFields casing
-	if (matchedApi?.requiredFields?.length) {
-		const normalized = {};
-		for (const key in params) {
-			const matchKey = matchedApi.requiredFields.find((rf) => rf.toLowerCase() === key.toLowerCase());
-			if (matchKey) {
-				normalized[matchKey] = params[key];
-			} else {
-				normalized[key] = params[key]; // keep extra non-required params
-			}
-		}
-		params = normalized;
+
+	const {
+		params: finalParams,
+		missingFields,
+		formattedReply,
+	} = await handleParamsForApi(matchedApi, params, userMessage, session, onStream);
+
+	params = finalParams;
+
+	// console.log(params, "final params");
+	// console.log(formattedReply, "final formattedReply");
+	// console.log(missingFields, "final missingFields");
+
+	if (formattedReply) {
+		// handler already responded early
+		return {
+			api: matchedApi,
+			params,
+			formattedReply,
+		};
 	}
 
-	// Auto-fill ClientId and StationId if required
-	if (matchedApi.requiredFields.includes("ClientId") && !params.ClientId) {
-		params.ClientId = session.ClientId;
-	}
-	if (matchedApi.requiredFields.includes("StationId") && !params.StationId) {
-		params.StationId = session.StationId;
-	}
-	let missingFields = matchedApi.requiredFields.filter((f) => !params[f]);
-
-	//  before trying to fetch from last context:
 	if (missingFields.length) {
-		try {
-			// Create a shallow copy so we don't mutate original params
-			const tempParams = { ...params };
-
-			// Try calling the handler to see if it fills defaults or can proceed
-			const tempResult = await matchedApi.handler(tempParams, userMessage, onStream);
-
-			if (!tempResult?.missingFields) {
-				// ✅ Handler already handled everything and likely made the API call
-				return {
-					api: matchedApi,
-					params: tempParams,
-					formattedReply: tempResult?.userReply,
-				};
-			} else {
-				// Handler might have reduced missing fields — sync them back
-				for (const f of matchedApi.requiredFields) {
-					if (!params[f] && tempParams[f]) {
-						params[f] = tempParams[f];
-					}
-				}
-			}
-
-			// Recalculate missing fields after handler auto-fill
-			missingFields = matchedApi.requiredFields.filter((f) => !params[f]);
-		} catch (err) {
-			console.warn("Pre-run handler param auto-fill check failed:", err.message);
-		}
-	}
-
-	//try to fetch missing param from last context from session
-	if (missingFields.length && matchedApi?.name !== "GetLMDPMaxQualificationsList") {
-		const lastContext = getLastContext(session);
-		if (lastContext?.lastIntent === matchedApi.name) {
-			for (const field of missingFields) {
-				if (lastContext.lastParams[field]) {
-					params[field] = lastContext.lastParams[field];
-				}
-			}
-		}
-		missingFields = matchedApi.requiredFields.filter((f) => !params[f]);
-	}
-
-	if (missingFields.length && matchedApi?.name !== "GetLMDPMaxQualificationsList") {
-		const merged = gatherMergedParams(session);
-		for (const field of missingFields) {
-			if (merged[field]) {
-				params[field] = merged[field];
-			}
-		}
-		missingFields = matchedApi.requiredFields.filter((f) => !params[f]);
-	}
-
-	if (missingFields.length && matchedApi?.name !== "GetLMDPMaxQualificationsList") {
-		// console.log("checking missing fields using bot");
-		const contextText = session.history.map((h) => `${h.sender}: ${h.message}`).join("\n");
-
-		const resolutionPrompt = `
-You are a smart assistant helping resolve missing required fields for API "${matchedApi.name}".
-Required fields: ${matchedApi.requiredFields.join(", ")}
-User message: "${userMessage}"
-
-Chat history:
-${contextText}
-
-Try to infer values for: ${missingFields.join(", ")}
-
-Respond ONLY in JSON:
-{
-  "resolved": {
-    "field1": "value1"
-  }
-}
-If nothing found, return: { "resolved": {} }
-`;
-
-		const resolutionResp = await openai.chat.completions.create({
-			model: "gpt-3.5-turbo",
-			messages: [{ role: "system", content: resolutionPrompt }],
-			temperature: 0,
-		});
-
-		let resolvedData = {};
-		try {
-			const parsed = JSON.parse(resolutionResp.choices[0].message.content.trim());
-			resolvedData = parsed.resolved || {};
-		} catch (err) {
-			console.warn("Could not parse field resolution JSON.");
-		}
-		params = { ...params, ...resolvedData };
-		missingFields = matchedApi.requiredFields.filter((f) => !params[f]);
-
-		if (missingFields.length) {
-			// Generate a helpful fallback message using OpenAI
-			const fallbackHelpPrompt = `
+		// Generate a helpful fallback message using OpenAI
+		const fallbackHelpPrompt = `
 You are a helpful assistant for a Driver Management platform.
 
 The user said: "${userMessage}"
@@ -275,22 +202,21 @@ Example:
 Respond ONLY with plain text.
 `;
 
-			const fallbackResponse = await openai.chat.completions.create({
-				model: "gpt-3.5-turbo",
-				messages: [{ role: "system", content: fallbackHelpPrompt }],
-				temperature: 0.7,
-			});
+		const fallbackResponse = await openai.chat.completions.create({
+			model: "gpt-3.5-turbo",
+			messages: [{ role: "system", content: fallbackHelpPrompt }],
+			temperature: 0.7,
+		});
 
-			const fallbackMessage = fallbackResponse.choices[0].message.content.trim();
+		const fallbackMessage = fallbackResponse.choices[0].message.content.trim();
 
-			return {
-				error: "Missing required fields",
-				requires: missingFields,
-				params,
-				api: matchedApi,
-				fallbackMessage,
-			};
-		}
+		return {
+			error: "Missing required fields",
+			requires: missingFields,
+			params,
+			api: matchedApi,
+			fallbackMessage,
+		};
 	}
 
 	// Step 3: All fields ready → call API
@@ -310,9 +236,8 @@ Respond ONLY with plain text.
 
 module.exports = getIntentFromOpenAI;
 
-
 // ques  -->  ques -->  intent matching  --> intent matched  -->  call api  -->  api response
-// 								    --> itent not matched  -->  ques + last response  --> graph  --> frontend handle  
+// 								    --> itent not matched  -->  ques + last response  --> graph  --> frontend handle
 // 																					  --> not graph  --> fallback
 
 // User asks something →
