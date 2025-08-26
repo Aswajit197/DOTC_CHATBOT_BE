@@ -35,6 +35,7 @@ module.exports = [
 					api: {
 						name: "GetDriverWeeklyWorkingHrList",
 						description: "Returns a list of drivers with their total weekly working hours preference for the given station.",
+						isSuitableForGraph: true,
 					},
 					exampleResponse: {
 						driversWeeklyWorkingHrList: [
@@ -87,6 +88,7 @@ module.exports = [
 					api: {
 						name: "GetDayFactor",
 						description: "Returns priority factors for each day of the week.",
+						isSuitableForGraph: true,
 					},
 					exampleResponse: {
 						dayFactors: [{ id: 2, dayName: "Monday", factor: 2 }],
@@ -115,7 +117,6 @@ module.exports = [
 			shiftTypeList: [
 				{
 					shiftTitle: "Step Van",
-					shiftId: 241,
 					minQualification: 2,
 					hoursPerShift: 10,
 				},
@@ -129,7 +130,6 @@ module.exports = [
 				const shiftTypeList =
 					data?.data?.map((item) => ({
 						shiftTitle: item?.description,
-						shiftId: item?.shiftId,
 						minQualification: item?.minQualification,
 						hoursPerShift: item?.hoursPerShift,
 					})) || [];
@@ -139,12 +139,12 @@ module.exports = [
 					api: {
 						name: "GetSchedulingShiftTypeList",
 						description: "Returns available shift types and their details for scheduling.",
+						isSuitableForGraph: true,
 					},
 					exampleResponse: {
 						shiftTypeList: [
 							{
 								shiftTitle: "Step Van",
-								shiftId: 241,
 								minQualification: 2,
 								hoursPerShift: 10,
 							},
@@ -199,6 +199,7 @@ module.exports = [
 					api: {
 						name: "GetSchedulingShiftTypeList",
 						description: "Returns available shift types and their details for scheduling.",
+						isSuitableForGraph: true,
 					},
 					exampleResponse: {
 						DayPreferenceList: [
@@ -252,6 +253,7 @@ module.exports = [
 					api: {
 						name: "GetDriverOTPreferenceList",
 						description: "Returns OTP preference for each drivers",
+						isSuitableForGraph: true,
 					},
 					exampleResponse: {
 						DriversOTPPreferenceList: [
@@ -472,6 +474,7 @@ Respond in JSON only:
 						name: "GetBlobShiftDriverData",
 						description:
 							"Returns total hours scheduled (for each shift type) between weeks 25(start week number) and 33(end Week number) of all LMDPs broken down by shift type , list of drivers with their name and  shift type(like Parcel Van , Step Van , Walker ,Box Truck etc..) with hours like for a given range of week like 25 to 33",
+						isSuitableForGraph: true,
 					},
 					exampleResponse: {
 						driversTotalScheduledHours: [
@@ -546,6 +549,7 @@ Respond in JSON only:
 						name: "GetTimeOffRequestForBackend",
 						description:
 							"returns list of driver's time-off requests, including details such as driver name, request dates, reason for leave, and the current status (approved, declined, or pending). It is used to check when drivers have requested time off and whether those requests were accepted or not.",
+						isSuitableForGraph: false,
 					},
 					exampleResponse: {
 						driversOffRequestList: [
@@ -611,6 +615,7 @@ Respond in JSON only:
 						name: "GetLocationListForBackEnd",
 						description:
 							"returns a list of available locations for LMDPs along with their details, including name, address, city, state, zip code, type, and active status. It is used to identify and retrieve information about all operational locations in the system.",
+						isSuitableForGraph: false,
 					},
 					exampleResponse: {
 						locationLists: [
@@ -678,6 +683,7 @@ Respond in JSON only:
 						name: "GetSchedAlignEngineLMDPPermissions",
 						description:
 							"returns the default scheduling and permission settings defined by the manager. It includes rules such as the maximum allowed unavailable days, maximum time-off length, whether weekend availability is required, and permissions for approving neutral or open shift requests. This API is used to understand the scheduling policies and restrictions that apply to drivers.",
+						isSuitableForGraph: false,
 					},
 					exampleResponse: {
 						permissionList: [
@@ -742,6 +748,7 @@ Respond in JSON only:
 						name: "GetDriverByClientId",
 						description:
 							"retrieves the list of drivers associated with a client, including each driver’s ID, name, mobile number, email, and unique identifier. It is used to identify and access driver details linked to a specific client. Use when user asks for driver contact or ID details , return in table format",
+						isSuitableForGraph: false,
 					},
 					exampleResponse: {
 						driverList: [
@@ -754,6 +761,123 @@ Respond in JSON only:
 						],
 					},
 					actualData: driverList,
+					params,
+					session,
+					onStream,
+				});
+			} catch (err) {
+				return {
+					error: true,
+					message: err.response?.data?.message || "Failed to fetch list of drivers associated with a client.",
+				};
+			}
+		},
+	},
+
+	//12.GetSchedAlignEngineLMDPPreference
+	{
+		name: "GetSchedAlignEngineLMDPPreference",
+		description:
+			"returns the default driver preferences that are applied when a new driver is added but has not yet submitted their own preferences. It also provides weighted values indicating which preferences (day, standby, overtime, etc.) are more significant in scheduling decisions. Use this when the user asks about default or system-assigned preferences, such as “What are the default preferences for new drivers?”, “Which preferences are prioritized by default?”, or “How are standby and overtime preferences set if a driver has not submitted them?”",
+		requiredFields: ["ClientId"],
+		exampleResponse: [
+			{
+				preferenceType: "StandBy",
+				preferenceWeight: 20,
+				preferenceDefault: 2,
+			},
+		],
+
+		handler: async (params, userMessage, session, onStream) => {
+			if (!params?.ClientId !== 2) params.ClientId = 2;
+
+			try {
+				const { data } = await axios.get(`${API_BASE}/GetSchedAlignEngineLMDPPreference?ClientId=${params?.ClientId}`);
+
+				const driverPreferenceList =
+					data?.data?.map((item) => ({
+						preferenceType: item?.preferenceType,
+						preferenceWeight: item?.preferenceWeight,
+						preferenceDefault: item?.preferenceDefault,
+					})) || [];
+
+				return await processIntentAndFormatResponse({
+					userMessage,
+					api: {
+						name: "GetSchedAlignEngineLMDPPreference",
+						description:
+							"returns the default driver preferences that are applied when a new driver is added but has not yet submitted their own preferences. It also provides weighted values indicating which preferences (day, standby, overtime, etc.) are more significant in scheduling decisions. Use this when the user asks about default or system-assigned preferences, such as “What are the default preferences for new drivers?”, “Which preferences are prioritized by default?”, or “How are standby and overtime preferences set if a driver has not submitted them?”",
+						isSuitableForGraph: true,
+					},
+					exampleResponse: [
+						{
+							preferenceType: "StandBy",
+							preferenceWeight: 20,
+							preferenceDefault: 2,
+						},
+					],
+					actualData: driverPreferenceList,
+					params,
+					session,
+					onStream,
+				});
+			} catch (err) {
+				return {
+					error: true,
+					message: err.response?.data?.message || "Failed to fetch list of drivers associated with a client.",
+				};
+			}
+		},
+	},
+
+	//13.GetSchedAlignEngineWeeklySetting
+	{
+		name: "GetSchedAlignEngineWeeklySetting",
+		description:
+			"provides the default weekly rules used by the scheduler when generating schedules, including maximum working hours, maximum consecutive days or hours allowed, standby shift limits, and tolerable or intolerable thresholds. Use this when the user asks about baseline scheduling rules, such as “What are the maximum weekly hours for drivers?”, “How many consecutive days can a driver work by default?”, or “What is the limit on standby shifts in a week?",
+		requiredFields: ["ClientId"],
+		exampleResponse: {
+			maxHrs: 40,
+			maxConsecutiveDaysWork: 5,
+			maxConsecutiveHrsWork: 50,
+			maxStandbyShifts: 1,
+			tolerableThreshold: 15,
+			intolerableThreshold: 20,
+		},
+		handler: async (params, userMessage, session, onStream) => {
+			if (!params?.ClientId !== 2) params.ClientId = 2;
+
+			try {
+				const { data } = await axios.get(`${API_BASE}/GetSchedAlignEngineWeeklySetting?ClientId=${params?.ClientId}`);
+
+				const defaultRules =
+					data?.data?.map((item) => ({
+						maxHrs: item?.maxHrs,
+						preferenceWeight: item?.preferenceWeight,
+						maxConsecutiveDaysWork: item?.maxConsecutiveDaysWork,
+						maxConsecutiveHrsWork: item?.maxConsecutiveHrsWork,
+						maxStandbyShifts: item?.maxStandbyShifts,
+						tolerableThreshold: item?.tolerableThreshold,
+						intolerableThreshold: item?.intolerableThreshold,
+					})) || [];
+
+				return await processIntentAndFormatResponse({
+					userMessage,
+					api: {
+						name: "GetSchedAlignEngineWeeklySetting",
+						description:
+							"provides the default weekly rules used by the scheduler when generating schedules, including maximum working hours, maximum consecutive days or hours allowed, standby shift limits, and tolerable or intolerable thresholds. Use this when the user asks about baseline scheduling rules, such as “What are the maximum weekly hours for drivers?”, “How many consecutive days can a driver work by default?”, or “What is the limit on standby shifts in a week?",
+						isSuitableForGraph:false
+					},
+					exampleResponse: {
+						maxHrs: 40,
+						maxConsecutiveDaysWork: 5,
+						maxConsecutiveHrsWork: 50,
+						maxStandbyShifts: 1,
+						tolerableThreshold: 15,
+						intolerableThreshold: 20,
+					},
+					actualData: defaultRules,
 					params,
 					session,
 					onStream,

@@ -101,44 +101,46 @@ async function handleParamsForApi(matchedApi, params, userMessage, session, onSt
 	}
 
 	// 4. Try resolving with OpenAI
-	if (missingFields.length && matchedApi?.name !== "GetLMDPMaxQualificationsList") {
-		const contextText = session.history.map((h) => `${h.sender}: ${h.message}`).join("\n");
+	
+// 	if (missingFields.length && matchedApi?.name !== "GetLMDPMaxQualificationsList") {
+// 		console.log("breaking Here");
+// 		const contextText = session.history.map((h) => `${h.sender}: ${h.message}`).join("\n");
 
-		const resolutionPrompt = `
-You are a smart assistant helping resolve missing required fields for API "${matchedApi.name}".
-Required fields: ${matchedApi.requiredFields.join(", ")}
-User message: "${userMessage}"
+// 		const resolutionPrompt = `
+// You are a smart assistant helping resolve missing required fields for API "${matchedApi.name}".
+// Required fields: ${matchedApi.requiredFields.join(", ")}
+// User message: "${userMessage}"
 
-Chat history:
-${contextText}
+// Chat history:
+// ${contextText}
 
-Try to infer values for: ${missingFields.join(", ")}
+// Try to infer values for: ${missingFields.join(", ")}
 
-Respond ONLY in JSON:
-{
-  "resolved": {
-    "field1": "value1"
-  }
-}
-If nothing found, return: { "resolved": {} }
-`;
+// Respond ONLY in JSON:
+// {
+//   "resolved": {
+//     "field1": "value1"
+//   }
+// }
+// If nothing found, return: { "resolved": {} }
+// `;
 
-		const resolutionResp = await openai.chat.completions.create({
-			model: "gpt-3.5-turbo",
-			messages: [{ role: "system", content: resolutionPrompt }],
-			temperature: 0,
-		});
+// 		const resolutionResp = await openai.chat.completions.create({
+// 			model: "gpt-3.5-turbo",
+// 			messages: [{ role: "system", content: resolutionPrompt }],
+// 			temperature: 0,
+// 		});
 
-		let resolvedData = {};
-		try {
-			const parsed = JSON.parse(resolutionResp.choices[0].message.content.trim());
-			resolvedData = parsed.resolved || {};
-		} catch (err) {
-			console.warn("Could not parse field resolution JSON.");
-		}
-		params = { ...params, ...resolvedData };
-		missingFields = matchedApi.requiredFields.filter((f) => !params[f]);
-	}
+// 		let resolvedData = {};
+// 		try {
+// 			const parsed = JSON.parse(resolutionResp.choices[0].message.content.trim());
+// 			resolvedData = parsed.resolved || {};
+// 		} catch (err) {
+// 			console.warn("Could not parse field resolution JSON.");
+// 		}
+// 		params = { ...params, ...resolvedData };
+// 		missingFields = matchedApi.requiredFields.filter((f) => !params[f]);
+// 	}
 
 	return { params, missingFields };
 }

@@ -7,6 +7,7 @@ const { handleParamsForApi } = require("./handleParamsForApis");
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
+
 async function getIntentFromOpenAI(userMessage, session, { onStream } = {}) {
 	const topApis = await searchAPIs(userMessage);
 
@@ -23,7 +24,6 @@ ${topApis
 	.join("\n")}
 
 Session context:
-- Last assistant response (HTML): ${session.lastResponseMessage || "None"}
 - Last successful user message: ${session.lastSuccessUserMessage || "None"}
 - Last successful API intent: ${session.lastSuccessIntent || "None"}
 
@@ -93,9 +93,10 @@ Important:
 - DO NOT add comments or extra text.
 - Output valid JSON only.
 `;
+	// console.log(systemPrompt)
 
 	const completion = await openai.chat.completions.create({
-		model: "gpt-3.5-turbo",
+		model: "gpt-4o-mini",
 		messages: [
 			{ role: "system", content: systemPrompt },
 			{ role: "user", content: userMessage },
@@ -120,8 +121,9 @@ Important:
 		} else if (extracted.type === "refinement_request") {
 			return await refineResponseFromLastResponse(userMessage, session, { onStream });
 		} else {
-			// fallback for unknown dependent type
-			return { error: "Unknown dependent request type" };
+			// 👇 Treat as independent 
+			extracted.dependent = false;
+			extracted.type = null;
 		}
 	}
 

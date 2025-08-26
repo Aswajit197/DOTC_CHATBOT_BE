@@ -1,4 +1,4 @@
-[	
+[
 	{
 		"name": "GetDriverWeeklyWorkingHrList",
 		"description": "Returns a list of drivers with their total weekly working hours preference for the given station.",
@@ -53,6 +53,16 @@
 	{
 		"name": "GetDriverByClientId",
 		"description": "retrieves the list of drivers associated with a client, including each driver’s ID, name, mobile number, email, and unique identifier. It is used to identify and access driver details linked to a specific client. Use when user asks for driver contact or ID details , return in table format",
+		"requiredFields": ["ClientId"]
+	},
+	{
+		"name": "GetSchedAlignEngineLMDPPreference",
+		"description": "returns the default driver preferences that are applied when a new driver is added but has not yet submitted their own preferences. It also provides weighted values indicating which preferences (day, standby, overtime, etc.) are more significant in scheduling decisions. Use this when the user asks about default or system-assigned preferences, such as “What are the default preferences for new drivers?”, “Which preferences are prioritized by default?”, or “How are standby and overtime preferences set if a driver has not submitted them?”",
+		"requiredFields": ["ClientId"]
+	},
+	{
+		"name": "GetSchedAlignEngineWeeklySetting",
+		"description": "provides the default weekly rules used by the scheduler when generating schedules, including maximum working hours, maximum consecutive days or hours allowed, standby shift limits, and tolerable or intolerable thresholds. Use this when the user asks about baseline scheduling rules, such as “What are the maximum weekly hours for drivers?”, “How many consecutive days can a driver work by default?”, or “What is the limit on standby shifts in a week?",
 		"requiredFields": ["ClientId"]
 	}
 ]

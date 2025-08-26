@@ -14,6 +14,7 @@ You are an assistant that converts HTML table or list content into JSON array fo
 - Output must ONLY be valid JSON (no extra text).
 - JSON must be an array of objects where keys are column/field names and values are row values.
 - If the HTML contains lists, use field names like "item", "value", etc.
+- try to convert values in integer format which can be converted like for 40 hours
 - Do not explain anything, just return JSON.
 `;
 

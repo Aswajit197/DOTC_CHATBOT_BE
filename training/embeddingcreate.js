@@ -1,4 +1,4 @@
-// require("dotenv").config({ path: __dirname + "/../.env" }); // load .env from root
+require("dotenv").config({ path: __dirname + "/../.env" }); // load .env from root
 
 const fs = require("fs");
 const OpenAI = require("openai");

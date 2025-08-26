@@ -17,7 +17,7 @@ const processIntentAndFormatResponse = async ({
 }) => {
 	let fullText = "";
 
-	console.log(session._id, "session id");
+	//i want to show the followup message only if api?.isSuitableForGraph  if true
 
 	try {
 		const prompt = `
@@ -60,8 +60,14 @@ Decide the HTML output format dynamically based on intent and API description:
 - If the data is descriptive or narrative, use <p>...</p>.
 - If the data contains date string send in proper user readable format.
 - Always start with a <p> introduction sentence before table or list.
-- After the table or list, always add:
-  <p class="followup-message">Would you like me to turn this into a visualization, such as a graph or chart?</p>
+
+${
+	api?.isSuitableForGraph
+		? `- After the table or list, always add:
+  <p class="followup-message">Would you like me to turn this into a visualization, such as a graph or chart?</p>`
+		: `- Do NOT add any follow-up visualization message.`
+}
+
 - Do not include Markdown, plain text, or JSON in this section. Only valid HTML.
 
 After finishing the HTML reply, output a new line with exactly:
@@ -119,7 +125,7 @@ After finishing the HTML reply, output a new line with exactly:
 			api,
 		};
 	} catch (err) {
-		console.log(err)
+		console.log(err);
 		console.error("processIntentAndFormatResponse error:", err.message);
 		return {
 			userReply: "Here's the available data. (Intent-based personalization failed.)",
