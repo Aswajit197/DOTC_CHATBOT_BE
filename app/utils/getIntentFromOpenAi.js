@@ -7,9 +7,9 @@ const { handleParamsForApi } = require("./handleParamsForApis");
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-
 async function getIntentFromOpenAI(userMessage, session, { onStream } = {}) {
 	const topApis = await searchAPIs(userMessage);
+	// console.log(session,"session")
 
 	const systemPrompt = `
 You are an assistant that maps user queries to API operations.
@@ -121,16 +121,19 @@ Important:
 		} else if (extracted.type === "refinement_request") {
 			return await refineResponseFromLastResponse(userMessage, session, { onStream });
 		} else {
-			// 👇 Treat as independent 
+			// 👇 Treat as independent
 			extracted.dependent = false;
 			extracted.type = null;
 		}
 	}
 
 	const matchedApi = apiListData.find((api) => api.name === extracted.apiName);
+	//reducing api call and token if user intent matches the last intent
+	if (matchedApi?.name === session?.lastSuccessIntent) {
+		return await refineResponseFromLastResponse(userMessage, session, { onStream });
+	}
 
 	// console.log(matchedApi);
-
 	// Fallback case: No matching API   responding user with a proper fallback message
 	if (!matchedApi || extracted.apiName === null) {
 		const fallbackPrompt = `
@@ -239,9 +242,8 @@ Respond ONLY with plain text.
 module.exports = getIntentFromOpenAI;
 
 // ques  -->  ques -->  intent matching  --> intent matched  -->  call api  -->  api response
-// 								    --> itent not matched  -->  ques + last response  --> graph  --> frontend handle
+// 								    --> intent not matched  -->  ques + last response  --> graph  --> frontend handle
 // 																					  --> not graph  --> fallback
-
 // User asks something →
 // 	You call OpenAI (intent matcher) → it decides:
 // 		Is it new (independent)?
@@ -252,3 +254,11 @@ module.exports = getIntentFromOpenAI;
 // 	If dependent on history → combine previous response + current question → ask OpenAI again →
 // 		If graph → generate graph.
 // 		Else → hit API or respond accordingly.
+
+//enhancements
+//if
+// if (matchedApi?.name === session?.lastSuccessIntent) {
+// then should call the refineResponseFromLastResponse  with the existing last response
+// }
+
+// json for graph not coming proper need to include   //done

@@ -1,5 +1,6 @@
 const { OpenAI } = require("openai");
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const apiListData = require("../../apiDetails");
 
 async function getGraphJsonFromLastResponse(userMessage, session, { onStream } = {}) {
 	try {
@@ -7,17 +8,35 @@ async function getGraphJsonFromLastResponse(userMessage, session, { onStream } =
 			return { error: "No previous response available for visualization." };
 		}
 
-		// System prompt to extract structured data
-		const systemPrompt = `
+		// 🔹 Step 1: Find example response from apiListData based on lastSuccessIntent
+		let exampleResponse = null;
+		if (session.lastSuccessIntent) {
+			const matchedApi = apiListData.find((api) => api.name === session.lastSuccessIntent);
+			if (matchedApi?.exampleResponse) {
+				exampleResponse = matchedApi.exampleResponse;
+			}
+		}
+
+		// 🔹 Step 2: Create system prompt
+		let systemPrompt = `
 You are an assistant that converts HTML table or list content into JSON array format.
 - Input will be HTML that contains tabular or list data.
 - Output must ONLY be valid JSON (no extra text).
 - JSON must be an array of objects where keys are column/field names and values are row values.
-- If the HTML contains lists, use field names like "item", "value", etc.
-- try to convert values in integer format which can be converted like for 40 hours
-- Do not explain anything, just return JSON.
+- Try to convert values into integer/number format if possible (e.g. "40 hours" → 40).
 `;
 
+		// If we found exampleResponse, guide the model with schema
+		if (exampleResponse) {
+			systemPrompt += `
+Here is the sample JSON structure you MUST follow:
+${JSON.stringify(exampleResponse, null, 2)}
+
+Match the key names and structure exactly as shown in the example above.
+`;
+		}
+
+		// 🔹 Step 3: Call OpenAI
 		const completion = await openai.chat.completions.create({
 			model: "gpt-3.5-turbo",
 			messages: [
@@ -27,6 +46,7 @@ You are an assistant that converts HTML table or list content into JSON array fo
 			temperature: 0,
 		});
 
+		// 🔹 Step 4: Parse response safely
 		let parsedJson;
 		try {
 			parsedJson = JSON.parse(completion.choices[0].message.content.trim());
@@ -34,10 +54,8 @@ You are an assistant that converts HTML table or list content into JSON array fo
 			console.error("Failed to parse JSON from OpenAI response:", err);
 			return { error: "Could not extract JSON from previous response." };
 		}
+		// console.log(parsedJson, "parsed json");
 
-		console.log(parsedJson, "parsed json");
-
-		// Return structured JSON for visualization
 		return {
 			type: "visualization",
 			data: parsedJson,

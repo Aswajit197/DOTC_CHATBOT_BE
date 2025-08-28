@@ -17,7 +17,7 @@ const processIntentAndFormatResponse = async ({
 }) => {
 	let fullText = "";
 
-	//i want to show the followup message only if api?.isSuitableForGraph  if true
+	// console.log(actualData, "entered in process intent");
 
 	try {
 		const prompt = `
@@ -91,6 +91,7 @@ After finishing the HTML reply, output a new line with exactly:
 			if (fullText.includes("###END###")) break;
 
 			const cleaned = delta.replace(/###\s*END\s*###/gi, "");
+			// console.log(cleaned, "cleaned....");
 			if (cleaned) {
 				const formatted = cleaned
 					// Add missing space between lowercase → UPPERCASE
@@ -106,6 +107,7 @@ After finishing the HTML reply, output a new line with exactly:
 
 		const finalReply = fullText.replace(/###END###/g, "").trim();
 
+		// console.log(finalReply, "final reply");
 		// ✅ Save the last reply in session
 		await Session.updateOne(
 			{ _id: session._id },

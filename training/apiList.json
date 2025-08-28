@@ -1,7 +1,7 @@
 [
 	{
 		"name": "GetDriverWeeklyWorkingHrList",
-		"description": "Returns a list of drivers with their total weekly working hours preference for the given station.",
+		"description": "This API should be triggered whenever the user asks about a driver’s preferred weekly working hours. It provides the number of hours each driver wishes to work in a week along with their name. This is useful for managers to align schedules with driver availability and preferences. Use this API when the user asks questions such as: “How many hours does Alejandro Reyes want to work per week?”, “Show me all drivers with their weekly working hour preferences”, “Who prefers 40 hours per week?”, “List drivers with less than 35 weekly hours preference”, or “What is Anthony Semidey’s weekly working hour preference?”",
 		"requiredFields": ["StationId"]
 	},
 	{
@@ -17,7 +17,7 @@
 	},
 	{
 		"name": "GetLMDPDayPreferenceList",
-		"description": "Fetches driver's day preference list for each weak days , If a day is provided, returns only that day's data. Supports filtering by given asked day or multiple day",
+		"description": "This API is used to fetch a driver’s day-wise work preference, showing which days they prefer to work, avoid, or are neutral about. The preference field represents the main value to consider, while oldPreference can be ignored. Use this intent when the user wants to know a driver’s preferred working days or availability patterns. For example: “What is Anthony Semidey’s day preference?”, “Show me which days Alejandro Reyes prefers to work”, “List all drivers and their day preferences”, or “Which days does a driver not want to work?” This helps managers align schedules with driver availability and reduce conflicts.",
 		"requiredFields": ["DriverId", "ClientId"]
 	},
 	{
@@ -63,6 +63,21 @@
 	{
 		"name": "GetSchedAlignEngineWeeklySetting",
 		"description": "provides the default weekly rules used by the scheduler when generating schedules, including maximum working hours, maximum consecutive days or hours allowed, standby shift limits, and tolerable or intolerable thresholds. Use this when the user asks about baseline scheduling rules, such as “What are the maximum weekly hours for drivers?”, “How many consecutive days can a driver work by default?”, or “What is the limit on standby shifts in a week?",
+		"requiredFields": ["ClientId"]
+	},
+	{
+		"name": "GetOperationListForBackEnd",
+		"description": "This API should be used whenever the user asks about the details of operations created by the manager. It provides a complete breakdown of an operation including whether it is active or inactive, the number and types of shifts (with their hours, qualifications, and colors), the locations assigned to the operation (with address and type), the wave times scheduled, and the arrival information such as reporting location and buffer time. Use this API when the user asks questions like: “What operations are currently active or inactive?”, “How many shifts are available in DBK1 Morning?”, “What shift types exist under an operation?”, “What locations are linked to a particular operation?”, “What wave times are scheduled for DBK1 Morning?”, or “Where should drivers report for this operation and how much time before shift?”.",
+		"requiredFields": ["ClientId", "FromDate", "ToDate"]
+	},
+	{
+		"name": "GetOpenShiftForBackEnd",
+		"description": "This API should be used whenever the user asks about open shift requests that the manager has assigned to drivers outside their regular schedules. It provides details such as the driver name and ID, the shift type and duration, the delivery date, whether the driver has accepted the request, and related operational details like arrival time, arrival location, wave time, and loadout location. Use this API when the user asks questions like: “Which drivers have been requested to work additional shifts?”, “Has driver 5130 accepted the open shift?”, “Show me all open shift requests for a particular driver or date”, “What extra shifts are currently pending or accepted?”, or “Tell me the details of the additional Step Van shift assigned to a driver.”",
+		"requiredFields": ["ClientId"]
+	},
+	{
+		"name": "GetAllPreferenceHistoryForBackEnd",
+		"description": "This API should be used whenever the user asks about the history of driver preference changes, specifically which drivers modified their preferences, what type of preference was changed (e.g., day, shift, standby, OT), the old value, the new value, and the date of the change. It only returns approved preference change history. Use this API when the user asks questions like: “Which drivers have recently updated their day preferences?”, “Show me the preference change history for Alejandro Reyes”, “What was the old and new value when a driver changed their shift preference?”, “List all approved preference changes from last week”, or “Has anyone changed their OT or standby preference recently?”",
 		"requiredFields": ["ClientId"]
 	}
 ]

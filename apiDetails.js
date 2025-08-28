@@ -56,19 +56,17 @@ module.exports = [
 			}
 		},
 	},
-
 	// 2. GetDayFactor
 	{
 		name: "GetDayFactor",
 		description:
-			"Returns priority factors for each day of the week.  If a day is provided, returns only that day's data. Supports filtering by given asked day or multiple day",
+			"Returns priority factors for each day of the week including saturday and sunday .If a day is provided, returns only that day's data. Supports filtering by given asked day or multiple day",
 		requiredFields: ["ClientId"],
-		optionalFields: ["dayName"],
 		exampleResponse: {
 			dayFactors: [{ id: 2, dayName: "Monday", factor: 2 }],
 		},
 		handler: async (params, userMessage, session, onStream) => {
-			// console.log(params,"params in getdayfactor handler")
+			// console.log(params,"params in get day factor handler")
 			if (!params?.ClientId) params.ClientId = 2;
 
 			try {
@@ -106,7 +104,6 @@ module.exports = [
 			}
 		},
 	},
-
 	// 3. GetSchedulingShiftTypeList
 	{
 		name: "GetSchedulingShiftTypeList",
@@ -163,12 +160,11 @@ module.exports = [
 			}
 		},
 	},
-
 	//4. GetLMDPDayPreferenceList
 	{
 		name: "GetLMDPDayPreferenceList",
 		description:
-			"Fetches driver's day preference list for each weak days , If a day is provided, returns only that day's data. Supports filtering by given asked day or multiple day",
+			"This API is used to fetch a driver’s day-wise work preference, showing which days they prefer to work, avoid, or are neutral about. The preference field represents the main value to consider, while oldPreference can be ignored. Use this intent when the user wants to know a driver’s preferred working days or availability patterns. For example: “What is Anthony Semidey’s day preference?”, “Show me which days Alejandro Reyes prefers to work”, “List all drivers and their day preferences”, or “Which days does a driver not want to work?” This helps managers align schedules with driver availability and reduce conflicts.",
 		requiredFields: ["DriverId", "ClientId"],
 		exampleResponse: {
 			DayPreferenceList: [
@@ -198,7 +194,8 @@ module.exports = [
 					userMessage,
 					api: {
 						name: "GetSchedulingShiftTypeList",
-						description: "Returns available shift types and their details for scheduling.",
+						description:
+							"This API is used to fetch a driver’s day-wise work preference, showing which days they prefer to work, avoid, or are neutral about. The preference field represents the main value to consider, while oldPreference can be ignored. Use this intent when the user wants to know a driver’s preferred working days or availability patterns. For example: “What is Anthony Semidey’s day preference?”, “Show me which days Alejandro Reyes prefers to work”, “List all drivers and their day preferences”, or “Which days does a driver not want to work?” This helps managers align schedules with driver availability and reduce conflicts.",
 						isSuitableForGraph: true,
 					},
 					exampleResponse: {
@@ -223,7 +220,6 @@ module.exports = [
 			}
 		},
 	},
-
 	//5. GetDriverOTPreferenceList
 	{
 		name: "GetDriverOTPreferenceList",
@@ -282,10 +278,9 @@ module.exports = [
 		description:
 			"Retrieves the qualifications of all drivers for a specific ClientId within a specified weekly date range (FromDate to ToDate). This is based on a Sunday–Saturday week.",
 		requiredFields: ["ClientId", "FromDate", "ToDate"],
-		exampleResponse: {
-			DriversMaxQualificationList: [{ driverName: "JORGE VALENCIA", qualification: 2 }],
-		},
+		exampleResponse: [{ driverName: "JORGE VALENCIA", qualification: 2 }],
 		handler: async (params, userMessage, session, onStream) => {
+			console.log(onStream, "on stream on GetLMDPMaxQualificationsList");
 			// If FromDate/ToDate missing
 			if (!params?.FromDate || !params?.ToDate) {
 				const today = new Date();
@@ -376,11 +371,6 @@ Respond in JSON only:
 				return { missingFields };
 			}
 
-			// console.log(params);
-			// console.log(
-			// 	`https://dotc-delivery.azurewebsites.net/GetLMDPMaxQualificationsList?ClientId=${params.ClientId}&FromDate=${params.FromDate}&ToDate=${params.ToDate}`
-			// );
-
 			// 4️⃣ API call
 			try {
 				const { data } = await axios.get(
@@ -395,17 +385,12 @@ Respond in JSON only:
 				return await processIntentAndFormatResponse({
 					userMessage,
 					api: {
-						name: "DriversMaxQualificationList",
-						description: "Returns drivers(LMDP) qualification lists",
+						name: "GetLMDPMaxQualificationsList",
+						description:
+							"Retrieves the qualifications of all drivers for a specific ClientId within a specified weekly date range (FromDate to ToDate). This is based on a Sunday–Saturday week.",
+						isSuitableForGraph: true,
 					},
-					exampleResponse: {
-						DriversMaxQualificationList: [
-							{
-								driverName: "JORGE VALENCIA",
-								qualification: 2,
-							},
-						],
-					},
+					exampleResponse: [{ driverName: "JORGE VALENCIA", qualification: 2 }],
 					actualData: DriversMaxQualificationList,
 					params,
 					session,
@@ -419,7 +404,6 @@ Respond in JSON only:
 			}
 		},
 	},
-
 	//7.GetBlobShiftDriverData
 	{
 		name: "GetBlobShiftDriverData",
@@ -533,7 +517,6 @@ Respond in JSON only:
 
 			try {
 				const { data } = await axios.get(`${API_BASE}/GetTimeOffRequestForBackend?ClientId=${params?.ClientId}`);
-
 				const driversOffRequestList =
 					data?.data?.map((item) => ({
 						driverName: item?.driverName,
@@ -867,7 +850,7 @@ Respond in JSON only:
 						name: "GetSchedAlignEngineWeeklySetting",
 						description:
 							"provides the default weekly rules used by the scheduler when generating schedules, including maximum working hours, maximum consecutive days or hours allowed, standby shift limits, and tolerable or intolerable thresholds. Use this when the user asks about baseline scheduling rules, such as “What are the maximum weekly hours for drivers?”, “How many consecutive days can a driver work by default?”, or “What is the limit on standby shifts in a week?",
-						isSuitableForGraph:false
+						isSuitableForGraph: false,
 					},
 					exampleResponse: {
 						maxHrs: 40,
@@ -886,6 +869,465 @@ Respond in JSON only:
 				return {
 					error: true,
 					message: err.response?.data?.message || "Failed to fetch list of drivers associated with a client.",
+				};
+			}
+		},
+	},
+
+	//14.GetOperationListForBackEnd
+	{
+		name: "GetOperationListForBackEnd",
+		description:
+			"This API should be used whenever the user asks about the details of operations created by the manager. It provides a complete breakdown of an operation including whether it is active or inactive, the number and types of shifts (with their hours, qualifications, and colors), the locations assigned to the operation (with address and type), the wave times scheduled, and the arrival information such as reporting location and buffer time. Use this API when the user asks questions like: “What operations are currently active or inactive?”, “How many shifts are available in DBK1 Morning?”, “What shift types exist under an operation?”, “What locations are linked to a particular operation?”, “What wave times are scheduled for DBK1 Morning?”, or “Where should drivers report for this operation and how much time before shift?”.",
+		requiredFields: ["ClientId", "FromDate", "ToDate"],
+		exampleResponse: {
+			shifts: [
+				{
+					shiftId: 240,
+					description: "Parcel Van",
+					minQualification: 0,
+					hoursPerShift: 10,
+					colorCode: "#3F00FF",
+					fontColor: "#FFFFFF",
+					pendOperShiftRequest: 0,
+					operationShiftChangeId: 0,
+					pendOperShiftWeekId: 0,
+				},
+				{
+					shiftId: 241,
+					description: "Step Van",
+					minQualification: 0,
+					hoursPerShift: 10,
+					colorCode: "#0096FF",
+					fontColor: "#FFFFFF",
+					pendOperShiftRequest: 0,
+					operationShiftChangeId: 0,
+					pendOperShiftWeekId: 0,
+				},
+			],
+			locations: [
+				{
+					locationId: 163,
+					locationName: "DBK1",
+					locationAddress: "1 Bulova Ave",
+					locationType: 1,
+					locationColorCode: "#A0522D",
+					locationFontColor: "#FFFFFF",
+				},
+			],
+			waveTimes: [
+				{
+					waveTimeId: 16,
+					waveTime: "1900-01-01T06:45:00",
+					pendOperRostRequest: 0,
+					operationRostChangeId: 0,
+					pendOperRostWeekId: 0,
+				},
+				{
+					waveTimeId: 17,
+					waveTime: "1900-01-01T07:15:00",
+					pendOperRostRequest: 0,
+					operationRostChangeId: 0,
+					pendOperRostWeekId: 0,
+				},
+			],
+			arrivalInfo: [
+				{
+					locationId: 164,
+					locationName: "Offsite Lot",
+					locationAddress: "3528 19th Ave",
+					locationType: 2,
+					locationColorCode: "#F4A460",
+					locationFontColor: "#010101",
+				},
+			],
+			arrivalTime: 30,
+			operation: {
+				operationId: 80,
+				name: "DBK1 Morning",
+				week: 304,
+				colorId: 0,
+				pendOperRequest: 0,
+				operationChangeId: 0,
+				pendOperWeekId: 0,
+				pendOperDetRequest: 0,
+				operationDetChangeId: 0,
+				pendOperDetWeekId: 0,
+			},
+			active: 1,
+		},
+		handler: async (params, userMessage, session, onStream) => {
+			// If FromDate/ToDate missing
+			if (!params?.FromDate || !params?.ToDate) {
+				const today = new Date();
+				const todayStr = today.toISOString().split("T")[0]; // YYYY-MM-DD
+
+				try {
+					const prompt = `
+You are a date extraction assistant.
+
+Today's date is ${todayStr}.
+If the user uses relative terms like "this week", "next Monday", or "yesterday", 
+you MUST calculate based on today's date.
+
+Rules:
+- A week starts on SUNDAY and ends on SATURDAY.
+- FromDate = the Sunday of the week containing the reference date.
+- ToDate = the Saturday of the week containing the reference date.
+
+Steps:
+1. Identify the reference date (either explicit or relative to today).
+2. Find the Sunday of that week (FromDate) and the Saturday of that week (ToDate).
+3. Output both in strict YYYY/MM/DD format.
+
+If no date is found, return null for both.
+
+User message: "${userMessage}"
+
+Respond in JSON only:
+{
+  "FromDate": "YYYY/MM/DD" or null,
+  "ToDate": "YYYY/MM/DD" or null
+}
+`;
+
+					const aiResp = await openai.chat.completions.create({
+						model: "gpt-4o-mini",
+						messages: [
+							{ role: "system", content: "You are a helpful assistant for parsing dates." },
+							{ role: "user", content: prompt },
+						],
+						temperature: 0,
+					});
+
+					const dateResult = JSON.parse(aiResp.choices[0].message.content || "{}");
+
+					if (dateResult?.FromDate && dateResult?.ToDate) {
+						params.FromDate = dateResult.FromDate;
+						params.ToDate = dateResult.ToDate;
+					} else {
+						// 🛠 No date found → default to current week Sunday–Saturday
+						const dayOfWeek = today.getDay(); // 0=Sunday
+						const sunday = new Date(today);
+						sunday.setDate(today.getDate() - dayOfWeek);
+						const saturday = new Date(sunday);
+						saturday.setDate(sunday.getDate() + 6);
+
+						const fmt = (d) =>
+							`${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}`;
+
+						params.FromDate = fmt(sunday);
+						params.ToDate = fmt(saturday);
+					}
+				} catch (err) {
+					console.error("Date parsing failed:", err);
+
+					// 🛠 On error → default to current week Sunday–Saturday
+					const dayOfWeek = today.getDay();
+					const sunday = new Date(today);
+					sunday.setDate(today.getDate() - dayOfWeek);
+					const saturday = new Date(sunday);
+					saturday.setDate(sunday.getDate() + 6);
+
+					const fmt = (d) =>
+						`${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}`;
+
+					params.FromDate = fmt(sunday);
+					params.ToDate = fmt(saturday);
+				}
+			}
+
+			// 3️⃣ Final param validation
+			const missingFields = [];
+			if (!params?.ClientId) params.ClientId = 2;
+			if (!params?.FromDate) missingFields.push("FromDate");
+			if (!params?.ToDate) missingFields.push("ToDate");
+
+			if (missingFields.length) {
+				return { missingFields };
+			}
+
+			try {
+				const { data } = await axios.get(
+					`${API_BASE}/GetOperationListForBackEnd?ClientId=${params.ClientId}&FromDate=${params.FromDate}&ToDate=${params.ToDate}`
+				);
+
+				const operationData =
+					data?.data?.map((item) => ({
+						shifts: item?.shifts,
+						locations: item?.locations,
+						waveTimes: item?.waveTimes,
+						arrivalInfo: item?.arrivalInfo,
+						arrivalTime: item?.arrivalTime,
+						operation: item?.operation,
+						active: item?.active,
+					})) || [];
+
+				return await processIntentAndFormatResponse({
+					userMessage,
+					api: {
+						name: "GetOperationListForBackEnd",
+						description:
+							"This API should be used whenever the user asks about the details of operations created by the manager. It provides a complete breakdown of an operation including whether it is active or inactive, the number and types of shifts (with their hours, qualifications, and colors), the locations assigned to the operation (with address and type), the wave times scheduled, and the arrival information such as reporting location and buffer time. Use this API when the user asks questions like: “What operations are currently active or inactive?”, “How many shifts are available in DBK1 Morning?”, “What shift types exist under an operation?”, “What locations are linked to a particular operation?”, “What wave times are scheduled for DBK1 Morning?”, or “Where should drivers report for this operation and how much time before shift?”.",
+					},
+					exampleResponse: {
+						shifts: [
+							{
+								shiftId: 240,
+								description: "Parcel Van",
+								minQualification: 0,
+								hoursPerShift: 10,
+								colorCode: "#3F00FF",
+								fontColor: "#FFFFFF",
+								pendOperShiftRequest: 0,
+								operationShiftChangeId: 0,
+								pendOperShiftWeekId: 0,
+							},
+							{
+								shiftId: 241,
+								description: "Step Van",
+								minQualification: 0,
+								hoursPerShift: 10,
+								colorCode: "#0096FF",
+								fontColor: "#FFFFFF",
+								pendOperShiftRequest: 0,
+								operationShiftChangeId: 0,
+								pendOperShiftWeekId: 0,
+							},
+						],
+						locations: [
+							{
+								locationId: 163,
+								locationName: "DBK1",
+								locationAddress: "1 Bulova Ave",
+								locationType: 1,
+								locationColorCode: "#A0522D",
+								locationFontColor: "#FFFFFF",
+							},
+						],
+						waveTimes: [
+							{
+								waveTimeId: 16,
+								waveTime: "1900-01-01T06:45:00",
+								pendOperRostRequest: 0,
+								operationRostChangeId: 0,
+								pendOperRostWeekId: 0,
+							},
+							{
+								waveTimeId: 17,
+								waveTime: "1900-01-01T07:15:00",
+								pendOperRostRequest: 0,
+								operationRostChangeId: 0,
+								pendOperRostWeekId: 0,
+							},
+						],
+						arrivalInfo: [
+							{
+								locationId: 164,
+								locationName: "Offsite Lot",
+								locationAddress: "3528 19th Ave",
+								locationType: 2,
+								locationColorCode: "#F4A460",
+								locationFontColor: "#010101",
+							},
+						],
+						arrivalTime: 30,
+						operation: {
+							operationId: 80,
+							name: "DBK1 Morning",
+							week: 304,
+							colorId: 0,
+							pendOperRequest: 0,
+							operationChangeId: 0,
+							pendOperWeekId: 0,
+							pendOperDetRequest: 0,
+							operationDetChangeId: 0,
+							pendOperDetWeekId: 0,
+						},
+						active: 1,
+					},
+					actualData: operationData,
+					params,
+					session,
+					onStream,
+				});
+			} catch (err) {
+				return {
+					error: true,
+					message: err.response?.data?.message || "Failed to fetch list of drivers associated with a client.",
+				};
+			}
+		},
+	},
+
+	//15.GetOpenShiftForBackEnd
+	{
+		name: "GetOpenShiftForBackEnd",
+		description:
+			"This API should be used whenever the user asks about open shift requests that the manager has assigned to drivers outside their regular schedules. It provides details such as the driver name and ID, the shift type and duration, the delivery date, whether the driver has accepted the request, and related operational details like arrival time, arrival location, wave time, and loadout location. Use this API when the user asks questions like: “Which drivers have been requested to work additional shifts?”, “Has driver 5130 accepted the open shift?”, “Show me all open shift requests for a particular driver or date”, “What extra shifts are currently pending or accepted?”, or “Tell me the details of the additional Step Van shift assigned to a driver.”",
+		requiredFields: ["ClientId"],
+		exampleResponse: [
+			{
+				driverName: "JUSTIN VELICELA",
+				openShiftId: 27,
+				driverId: 5130,
+				shiftType: 241,
+				duration: 10,
+				shiftName: "Step Van",
+				shiftTypeColor: "#0096FF",
+				shiftTypeFontColor: "#FFFFFF",
+				deliveryDate: "2025-07-27T00:00:00",
+				isAccept: 1,
+				arrivalTime: "TBD",
+				arrivalLocationName: "TBD",
+				arrivalLatitude: "TBD",
+				arrivalLongitude: "TBD",
+				waveTime: "TBD",
+				loadoutLocationName: "TBD",
+				loadoutLatitude: "TBD",
+				loadoutLongitude: "TBD",
+				expiration: "0001-01-01T00:00:00",
+			},
+		],
+		handler: async (params, userMessage, session, onStream) => {
+			if (!params?.ClientId !== 2) params.ClientId = 2;
+
+			try {
+				const { data } = await axios.get(`${API_BASE}/GetOpenShiftForBackEnd?ClientId=${params?.ClientId}`);
+
+				const openShiftData =
+					data?.data?.map((item) => ({
+						driverName: item?.driverName,
+						openShiftId: item?.openShiftId,
+						driverId: item?.driverId,
+						shiftType: item?.shiftType,
+						duration: item?.duration,
+						shiftName: item?.shiftName,
+						shiftTypeColor: item?.shiftTypeColor,
+						shiftTypeFontColor: item?.shiftTypeFontColor,
+						deliveryDate: item?.deliveryDate,
+						isAccept: item?.isAccept,
+						arrivalTime: item?.arrivalTime,
+						arrivalLocationName: item?.arrivalLocationName,
+						arrivalLatitude: item?.arrivalLatitude,
+						arrivalLongitude: item?.arrivalLongitude,
+						waveTime: item?.waveTime,
+						loadoutLocationName: item?.loadoutLocationName,
+						loadoutLatitude: item?.loadoutLatitude,
+						loadoutLongitude: item?.loadoutLongitude,
+						expiration: item?.expiration,
+					})) || [];
+
+				return await processIntentAndFormatResponse({
+					userMessage,
+					api: {
+						name: "GetOpenShiftForBackEnd",
+						description:
+							"This API should be used whenever the user asks about open shift requests that the manager has assigned to drivers outside their regular schedules. It provides details such as the driver name and ID, the shift type and duration, the delivery date, whether the driver has accepted the request, and related operational details like arrival time, arrival location, wave time, and loadout location. Use this API when the user asks questions like: “Which drivers have been requested to work additional shifts?”, “Has driver 5130 accepted the open shift?”, “Show me all open shift requests for a particular driver or date”, “What extra shifts are currently pending or accepted?”, or “Tell me the details of the additional Step Van shift assigned to a driver.”",
+						isSuitableForGraph: false,
+					},
+					exampleResponse: [
+						{
+							driverName: "JUSTIN VELICELA",
+							openShiftId: 27,
+							driverId: 5130,
+							shiftType: 241,
+							duration: 10,
+							shiftName: "Step Van",
+							shiftTypeColor: "#0096FF",
+							shiftTypeFontColor: "#FFFFFF",
+							deliveryDate: "2025-07-27T00:00:00",
+							isAccept: 1,
+							arrivalTime: "TBD",
+							arrivalLocationName: "TBD",
+							arrivalLatitude: "TBD",
+							arrivalLongitude: "TBD",
+							waveTime: "TBD",
+							loadoutLocationName: "TBD",
+							loadoutLatitude: "TBD",
+							loadoutLongitude: "TBD",
+							expiration: "0001-01-01T00:00:00",
+						},
+					],
+					actualData: openShiftData,
+					params,
+					session,
+					onStream,
+				});
+			} catch (err) {
+				return {
+					error: true,
+					message: err.response?.data?.message || "Failed to fetch list for open shifts.",
+				};
+			}
+		},
+	},
+
+	//16.GetAllPreferenceHistoryForBackEnd
+	{
+		name: "GetAllPreferenceHistoryForBackEnd",
+		description:
+			"This API should be used whenever the user asks about the history of driver preference changes, specifically which drivers modified their preferences, what type of preference was changed (e.g., day, shift, standby, OT), the old value, the new value, and the date of the change. It only returns approved preference change history. Use this API when the user asks questions like: “Which drivers have recently updated their day preferences?”, “Show me the preference change history for Alejandro Reyes”, “What was the old and new value when a driver changed their shift preference?”, “List all approved preference changes from last week”, or “Has anyone changed their OT or standby preference recently?”",
+		requiredFields: ["ClientId"],
+		exampleResponse: [
+			{
+				driverName: "Alejandro Reyes",
+				preferenceType: "Day",
+				preferenceDescription: "Wed",
+				oldValue: 0,
+				newValue: 0,
+				requestStatus: "Approved",
+				updateDate: "2025-08-27T06:08:24.173",
+				expiration: "2025-09-03T06:08:24.173",
+			},
+		],
+		handler: async (params, userMessage, session, onStream) => {
+			if (!params?.ClientId !== 2) params.ClientId = 2;
+
+			try {
+				const { data } = await axios.get(`${API_BASE}/GetAllPreferenceHistoryForBackEnd?ClientId=${params?.ClientId}`);
+
+				const preferenceHistory =
+					data?.data?.map((item) => ({
+						driverName: item?.driverName,
+						preferenceType: item?.preferenceType,
+						preferenceDescription: item?.preferenceDescription,
+						oldValue: item?.oldValue,
+						newValue: item?.newValue,
+						requestStatus: item?.requestStatus,
+						updateDate: item?.updateDate,
+						expiration: item?.expiration,
+					})) || [];
+
+				return await processIntentAndFormatResponse({
+					userMessage,
+					api: {
+						name: "GetAllPreferenceHistoryForBackEnd",
+						description:
+							"This API should be used whenever the user asks about the history of driver preference changes, specifically which drivers modified their preferences, what type of preference was changed (e.g., day, shift, standby, OT), the old value, the new value, and the date of the change. It only returns approved preference change history. Use this API when the user asks questions like: “Which drivers have recently updated their day preferences?”, “Show me the preference change history for Alejandro Reyes”, “What was the old and new value when a driver changed their shift preference?”, “List all approved preference changes from last week”, or “Has anyone changed their OT or standby preference recently?”",
+						isSuitableForGraph: false,
+					},
+					exampleResponse: [
+						{
+							driverName: "Alejandro Reyes",
+							preferenceType: "Day",
+							preferenceDescription: "Wed",
+							oldValue: 0,
+							newValue: 0,
+							requestStatus: "Approved",
+							updateDate: "2025-08-27T06:08:24.173",
+							expiration: "2025-09-03T06:08:24.173",
+						},
+					],
+					actualData: preferenceHistory,
+					params,
+					session,
+					onStream,
+				});
+			} catch (err) {
+				return {
+					error: true,
+					message: err.response?.data?.message || "Failed to fetch list of preference history drivers.",
 				};
 			}
 		},

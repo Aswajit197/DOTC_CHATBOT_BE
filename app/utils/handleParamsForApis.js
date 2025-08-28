@@ -55,7 +55,7 @@ async function handleParamsForApi(matchedApi, params, userMessage, session, onSt
 	if (missingFields.length) {
 		try {
 			const tempParams = { ...params };
-			const tempResult = await matchedApi.handler(tempParams, userMessage, onStream);
+			const tempResult = await matchedApi.handler(tempParams, userMessage, session, onStream);
 
 			if (!tempResult?.missingFields) {
 				return {
@@ -101,46 +101,46 @@ async function handleParamsForApi(matchedApi, params, userMessage, session, onSt
 	}
 
 	// 4. Try resolving with OpenAI
-	
-// 	if (missingFields.length && matchedApi?.name !== "GetLMDPMaxQualificationsList") {
-// 		console.log("breaking Here");
-// 		const contextText = session.history.map((h) => `${h.sender}: ${h.message}`).join("\n");
 
-// 		const resolutionPrompt = `
-// You are a smart assistant helping resolve missing required fields for API "${matchedApi.name}".
-// Required fields: ${matchedApi.requiredFields.join(", ")}
-// User message: "${userMessage}"
+	// 	if (missingFields.length && matchedApi?.name !== "GetLMDPMaxQualificationsList") {
+	// 		console.log("breaking Here");
+	// 		const contextText = session.history.map((h) => `${h.sender}: ${h.message}`).join("\n");
 
-// Chat history:
-// ${contextText}
+	// 		const resolutionPrompt = `
+	// You are a smart assistant helping resolve missing required fields for API "${matchedApi.name}".
+	// Required fields: ${matchedApi.requiredFields.join(", ")}
+	// User message: "${userMessage}"
 
-// Try to infer values for: ${missingFields.join(", ")}
+	// Chat history:
+	// ${contextText}
 
-// Respond ONLY in JSON:
-// {
-//   "resolved": {
-//     "field1": "value1"
-//   }
-// }
-// If nothing found, return: { "resolved": {} }
-// `;
+	// Try to infer values for: ${missingFields.join(", ")}
 
-// 		const resolutionResp = await openai.chat.completions.create({
-// 			model: "gpt-3.5-turbo",
-// 			messages: [{ role: "system", content: resolutionPrompt }],
-// 			temperature: 0,
-// 		});
+	// Respond ONLY in JSON:
+	// {
+	//   "resolved": {
+	//     "field1": "value1"
+	//   }
+	// }
+	// If nothing found, return: { "resolved": {} }
+	// `;
 
-// 		let resolvedData = {};
-// 		try {
-// 			const parsed = JSON.parse(resolutionResp.choices[0].message.content.trim());
-// 			resolvedData = parsed.resolved || {};
-// 		} catch (err) {
-// 			console.warn("Could not parse field resolution JSON.");
-// 		}
-// 		params = { ...params, ...resolvedData };
-// 		missingFields = matchedApi.requiredFields.filter((f) => !params[f]);
-// 	}
+	// 		const resolutionResp = await openai.chat.completions.create({
+	// 			model: "gpt-3.5-turbo",
+	// 			messages: [{ role: "system", content: resolutionPrompt }],
+	// 			temperature: 0,
+	// 		});
+
+	// 		let resolvedData = {};
+	// 		try {
+	// 			const parsed = JSON.parse(resolutionResp.choices[0].message.content.trim());
+	// 			resolvedData = parsed.resolved || {};
+	// 		} catch (err) {
+	// 			console.warn("Could not parse field resolution JSON.");
+	// 		}
+	// 		params = { ...params, ...resolvedData };
+	// 		missingFields = matchedApi.requiredFields.filter((f) => !params[f]);
+	// 	}
 
 	return { params, missingFields };
 }

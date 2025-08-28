@@ -36,8 +36,6 @@ chat.sendMessage = async (req, res) => {
 			},
 		});
 
-		// console.log(intentResult,"intentResult")
-
 		// --- Fallback handling before sending final ---
 		if (intentResult.error === "No API matched" && intentResult.fallbackMessage) {
 			session.history.push({
@@ -77,6 +75,11 @@ chat.sendMessage = async (req, res) => {
 			res.end();
 			return;
 		}
+		if (intentResult.type === "same intent") {
+			res.write(`data: ${JSON.stringify({ type: "final", response: intentResult.formattedReply })}\n\n`);
+			res.end();
+			return;
+		}
 
 		// Send final successful response
 		// res.write(`data: ${JSON.stringify({ type: "final", response: intentResult.formattedReply })}\n\n`);
@@ -87,8 +90,8 @@ chat.sendMessage = async (req, res) => {
 			sender: "bot",
 			message: intentResult.formattedReply,
 			context: {
-				lastIntent: intentResult.api?.name,
-				lastParams: intentResult.params,
+				lastIntent: intentResult?.api?.name,
+				lastParams: intentResult?.params,
 			},
 			timestamp: new Date(),
 		});
