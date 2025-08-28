@@ -1,6 +1,6 @@
 const { OpenAI } = require("openai");
 const Session = require("../model/session.model");
-
+const apiListData = require("../../apiDetails");
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 /**
@@ -39,19 +39,20 @@ Rules:
  */
 async function refineResponseFromLastResponse(userMessage, session, { onStream } = {}) {
 	try {
+		console.log("Entered in Refinement response...")
 		if (!session.lastSuccessApiResponse) {
 			return { error: "No previous API response available to refine." };
 		}
 
+		// ✅ Get API details to check if suitable for graph
+		const api = apiListData.find((api) => api.name === session.lastSuccessIntent);
+		const isSuitableForGraph = api?.isSuitableForGraph || false;
+
 		// ✅ Early exit if same intent
 		if (session.lastSuccessUserMessage && (await isSameIntent(userMessage, session.lastSuccessUserMessage))) {
-			console.log("entered Here for response")
-			// return {
-			// 	userReply: session.lastResponseMessage,
-			// };
 			return {
 				formattedReply: session.lastResponseMessage,
-				type:"same intent"
+				type: "same intent",
 			};
 		}
 
@@ -97,8 +98,15 @@ ${JSON.stringify(session.lastSuccessApiResponse, null, 2)}
 - If the result is descriptive/narrative, use <p>.
 - Always start with an intro sentence (<p>).
 - If the data contains date string send in proper user readable format.
-- Always end with:
-  <p class="followup-message">Would you like me to turn this into a visualization, such as a graph or chart?</p>
+${
+	isSuitableForGraph
+		? `- After generating the response, evaluate if the result is meaningful to visualize as a chart or graph.
+  - Only add the follow-up line:
+    <p class="followup-message">Would you like me to turn this into a visualization, such as a graph or chart?</p>
+    if the refined data actually represents something numeric, time-based, comparative, or trend-related (e.g., multiple rows of metrics, distributions, counts, dates, priorities, progress).
+  - Do NOT add the follow-up if the response is just a single value, a short list, or purely descriptive text that cannot reasonably be plotted.`
+		: `- Do NOT add any follow-up visualization message.`
+}
 - Only output valid HTML, no markdown, no JSON.
 
 After the HTML

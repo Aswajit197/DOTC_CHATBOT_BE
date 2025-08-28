@@ -63,10 +63,14 @@ Decide the HTML output format dynamically based on intent and API description:
 
 ${
 	api?.isSuitableForGraph
-		? `- After the table or list, always add:
-  <p class="followup-message">Would you like me to turn this into a visualization, such as a graph or chart?</p>`
+		? `- After generating the response, evaluate if the result is meaningful to visualize as a chart or graph.
+  - Only add the follow-up line:
+    <p class="followup-message">Would you like me to turn this into a visualization, such as a graph or chart?</p>
+    if the refined data actually represents something numeric, time-based, comparative, or trend-related (e.g., multiple rows of metrics, distributions, counts, dates, priorities, progress).
+  - Do NOT add the follow-up if the response is just a single value, a short list, or purely descriptive text that cannot reasonably be plotted.`
 		: `- Do NOT add any follow-up visualization message.`
 }
+
 
 - Do not include Markdown, plain text, or JSON in this section. Only valid HTML.
 
