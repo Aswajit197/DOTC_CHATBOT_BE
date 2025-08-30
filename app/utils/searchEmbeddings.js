@@ -1,10 +1,10 @@
 const fs = require("fs");
 const OpenAI = require("openai");
-
+const path = require("path");
 const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 // Load embeddings from JSON
-const embeddingsData = JSON.parse(fs.readFileSync("training/api_embeddings.json", "utf-8"));
+const embeddingsData = JSON.parse(fs.readFileSync(path.join(__dirname, "../../training/api_embeddings.json"), "utf-8"));
 
 // Function to calculate cosine similarity
 function cosineSimilarity(vecA, vecB) {

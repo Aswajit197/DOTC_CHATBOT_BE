@@ -39,10 +39,6 @@ Rules:
  */
 async function refineResponseFromLastResponse(userMessage, session, { onStream } = {}) {
 	try {
-		console.log("Entered in Refinement response...")
-		if (!session.lastSuccessApiResponse) {
-			return { error: "No previous API response available to refine." };
-		}
 
 		// ✅ Get API details to check if suitable for graph
 		const api = apiListData.find((api) => api.name === session.lastSuccessIntent);
@@ -75,7 +71,6 @@ Your job:
    - If the user removes multiple fields, combine them like: "excluding start date and end date".
    - If the user re-adds something they previously excluded, remove it from the exclusion list.
    - Always produce a single clean natural sentence, not parentheses or history notes.
-
 ---
 
 ### Previous Successful User Message:
@@ -98,19 +93,31 @@ ${JSON.stringify(session.lastSuccessApiResponse, null, 2)}
 - If the result is descriptive/narrative, use <p>.
 - Always start with an intro sentence (<p>).
 - If the data contains date string send in proper user readable format.
+
+- **Add a final HTML summary block immediately before the optional follow-up visualization message**:
+  - Use: <div class="summary"><p>...</p></div>
+  - The summary should provide **statistical insights** that add value, not just restating obvious facts:
+    - total count of remaining items (only when it is not trivial, e.g., don’t say “There are 7 days in total” for weekdays)
+    - distribution counts (how many items fall into each preference/value/category)
+    - highlight the most common and least common values
+    - include averages, minimums, maximums, or percentages if meaningful
+    - avoid stating universally known facts (like fixed counts of weekdays, months, etc.)
+    - present it in natural, user-friendly sentences (e.g., "Out of 100 drivers, 45 prefer OT=2 while only 12 prefer OT=1. The average OT preference is 2.3, making OT=2 the most common choice.")
+  - Keep it concise (1–3 sentences).
+
+
 ${
 	isSuitableForGraph
-		? `- After generating the response, evaluate if the result is meaningful to visualize as a chart or graph.
-  - Only add the follow-up line:
+		? `- After the summary block (if it exists), evaluate if the refined data is suitable for visualization.
+  - If yes, append the follow-up line:
     <p class="followup-message">Would you like me to turn this into a visualization, such as a graph or chart?</p>
-    if the refined data actually represents something numeric, time-based, comparative, or trend-related (e.g., multiple rows of metrics, distributions, counts, dates, priorities, progress).
-  - Do NOT add the follow-up if the response is just a single value, a short list, or purely descriptive text that cannot reasonably be plotted.`
+  - Do NOT add the follow-up if the response is just a single value, a short list, or purely descriptive text.`
 		: `- Do NOT add any follow-up visualization message.`
 }
+
 - Only output valid HTML, no markdown, no JSON.
 
-After the HTML
-Finally, output a new line with exactly:
+After finishing the HTML reply (main output, optional summary, and optional follow-up), output a new line with exactly:
 ###END###
 `;
 

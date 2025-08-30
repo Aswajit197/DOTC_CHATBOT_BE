@@ -16,9 +16,7 @@ const processIntentAndFormatResponse = async ({
 	onStream,
 }) => {
 	let fullText = "";
-
 	// console.log(actualData, "entered in process intent");
-
 	try {
 		const prompt = `
 You're a smart assistant. Your task is to:
@@ -61,20 +59,29 @@ Decide the HTML output format dynamically based on intent and API description:
 - If the data contains date string send in proper user readable format.
 - Always start with a <p> introduction sentence before table or list.
 
+- **Add a final HTML summary block immediately before the optional follow-up visualization message**:
+  - Use: <div class="summary"><p>...</p></div>
+  - The summary should provide **statistical insights** that add value, not just restating obvious facts:
+    - total count of remaining items (only when it is not trivial, e.g., don’t say “There are 7 days in total” for weekdays)
+    - distribution counts (how many items fall into each preference/value/category)
+    - highlight the most common and least common values
+    - include averages, minimums, maximums, or percentages if meaningful
+    - avoid stating universally known facts (like fixed counts of weekdays, months, etc.)
+    - present it in natural, user-friendly sentences (e.g., "Out of 100 drivers, 45 prefer OT=2 while only 12 prefer OT=1. The average OT preference is 2.3, making OT=2 the most common choice.")
+  - Keep it concise (1–3 sentences).
+
+
 ${
 	api?.isSuitableForGraph
-		? `- After generating the response, evaluate if the result is meaningful to visualize as a chart or graph.
-  - Only add the follow-up line:
+		? `- After the summary block, if the refined data is numeric, time-based, comparative, or trend-related, add the follow-up line:
     <p class="followup-message">Would you like me to turn this into a visualization, such as a graph or chart?</p>
-    if the refined data actually represents something numeric, time-based, comparative, or trend-related (e.g., multiple rows of metrics, distributions, counts, dates, priorities, progress).
-  - Do NOT add the follow-up if the response is just a single value, a short list, or purely descriptive text that cannot reasonably be plotted.`
+  - Do NOT add the follow-up if the response is just a single value, a short list, or purely descriptive text.`
 		: `- Do NOT add any follow-up visualization message.`
 }
 
-
 - Do not include Markdown, plain text, or JSON in this section. Only valid HTML.
 
-After finishing the HTML reply, output a new line with exactly:
+After finishing the HTML reply, summary, and optional follow-up message, output a new line with exactly:
 ###END###
 `;
 
@@ -108,10 +115,8 @@ After finishing the HTML reply, output a new line with exactly:
 				if (onStream) onStream(formatted);
 			}
 		}
-
 		const finalReply = fullText.replace(/###END###/g, "").trim();
 
-		// console.log(finalReply, "final reply");
 		// ✅ Save the last reply in session
 		await Session.updateOne(
 			{ _id: session._id },

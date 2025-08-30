@@ -9,7 +9,6 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 async function getIntentFromOpenAI(userMessage, session, { onStream } = {}) {
 	const topApis = await searchAPIs(userMessage);
-	// console.log(session,"session")
 
 	const systemPrompt = `
 You are an assistant that maps user queries to API operations.
@@ -62,13 +61,14 @@ If the user message modifies or refines the last assistant response or successfu
 - Adding/removing columns or fields (e.g., "remove StartDate", "just show driver name and status")
 - Sorting, grouping, or reformatting the displayed result
 - Asking for the same data with small changes (e.g., "for yesterday", "for driver 12")
+- when user mentions like lmdp then take it as driver , lmdp means driver like when userMessage is like give leave requests for all lmdps it should consider like give leave requests for all drivers
 
 → Then classify this as a **dependent refinement**.
 
 → Return JSON in this format:
 {
-  "apiName": null,
-  "params": {},
+  "apiName": "<exact API name from above>",   // always keep the API name here, not null
+  "params": { /* extracted params if any */ },
   "dependent": true,
   "type": "refinement_request"
 }
@@ -93,7 +93,6 @@ Important:
 - DO NOT add comments or extra text.
 - Output valid JSON only.
 `;
-	// console.log(systemPrompt)
 
 	const completion = await openai.chat.completions.create({
 		model: "gpt-4o-mini",
@@ -114,20 +113,27 @@ Important:
 		return { error: "OpenAI parsing failed" };
 	}
 
+	const matchedApi = apiListData.find((api) => api.name === extracted.apiName);
 	// If dependent, route based on type
 	if (extracted.dependent) {
 		if (extracted.type === "visualization_request") {
 			return await getGraphJsonFromLastResponse(userMessage, session, { onStream });
 		} else if (extracted.type === "refinement_request") {
-			return await refineResponseFromLastResponse(userMessage, session, { onStream });
+			if (session.lastSuccessApiResponse && session.lastSuccessIntent === matchedApi.name) {
+				// refine only if last response exists
+				return await refineResponseFromLastResponse(userMessage, session, { onStream });
+			} else {
+				// fallback → treat as independent request
+				extracted.dependent = false;
+				extracted.type = null;
+			}
 		} else {
-			// 👇 Treat as independent
+			// fallback → treat as independent
 			extracted.dependent = false;
 			extracted.type = null;
 		}
 	}
 
-	const matchedApi = apiListData.find((api) => api.name === extracted.apiName);
 	//reducing api call and token if user intent matches the last intent
 	if (matchedApi?.name === session?.lastSuccessIntent) {
 		return await refineResponseFromLastResponse(userMessage, session, { onStream });
@@ -175,10 +181,6 @@ Respond ONLY with plain text.
 	} = await handleParamsForApi(matchedApi, params, userMessage, session, onStream);
 
 	params = finalParams;
-
-	// console.log(params, "final params");
-	// console.log(formattedReply, "final formattedReply");
-	// console.log(missingFields, "final missingFields");
 
 	if (formattedReply) {
 		// handler already responded early

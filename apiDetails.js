@@ -499,7 +499,7 @@ Respond in JSON only:
 	{
 		name: "GetTimeOffRequestForBackend",
 		description:
-			"returns list of driver's time-off requests, including details such as driver name, request dates, reason for leave, and the current status (approved, declined, or pending). It is used to check when drivers have requested time off and whether those requests were accepted or not.",
+			"Returns a list of driver's time-off requests, including details such as driver name, request dates, reason for leave, and the current status (approved, declined, or pending). This API helps track when drivers have requested time off and whether those requests were accepted or not. Example queries include: 'Which driver takes the most leaves?', 'Give me pending leave requests', 'Show me drivers time-off requests.",
 		requiredFields: ["ClientId"],
 		exampleResponse: {
 			driversOffRequestList: [
