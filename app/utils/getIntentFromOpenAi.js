@@ -4,12 +4,13 @@ const { searchAPIs } = require("./searchEmbeddings");
 const getGraphJsonFromLastResponse = require("./getGraphJsonFromLastReponse");
 const refineResponseFromLastResponse = require("./refineResponseFromLastResponse");
 const { handleParamsForApi } = require("./handleParamsForApis");
+const { handleMultiIntentApis } = require("./handleMultiIntentApis");
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 async function getIntentFromOpenAI(userMessage, session, { onStream } = {}) {
 	const topApis = await searchAPIs(userMessage);
-
+	// console.log(topApis)
 	const systemPrompt = `
 You are an assistant that maps user queries to API operations.
 
@@ -30,16 +31,42 @@ Current user message:
 "${userMessage}"
 
 Instructions:
-- Decide first if the current user message is **independent** (a fresh query) or **dependent** (requires context from session or prior assistant response).
+- Decide first if the current user message is **independent** (a fresh query), **dependent** (requires context), or **multi-intent** (needs multiple APIs).
   * Independent → It can be handled on its own without needing earlier responses.
   * Dependent → The meaning depends on what was said earlier (e.g., "show me the same for yesterday", "and for driver 12", "what about station 5", "remove some specific column/data from the table/list", "visualize as graph", etc.).
+  * Multi-intent → The user clearly asks for data that requires combining results from two or more APIs (e.g., "give list of all drivers with their overtime preference", "show drivers and their shift details").
 
-- If Independent:
+- If Independent (Single Intent):
    * Identify the most appropriate API from the Available APIs list.
    * Extract parameters only if they are explicitly in the message.
    * Do NOT assume or invent values (like ClientId, StationId, etc).
    * For missing required fields, leave them empty.
-   
+
+### Multi-Intent Case
+If the user message clearly requires **combination of multiple APIs**:
+Examples:
+- "list all drivers with their overtime preference"
+- "show drivers and their shift details"
+- "give me driver contacts with their assigned station"
+
+→ Then classify as a **multi_intent**.
+
+→ Return JSON in this format:
+{
+  "apis": [
+    {
+      "apiName": "<exact API name from above>",
+      "params": { /* extracted params */ }
+    },
+    {
+      "apiName": "<exact API name from above>",
+      "params": { /* extracted params */ }
+    }
+  ],
+  "dependent": false,
+  "type": "multi_intent"
+}
+
 ### Special Case: Visualization Follow-up
 If the user message is a short confirmation (examples: "yes", "yeah", "sure", "ok", "give me a chart", "show me a graph", "plot it", "visualize it")
 AND the prior assistant message ended with:
@@ -73,12 +100,30 @@ If the user message modifies or refines the last assistant response or successfu
   "type": "refinement_request"
 }
 
-Respond in EXACTLY this JSON format:
+Respond in EXACTLY one of these JSON formats:
+
+1. Single Intent:
 {
   "apiName": "<exact API name from above or null>",
   "params": { /* extracted params */ },
   "dependent": <true or false>,
   "type": "<string or null>" // "visualization_request", "refinement_request", or null
+}
+
+2. Multi-Intent:
+{
+  "apis": [
+    {
+      "apiName": "<exact API name>",
+      "params": { /* extracted params */ }
+    },
+    {
+      "apiName": "<exact API name>",
+      "params": { /* extracted params */ }
+    }
+  ],
+  "dependent": false,
+  "type": "multi_intent"
 }
 
 If the user's message is casual, small talk, or not related to any API, respond:
@@ -103,6 +148,8 @@ Important:
 		temperature: 0,
 	});
 
+	console.log(completion.choices[0].message);
+
 	let extracted;
 
 	try {
@@ -111,6 +158,22 @@ Important:
 	} catch (err) {
 		console.error("Failed to parse OpenAI response:", err);
 		return { error: "OpenAI parsing failed" };
+	}
+
+	//if the type is multi_intent
+	//example : 	{
+	//   apis: [
+	//     { apiName: 'GetDriverByClientId', params: {} },
+	//     { apiName: 'GetDriverOTPreferenceList', params: {} }
+	//   ],
+	//   dependent: false,
+	//   type: 'multi_intent'
+	// }
+
+	if (extracted?.type === "multi_intent") {
+		console.log("Entering In multi intent....")
+		//need a separate function which need to do for that multi intent(multiple api call) like below is for one single
+		return await handleMultiIntentApis(extracted, userMessage, session, onStream);
 	}
 
 	const matchedApi = apiListData.find((api) => api.name === extracted.apiName);
@@ -242,25 +305,3 @@ Respond ONLY with plain text.
 }
 
 module.exports = getIntentFromOpenAI;
-
-// ques  -->  ques -->  intent matching  --> intent matched  -->  call api  -->  api response
-// 								    --> intent not matched  -->  ques + last response  --> graph  --> frontend handle
-// 																					  --> not graph  --> fallback
-// User asks something →
-// 	You call OpenAI (intent matcher) → it decides:
-// 		Is it new (independent)?
-// 		Or dependent on history?
-
-// 	If new intent → extract intent → hit API → call OpenAI again to generate final response.
-
-// 	If dependent on history → combine previous response + current question → ask OpenAI again →
-// 		If graph → generate graph.
-// 		Else → hit API or respond accordingly.
-
-//enhancements
-//if
-// if (matchedApi?.name === session?.lastSuccessIntent) {
-// then should call the refineResponseFromLastResponse  with the existing last response
-// }
-
-// json for graph not coming proper need to include   //done

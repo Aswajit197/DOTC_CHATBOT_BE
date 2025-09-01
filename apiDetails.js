@@ -55,6 +55,27 @@ module.exports = [
 				};
 			}
 		},
+		multiHandler: async (params, userMessage, session, onStream) => {
+			if (!params?.StationId) params.StationId = 2;
+			try {
+				const { data } = await axios.get(`${API_BASE}/GetDriverWeeklyWorkingHrList?StationId=${params.StationId}`);
+
+				const driversWeeklyWorkingHrList =
+					data?.data?.map((item) => ({
+						driverName: item?.driverName,
+						hours: item?.hours,
+					})) || [];
+
+				// console.log(driversWeeklyWorkingHrList);
+
+				return { data: driversWeeklyWorkingHrList };
+			} catch (err) {
+				return {
+					error: true,
+					message: err.response?.data?.message || "Failed to fetch drivers' working hours list.",
+				};
+			}
+		},
 	},
 	// 2. GetDayFactor
 	{
@@ -96,6 +117,30 @@ module.exports = [
 					session,
 					onStream,
 				});
+			} catch (err) {
+				return {
+					error: true,
+					message: err.response?.data?.message || "Failed to fetch day factor data.",
+				};
+			}
+		},
+		multiHandler: async (params, userMessage, session, onStream) => {
+			// console.log(params,"params in get day factor handler")
+			if (!params?.ClientId) params.ClientId = 2;
+
+			try {
+				const { data } = await axios.get(`${API_BASE}/GetDayFactor?ClientId=${params.ClientId}`);
+				// console.log(data)
+				const dayFactors =
+					data?.data?.map((item) => ({
+						id: item.id,
+						dayName: item.dayName,
+						factor: item.factor,
+					})) || [];
+
+				// console.log(dayFactors)
+
+				return { data: dayFactors };
 			} catch (err) {
 				return {
 					error: true,
@@ -152,6 +197,26 @@ module.exports = [
 					session,
 					onStream,
 				});
+			} catch (err) {
+				return {
+					error: true,
+					message: err.response?.data?.message || "Failed to fetch scheduling shift types.",
+				};
+			}
+		},
+		multiHandler: async (params, userMessage, session, onStream) => {
+			if (!params?.ClientId) params.ClientId = 2;
+
+			try {
+				const { data } = await axios.get(`${API_BASE}/GetSchedulingShiftTypeList?ClientId=${params.ClientId}`);
+				const shiftTypeList =
+					data?.data?.map((item) => ({
+						shiftTitle: item?.description,
+						minQualification: item?.minQualification,
+						hoursPerShift: item?.hoursPerShift,
+					})) || [];
+
+				return { data: shiftTypeList };
 			} catch (err) {
 				return {
 					error: true,
@@ -219,6 +284,29 @@ module.exports = [
 				};
 			}
 		},
+		multiHandler: async (params, userMessage, session, onStream) => {
+			if (!params?.ClientId) params.ClientId = 2;
+			if (!params?.DriverId) return { missingFields: ["DriverId"] };
+
+			try {
+				const { data } = await axios.get(
+					`${API_BASE}/GetLMDPDayPreferenceList?DriverId=${params.DriverId}&ClientId=${params.ClientId}`
+				);
+
+				let DayPreferenceList = data?.data?.map((item) => ({
+					driverName: item?.driverName,
+					day: item?.day,
+					preference: item?.preference,
+				}));
+
+				return { data: DayPreferenceList };
+			} catch (err) {
+				return {
+					error: true,
+					message: err.response?.data?.message || "Failed to fetch scheduling shift types.",
+				};
+			}
+		},
 	},
 	//5. GetDriverOTPreferenceList
 	{
@@ -264,6 +352,26 @@ module.exports = [
 					session,
 					onStream,
 				});
+			} catch (err) {
+				return {
+					error: true,
+					message: err.response?.data?.message || "Failed to fetch drivers OTP preference list",
+				};
+			}
+		},
+		multiHandler: async (params, userMessage, session, onStream) => {
+			if (!params?.StationId) params.StationId = 2;
+
+			try {
+				const { data } = await axios.get(
+					`https://dotc-delivery.azurewebsites.net/GetDriverOTPreferenceList?StationId=${params.StationId}`
+				);
+				let DriversOTPPreferenceList = data?.data?.map((item) => ({
+					driverName: item?.driverName,
+					preference: item?.preference,
+				}));
+
+				return { data: DriversOTPPreferenceList };
 			} catch (err) {
 				return {
 					error: true,
@@ -403,6 +511,117 @@ Respond in JSON only:
 				};
 			}
 		},
+		multiHandler: async (params, userMessage, session, onStream) => {
+			console.log(onStream, "on stream on GetLMDPMaxQualificationsList");
+			// If FromDate/ToDate missing
+			if (!params?.FromDate || !params?.ToDate) {
+				const today = new Date();
+				const todayStr = today.toISOString().split("T")[0]; // YYYY-MM-DD
+
+				try {
+					const prompt = `
+You are a date extraction assistant.
+
+Today's date is ${todayStr}.
+If the user uses relative terms like "this week", "next Monday", or "yesterday", 
+you MUST calculate based on today's date.
+
+Rules:
+- A week starts on SUNDAY and ends on SATURDAY.
+- FromDate = the Sunday of the week containing the reference date.
+- ToDate = the Saturday of the week containing the reference date.
+
+Steps:
+1. Identify the reference date (either explicit or relative to today).
+2. Find the Sunday of that week (FromDate) and the Saturday of that week (ToDate).
+3. Output both in strict YYYY/MM/DD format.
+
+If no date is found, return null for both.
+
+User message: "${userMessage}"
+
+Respond in JSON only:
+{
+  "FromDate": "YYYY/MM/DD" or null,
+  "ToDate": "YYYY/MM/DD" or null
+}
+`;
+
+					const aiResp = await openai.chat.completions.create({
+						model: "gpt-4o-mini",
+						messages: [
+							{ role: "system", content: "You are a helpful assistant for parsing dates." },
+							{ role: "user", content: prompt },
+						],
+						temperature: 0,
+					});
+
+					const dateResult = JSON.parse(aiResp.choices[0].message.content || "{}");
+
+					if (dateResult?.FromDate && dateResult?.ToDate) {
+						params.FromDate = dateResult.FromDate;
+						params.ToDate = dateResult.ToDate;
+					} else {
+						// 🛠 No date found → default to current week Sunday–Saturday
+						const dayOfWeek = today.getDay(); // 0=Sunday
+						const sunday = new Date(today);
+						sunday.setDate(today.getDate() - dayOfWeek);
+						const saturday = new Date(sunday);
+						saturday.setDate(sunday.getDate() + 6);
+
+						const fmt = (d) =>
+							`${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}`;
+
+						params.FromDate = fmt(sunday);
+						params.ToDate = fmt(saturday);
+					}
+				} catch (err) {
+					console.error("Date parsing failed:", err);
+
+					// 🛠 On error → default to current week Sunday–Saturday
+					const dayOfWeek = today.getDay();
+					const sunday = new Date(today);
+					sunday.setDate(today.getDate() - dayOfWeek);
+					const saturday = new Date(sunday);
+					saturday.setDate(sunday.getDate() + 6);
+
+					const fmt = (d) =>
+						`${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}`;
+
+					params.FromDate = fmt(sunday);
+					params.ToDate = fmt(saturday);
+				}
+			}
+
+			// 3️⃣ Final param validation
+			const missingFields = [];
+			if (!params?.ClientId) params.ClientId = 2;
+			if (!params?.FromDate) missingFields.push("FromDate");
+			if (!params?.ToDate) missingFields.push("ToDate");
+
+			if (missingFields.length) {
+				return { missingFields };
+			}
+
+			// 4️⃣ API call
+			try {
+				const { data } = await axios.get(
+					`https://dotc-delivery.azurewebsites.net/GetLMDPMaxQualificationsList?ClientId=${params.ClientId}&FromDate=${params.FromDate}&ToDate=${params.ToDate}`
+				);
+
+				let DriversMaxQualificationList = data?.data?.map((item) => ({
+					driverName: item?.driverName,
+					qualification: item?.qualification,
+				}));
+
+				return { data: DriversMaxQualificationList };
+			} catch (err) {
+				return {
+					error: true,
+					message: err.response?.data?.message || "Failed to fetch drivers Drivers MaxQualification list",
+				};
+			}
+		},
 	},
 	//7.GetBlobShiftDriverData
 	{
@@ -494,6 +713,34 @@ Respond in JSON only:
 				};
 			}
 		},
+		multiHandler: async (params, userMessage, session, onStream) => {
+			if (!params?.ClientId !== 2) params.ClientId = 2;
+			if (!params?.WeekStarting) return { missingFields: ["WeekStarting"] };
+			if (!params?.WeekEnding) return { missingFields: ["WeekEnding"] };
+			// Auto-fill current year if missing
+			if (!params?.Year) {
+				params.Year = new Date().getFullYear();
+			}
+
+			try {
+				const { data } = await axios.get(
+					`${API_BASE}/GetBlobShiftDriverData?WeekStarting=${params?.WeekStarting}&WeekEnding=${params?.WeekEnding}&Year=${params?.Year}&ClientId=${params?.ClientId}`
+				);
+
+				const driversTotalScheduledHours =
+					data?.data?.map((item) => ({
+						driverName: item?.driverName,
+						shifts: item?.shifts,
+					})) || [];
+
+				return { data: driversTotalScheduledHours };
+			} catch (err) {
+				return {
+					error: true,
+					message: err.response?.data?.message || "Failed to fetch drivers' working hours list.",
+				};
+			}
+		},
 	},
 	//8.GetTimeOffRequestForBackend
 	{
@@ -557,12 +804,34 @@ Respond in JSON only:
 				};
 			}
 		},
+		multiHandler: async (params, userMessage, session, onStream) => {
+			if (!params?.ClientId !== 2) params.ClientId = 2;
+
+			try {
+				const { data } = await axios.get(`${API_BASE}/GetTimeOffRequestForBackend?ClientId=${params?.ClientId}`);
+				const driversOffRequestList =
+					data?.data?.map((item) => ({
+						driverName: item?.driverName,
+						dateStart: item?.dateStart,
+						dateEnd: item?.dateEnd,
+						requestReason: item?.requestReason,
+						requestStatus: item?.requestStatus,
+					})) || [];
+
+				return { data: driversOffRequestList };
+			} catch (err) {
+				return {
+					error: true,
+					message: err.response?.data?.message || "Failed to fetch drivers' time-off requests list.",
+				};
+			}
+		},
 	},
 	//9.GetLocationListForBackEnd
 	{
 		name: "GetLocationListForBackEnd",
 		description:
-			"returns a list of available locations for LMDPs along with their details, including name, address, city, state, zip code, type, and active status. It is used to identify and retrieve information about all operational locations in the system.",
+			"returns a list of available locations for LMDPs/drivers along with their details, including name, address, city, state, zip code, type, and active status. It is used to identify and retrieve information about all operational locations in the system.",
 		requiredFields: ["ClientId"],
 		exampleResponse: {
 			locationLists: [
@@ -617,6 +886,30 @@ Respond in JSON only:
 					session,
 					onStream,
 				});
+			} catch (err) {
+				return {
+					error: true,
+					message: err.response?.data?.message || "Failed to fetch available locations for LMDPs.",
+				};
+			}
+		},
+		multiHandler: async (params, userMessage, session, onStream) => {
+			if (!params?.ClientId !== 2) params.ClientId = 2;
+
+			try {
+				const { data } = await axios.get(`${API_BASE}/GetLocationListForBackEnd?ClientId=${params?.ClientId}`);
+
+				const locationLists =
+					data?.data?.map((item) => ({
+						locationId: item?.locationId,
+						locationName: item?.locationName,
+						locationAddress: item?.locationAddress,
+						locationCity: item?.locationCity,
+						locationZip: item?.locationZip,
+						locationState: item?.locationState,
+					})) || [];
+
+				return { data: locationLists };
 			} catch (err) {
 				return {
 					error: true,
@@ -693,19 +986,42 @@ Respond in JSON only:
 				};
 			}
 		},
+		multiHandler: async (params, userMessage, session, onStream) => {
+			if (!params?.ClientId !== 2) params.ClientId = 2;
+
+			try {
+				const { data } = await axios.get(`${API_BASE}/GetLocationListForBackEnd?ClientId=${params?.ClientId}`);
+
+				const permissionList =
+					data?.data?.map((item) => ({
+						maxDaysUnavailable: item?.maxDaysUnavailable,
+						requireWeekendDay: item?.requireWeekendDay,
+						maxTimeOffLength: item?.maxTimeOffLength,
+						approveNeutralRequests: item?.approveNeutralRequests,
+						canCreateLDMPGroups: item?.canCreateLDMPGroups,
+						chatResponsesVisible: item?.chatResponsesVisible,
+					})) || [];
+
+				return { data: permissionList };
+			} catch (err) {
+				return {
+					error: true,
+					message: err.response?.data?.message || "Failed to fetch  default scheduling and permission settings.",
+				};
+			}
+		},
 	},
 
 	//11.GetDriverByClientId
 	{
 		name: "GetDriverByClientId",
 		description:
-			"retrieves the list of drivers associated with a client, including each driver’s ID, name, mobile number, email, and unique identifier. It is used to identify and access driver details linked to a specific client. Use when user asks for driver contact or ID details , return in table format",
+			"Retrieves the complete list of all drivers associated with the client. Use this intent when the user asks for 'all drivers list', 'give me the driver list', 'list all LMDPs', 'show all drivers with their details', or 'driver directory'. It returns each driver's ID, first name, last name, mobile number, email, and unique identifier. Always output in table format for easy viewing",
 		requiredFields: ["ClientId"],
 		exampleResponse: {
 			driverList: [
 				{
-					firstName: "Alejandro",
-					lastName: "Rayes",
+					driverName: "Alejandaro Rayes",
 					mobilePhone: 9178334663,
 					email: "tincho76ny@gmail.com",
 				},
@@ -719,8 +1035,7 @@ Respond in JSON only:
 
 				const driverList =
 					data?.data?.map((item) => ({
-						firstName: item.firstName,
-						lastName: item.lastName,
+						driverName: item.firstName + " " + item.lastName,
 						mobilePhone: item.mobilePhone,
 						email: item.email,
 					})) || [];
@@ -755,8 +1070,29 @@ Respond in JSON only:
 				};
 			}
 		},
-	},
+		// new handler for multi-intent (raw data only)
+		multiHandler: async (params) => {
+			if (!params?.ClientId) params.ClientId = 2;
 
+			try {
+				const { data } = await axios.get(`${API_BASE}/GetDriverByClientId?ClientId=${params?.ClientId}`);
+
+				const driverList =
+					data?.data?.map((item) => ({
+						driverName: item.firstName + " " + item.lastName,
+						mobilePhone: item.mobilePhone,
+						email: item.email,
+					})) || [];
+
+				return { data: driverList };
+			} catch (err) {
+				return {
+					error: true,
+					message: err.response?.data?.message || "Failed to fetch driver list.",
+				};
+			}
+		},
+	},
 	//12.GetSchedAlignEngineLMDPPreference
 	{
 		name: "GetSchedAlignEngineLMDPPreference",
@@ -804,6 +1140,27 @@ Respond in JSON only:
 					session,
 					onStream,
 				});
+			} catch (err) {
+				return {
+					error: true,
+					message: err.response?.data?.message || "Failed to fetch list of drivers associated with a client.",
+				};
+			}
+		},
+		multiHandler: async (params, userMessage, session, onStream) => {
+			if (!params?.ClientId !== 2) params.ClientId = 2;
+
+			try {
+				const { data } = await axios.get(`${API_BASE}/GetSchedAlignEngineLMDPPreference?ClientId=${params?.ClientId}`);
+
+				const driverPreferenceList =
+					data?.data?.map((item) => ({
+						preferenceType: item?.preferenceType,
+						preferenceWeight: item?.preferenceWeight,
+						preferenceDefault: item?.preferenceDefault,
+					})) || [];
+
+				return { data: driverPreferenceList };
 			} catch (err) {
 				return {
 					error: true,
@@ -865,6 +1222,31 @@ Respond in JSON only:
 					session,
 					onStream,
 				});
+			} catch (err) {
+				return {
+					error: true,
+					message: err.response?.data?.message || "Failed to fetch list of drivers associated with a client.",
+				};
+			}
+		},
+		multiHandler: async (params, userMessage, session, onStream) => {
+			if (!params?.ClientId !== 2) params.ClientId = 2;
+
+			try {
+				const { data } = await axios.get(`${API_BASE}/GetSchedAlignEngineWeeklySetting?ClientId=${params?.ClientId}`);
+
+				const defaultRules =
+					data?.data?.map((item) => ({
+						maxHrs: item?.maxHrs,
+						preferenceWeight: item?.preferenceWeight,
+						maxConsecutiveDaysWork: item?.maxConsecutiveDaysWork,
+						maxConsecutiveHrsWork: item?.maxConsecutiveHrsWork,
+						maxStandbyShifts: item?.maxStandbyShifts,
+						tolerableThreshold: item?.tolerableThreshold,
+						intolerableThreshold: item?.intolerableThreshold,
+					})) || [];
+
+				return { data: defaultRules };
 			} catch (err) {
 				return {
 					error: true,
@@ -1158,6 +1540,121 @@ Respond in JSON only:
 				};
 			}
 		},
+		multiHandler: async (params, userMessage, session, onStream) => {
+			// If FromDate/ToDate missing
+			if (!params?.FromDate || !params?.ToDate) {
+				const today = new Date();
+				const todayStr = today.toISOString().split("T")[0]; // YYYY-MM-DD
+
+				try {
+					const prompt = `
+You are a date extraction assistant.
+
+Today's date is ${todayStr}.
+If the user uses relative terms like "this week", "next Monday", or "yesterday", 
+you MUST calculate based on today's date.
+
+Rules:
+- A week starts on SUNDAY and ends on SATURDAY.
+- FromDate = the Sunday of the week containing the reference date.
+- ToDate = the Saturday of the week containing the reference date.
+
+Steps:
+1. Identify the reference date (either explicit or relative to today).
+2. Find the Sunday of that week (FromDate) and the Saturday of that week (ToDate).
+3. Output both in strict YYYY/MM/DD format.
+
+If no date is found, return null for both.
+
+User message: "${userMessage}"
+
+Respond in JSON only:
+{
+  "FromDate": "YYYY/MM/DD" or null,
+  "ToDate": "YYYY/MM/DD" or null
+}
+`;
+
+					const aiResp = await openai.chat.completions.create({
+						model: "gpt-4o-mini",
+						messages: [
+							{ role: "system", content: "You are a helpful assistant for parsing dates." },
+							{ role: "user", content: prompt },
+						],
+						temperature: 0,
+					});
+
+					const dateResult = JSON.parse(aiResp.choices[0].message.content || "{}");
+
+					if (dateResult?.FromDate && dateResult?.ToDate) {
+						params.FromDate = dateResult.FromDate;
+						params.ToDate = dateResult.ToDate;
+					} else {
+						// 🛠 No date found → default to current week Sunday–Saturday
+						const dayOfWeek = today.getDay(); // 0=Sunday
+						const sunday = new Date(today);
+						sunday.setDate(today.getDate() - dayOfWeek);
+						const saturday = new Date(sunday);
+						saturday.setDate(sunday.getDate() + 6);
+
+						const fmt = (d) =>
+							`${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}`;
+
+						params.FromDate = fmt(sunday);
+						params.ToDate = fmt(saturday);
+					}
+				} catch (err) {
+					console.error("Date parsing failed:", err);
+
+					// 🛠 On error → default to current week Sunday–Saturday
+					const dayOfWeek = today.getDay();
+					const sunday = new Date(today);
+					sunday.setDate(today.getDate() - dayOfWeek);
+					const saturday = new Date(sunday);
+					saturday.setDate(sunday.getDate() + 6);
+
+					const fmt = (d) =>
+						`${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}`;
+
+					params.FromDate = fmt(sunday);
+					params.ToDate = fmt(saturday);
+				}
+			}
+
+			// 3️⃣ Final param validation
+			const missingFields = [];
+			if (!params?.ClientId) params.ClientId = 2;
+			if (!params?.FromDate) missingFields.push("FromDate");
+			if (!params?.ToDate) missingFields.push("ToDate");
+
+			if (missingFields.length) {
+				return { missingFields };
+			}
+
+			try {
+				const { data } = await axios.get(
+					`${API_BASE}/GetOperationListForBackEnd?ClientId=${params.ClientId}&FromDate=${params.FromDate}&ToDate=${params.ToDate}`
+				);
+
+				const operationData =
+					data?.data?.map((item) => ({
+						shifts: item?.shifts,
+						locations: item?.locations,
+						waveTimes: item?.waveTimes,
+						arrivalInfo: item?.arrivalInfo,
+						arrivalTime: item?.arrivalTime,
+						operation: item?.operation,
+						active: item?.active,
+					})) || [];
+
+				return { data: operationData };
+			} catch (err) {
+				return {
+					error: true,
+					message: err.response?.data?.message || "Failed to fetch list of drivers associated with a client.",
+				};
+			}
+		},
 	},
 
 	//15.GetOpenShiftForBackEnd
@@ -1261,6 +1758,43 @@ Respond in JSON only:
 				};
 			}
 		},
+		multiHandler: async (params, userMessage, session, onStream) => {
+			if (!params?.ClientId !== 2) params.ClientId = 2;
+
+			try {
+				const { data } = await axios.get(`${API_BASE}/GetOpenShiftForBackEnd?ClientId=${params?.ClientId}`);
+
+				const openShiftData =
+					data?.data?.map((item) => ({
+						driverName: item?.driverName,
+						openShiftId: item?.openShiftId,
+						driverId: item?.driverId,
+						shiftType: item?.shiftType,
+						duration: item?.duration,
+						shiftName: item?.shiftName,
+						shiftTypeColor: item?.shiftTypeColor,
+						shiftTypeFontColor: item?.shiftTypeFontColor,
+						deliveryDate: item?.deliveryDate,
+						isAccept: item?.isAccept,
+						arrivalTime: item?.arrivalTime,
+						arrivalLocationName: item?.arrivalLocationName,
+						arrivalLatitude: item?.arrivalLatitude,
+						arrivalLongitude: item?.arrivalLongitude,
+						waveTime: item?.waveTime,
+						loadoutLocationName: item?.loadoutLocationName,
+						loadoutLatitude: item?.loadoutLatitude,
+						loadoutLongitude: item?.loadoutLongitude,
+						expiration: item?.expiration,
+					})) || [];
+
+				return { data: openShiftData };
+			} catch (err) {
+				return {
+					error: true,
+					message: err.response?.data?.message || "Failed to fetch list for open shifts.",
+				};
+			}
+		},
 	},
 
 	//16.GetAllPreferenceHistoryForBackEnd
@@ -1324,6 +1858,32 @@ Respond in JSON only:
 					session,
 					onStream,
 				});
+			} catch (err) {
+				return {
+					error: true,
+					message: err.response?.data?.message || "Failed to fetch list of preference history drivers.",
+				};
+			}
+		},
+		multiHandler: async (params, userMessage, session, onStream) => {
+			if (!params?.ClientId !== 2) params.ClientId = 2;
+
+			try {
+				const { data } = await axios.get(`${API_BASE}/GetAllPreferenceHistoryForBackEnd?ClientId=${params?.ClientId}`);
+
+				const preferenceHistory =
+					data?.data?.map((item) => ({
+						driverName: item?.driverName,
+						preferenceType: item?.preferenceType,
+						preferenceDescription: item?.preferenceDescription,
+						oldValue: item?.oldValue,
+						newValue: item?.newValue,
+						requestStatus: item?.requestStatus,
+						updateDate: item?.updateDate,
+						expiration: item?.expiration,
+					})) || [];
+
+				return { data: preferenceHistory };
 			} catch (err) {
 				return {
 					error: true,

@@ -43,7 +43,7 @@
 	},
 	{
 		"name": "GetLocationListForBackEnd",
-		"description": "returns a list of available locations for LMDPs along with their details, including name, address, city, state, zip code, type, and active status. It is used to identify and retrieve information about all operational locations in the system.",
+		"description": "returns a list of available locations for LMDPs/drivers along with their details, including name, address, city, state, zip code, type, and active status. It is used to identify and retrieve information about all operational locations in the system.",
 		"requiredFields": ["ClientId"]
 	},
 	{
@@ -53,7 +53,7 @@
 	},
 	{
 		"name": "GetDriverByClientId",
-		"description": "retrieves the list of drivers associated with a client, including each driver’s ID, name, mobile number, email, and unique identifier. It is used to identify and access driver details linked to a specific client. Use when user asks for driver contact or ID details , return in table format",
+		"description": "Retrieves the complete list of all drivers associated with the client. Use this intent when the user asks for 'all drivers list', 'give me the driver list', 'list all LMDPs', 'show all drivers with their details', or 'driver directory'. It returns each driver's ID, first name, last name, mobile number, email, and unique identifier. Always output in table format for easy viewing",
 		"requiredFields": ["ClientId"]
 	},
 	{

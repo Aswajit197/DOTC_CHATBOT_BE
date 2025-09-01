@@ -33,7 +33,7 @@ async function searchAPIs(query) {
 		};
 	});
 
-	return results.sort((a, b) => b.similarity - a.similarity).slice(0, 3);
+	return results.sort((a, b) => b.similarity - a.similarity).slice(0, 5);
 }
 
 module.exports = { searchAPIs };
