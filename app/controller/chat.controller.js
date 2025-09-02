@@ -49,12 +49,22 @@ chat.sendMessage = async (req, res) => {
 		}
 
 		if (intentResult.error === "Missing required fields" && intentResult.fallbackMessage) {
+			// 🔹 Save missing field context into session
+			session.missingField = {
+				lastMissingFieldBotMessage: intentResult.fallbackMessage,
+				lastMissingApiIntent: intentResult?.api?.name,
+				lastParams: intentResult.params,
+				missingFields: intentResult?.requires || [],
+			};
+
 			session.history.push({
 				sender: "bot",
 				message: intentResult.fallbackMessage,
 				timestamp: new Date(),
 			});
+
 			await session.save();
+
 			res.write(`data: ${JSON.stringify({ type: "final", response: intentResult.fallbackMessage })}\n\n`);
 			return res.end();
 		}

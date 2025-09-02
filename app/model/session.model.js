@@ -28,6 +28,14 @@ const sessionSchema = new mongoose.Schema(
 		lastSuccessUserMessage: { type: String },
 		lastSuccessIntent: { type: String },
 		lastSuccessApiResponse: { type: mongoose.Schema.Types.Mixed },
+
+		// 🔹 to persist missing field context
+		missingField: {
+			lastMissingFieldBotMessage: { type: String },
+			lastMissingApiIntent: { type: String },
+			lastParams: { type: mongoose.Schema.Types.Mixed }, // <--- allow object storage
+			missingFields: [{ type: String }],
+		},
 		createdAt: {
 			type: Date,
 			default: Date.now,

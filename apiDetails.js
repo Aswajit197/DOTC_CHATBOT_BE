@@ -244,10 +244,13 @@ module.exports = [
 			if (!params?.ClientId) params.ClientId = 2;
 			if (!params?.DriverId) return { missingFields: ["DriverId"] };
 
+			console.log(params.DriverId, "did");
+
 			try {
 				const { data } = await axios.get(
 					`${API_BASE}/GetLMDPDayPreferenceList?DriverId=${params.DriverId}&ClientId=${params.ClientId}`
 				);
+				console.log(data)
 
 				let DayPreferenceList = data?.data?.map((item) => ({
 					driverName: item?.driverName,
@@ -608,6 +611,9 @@ Respond in JSON only:
 				const { data } = await axios.get(
 					`https://dotc-delivery.azurewebsites.net/GetLMDPMaxQualificationsList?ClientId=${params.ClientId}&FromDate=${params.FromDate}&ToDate=${params.ToDate}`
 				);
+
+
+				console.log(data,"max qualification data")
 
 				let DriversMaxQualificationList = data?.data?.map((item) => ({
 					driverName: item?.driverName,

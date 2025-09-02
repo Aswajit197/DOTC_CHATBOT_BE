@@ -54,7 +54,7 @@ Decide the HTML output format dynamically based on intent and API description:
 - If the **user message** explicitly asks for "table", "tabular" or if the **API description** indicates tabular data, then format the reply as an HTML <table> with <thead>, <tbody>, <tr>, <th>, <td>.
 - If the data is best represented as a **list**, use <ul><li>...</li></ul>.
 - If userMessage intent is for specific one driver id or LMDP ID try to send in list format.
-- Try to provide complete list/table always if user content contains any filter action.
+- Try to provide complete list/table always if user message don't contains any filter action.
 - If the data is descriptive or narrative, use <p>...</p>.
 - If the data contains date string send in proper user readable format.
 - Always start with a <p> introduction sentence before table or list.
@@ -69,8 +69,6 @@ Decide the HTML output format dynamically based on intent and API description:
     - avoid stating universally known facts (like fixed counts of weekdays, months, etc.)
     - present it in natural, user-friendly sentences (e.g., "Out of 100 drivers, 45 prefer OT=2 while only 12 prefer OT=1. The average OT preference is 2.3, making OT=2 the most common choice.")
   - Keep it concise (1–3 sentences).
-
-
 ${
 	api?.isSuitableForGraph
 		? `- After the summary block, if the refined data is numeric, time-based, comparative, or trend-related, add the follow-up line:
@@ -126,6 +124,7 @@ After finishing the HTML reply, summary, and optional follow-up message, output 
 					lastSuccessUserMessage: userMessage,
 					lastSuccessIntent: api?.name || null,
 					lastSuccessApiResponse: actualData,
+					missingField: null,
 				},
 			}
 		);

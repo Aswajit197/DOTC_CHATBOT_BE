@@ -26,17 +26,19 @@ ${topApis
 Session context:
 - Last successful user message: ${session.lastSuccessUserMessage || "None"}
 - Last successful API intent: ${session.lastSuccessIntent || "None"}
+- Last missing field bot message: ${session?.missingField?.lastMissingFieldBotMessage || "None"}
+- Last missing API intent: ${session?.missingField?.lastMissingApiIntent || "None"}
+- Last known missing fields: ${session?.missingField?.missingFields?.join(", ") || "None"}
+- Last known params: ${JSON.stringify(session?.missingField?.lastParams || {})}
 
 Current user message:
 "${userMessage}"
 
 Instructions:
-- Decide first if the current user message is **independent** (a fresh query), **dependent** (requires context), or **multi-intent** (needs multiple APIs).
-  * Independent → It can be handled on its own without needing earlier responses.
-  * Dependent → The meaning depends on what was said earlier (e.g., "show me the same for yesterday", "and for driver 12", "what about station 5", "remove some specific column/data from the table/list", "visualize as graph", etc.).
-  * Multi-intent → The user clearly asks for data that requires combining results from two or more APIs (e.g., "give list of all drivers with their overtime preference", "show drivers and their shift details").
+- Decide first if the current user message is **independent** (a fresh query), **dependent** (requires context), **multi-intent** (needs multiple APIs), **missing field resolution** (user is providing previously requested info), or **visualization follow-up**.
 
-- If Independent (Single Intent):
+### Independent (Single Intent)
+If Independent (Single Intent):
    * Identify the most appropriate API from the Available APIs list.
    * Extract parameters only if they are explicitly in the message.
    * Do NOT assume or invent values (like ClientId, StationId, etc).
@@ -89,6 +91,7 @@ If the user message modifies or refines the last assistant response or successfu
 - Sorting, grouping, or reformatting the displayed result
 - Asking for the same data with small changes (e.g., "for yesterday", "for driver 12")
 - when user mentions like lmdp then take it as driver , lmdp means driver like when userMessage is like give leave requests for all lmdps it should consider like give leave requests for all drivers
+- if in the message sessionId or clientId is not explicitly mentioned (and its a required field for the matching api) then take it as 2 as current default
 
 → Then classify this as a **dependent refinement**.
 
@@ -100,32 +103,22 @@ If the user message modifies or refines the last assistant response or successfu
   "type": "refinement_request"
 }
 
-Respond in EXACTLY one of these JSON formats:
+### Missing Field Resolution
+If the previous bot response asked for missing fields
+AND the current user message provides values that fill those missing fields
+(e.g., user responds with "1482" after being asked for DriverId):
 
-1. Single Intent:
-{
-  "apiName": "<exact API name from above or null>",
-  "params": { /* extracted params */ },
-  "dependent": <true or false>,
-  "type": "<string or null>" // "visualization_request", "refinement_request", or null
-}
+→ Then classify this as a **missing field resolution**.
 
-2. Multi-Intent:
+→ Return JSON in this format:
 {
-  "apis": [
-    {
-      "apiName": "<exact API name>",
-      "params": { /* extracted params */ }
-    },
-    {
-      "apiName": "<exact API name>",
-      "params": { /* extracted params */ }
-    }
-  ],
+  "apiName": "<exact API name from session.lastMissingApiIntent>",
+  "params": { /* merge session.missingField.lastParams with new values */ },
   "dependent": false,
-  "type": "multi_intent"
+  "type": "handle_missing_field"
 }
 
+### Casual / Not Related
 If the user's message is casual, small talk, or not related to any API, respond:
 {
   "apiName": null,
@@ -160,23 +153,16 @@ Important:
 		return { error: "OpenAI parsing failed" };
 	}
 
-	//if the type is multi_intent
-	//example : 	{
-	//   apis: [
-	//     { apiName: 'GetDriverByClientId', params: {} },
-	//     { apiName: 'GetDriverOTPreferenceList', params: {} }
-	//   ],
-	//   dependent: false,
-	//   type: 'multi_intent'
-	// }
+	const matchedApi = apiListData.find((api) => api.name === extracted.apiName);
+	let params = extracted.params || {};
+	// console.log(params, "extracted params");
 
 	if (extracted?.type === "multi_intent") {
-		console.log("Entering In multi intent....")
-		//need a separate function which need to do for that multi intent(multiple api call) like below is for one single
+		console.log("Entering In multi intent....");
+		//a separate function which handles that multi intent(multiple api call)
 		return await handleMultiIntentApis(extracted, userMessage, session, onStream);
 	}
 
-	const matchedApi = apiListData.find((api) => api.name === extracted.apiName);
 	// If dependent, route based on type
 	if (extracted.dependent) {
 		if (extracted.type === "visualization_request") {
@@ -202,7 +188,6 @@ Important:
 		return await refineResponseFromLastResponse(userMessage, session, { onStream });
 	}
 
-	// console.log(matchedApi);
 	// Fallback case: No matching API   responding user with a proper fallback message
 	if (!matchedApi || extracted.apiName === null) {
 		const fallbackPrompt = `
@@ -234,9 +219,6 @@ Respond ONLY with plain text.
 	}
 
 	// Proceed with matched API and param handling
-	let params = extracted.params || {};
-	// console.log(params, "extracted params");
-
 	const {
 		params: finalParams,
 		missingFields,
@@ -256,20 +238,26 @@ Respond ONLY with plain text.
 
 	if (missingFields.length) {
 		// Generate a helpful fallback message using OpenAI
+		console.log(missingFields, "missingFields");
 		const fallbackHelpPrompt = `
 You are a helpful assistant for a Driver Management platform.
 
 The user said: "${userMessage}"
-You're trying to call the API "${matchedApi.name}" which requires these fields: ${matchedApi.requiredFields.join(", ")}.
 
-Currently, the following fields are missing: ${missingFields.join(", ")}
+You are about to call the API: "${matchedApi.name}".
 
-Based on the user message and missing fields, generate a friendly and helpful response asking the user to provide the missing info.
+This API requires the following fields: ${matchedApi.requiredFields.join(", ")}.
 
-Example:
-- "To help you assign a shift, I need the DriverId and shiftType. Could you please provide them?"
+Already provided/handled fields should NOT be asked again.
+The only missing fields are: ${missingFields.join(", ")}.
 
-Respond ONLY with plain text.
+Your task:
+- Politely ask ONLY for the missing fields.
+- Do not mention fields that are already provided.
+- Respond in plain text, friendly tone.
+
+Example format:
+"To help you assign a shift, I need the DriverId and shiftType. Could you please provide them?"
 `;
 
 		const fallbackResponse = await openai.chat.completions.create({
@@ -279,6 +267,7 @@ Respond ONLY with plain text.
 		});
 
 		const fallbackMessage = fallbackResponse.choices[0].message.content.trim();
+		console.log(fallbackMessage, "fallbackMessage");
 
 		return {
 			error: "Missing required fields",
@@ -293,6 +282,7 @@ Respond ONLY with plain text.
 	try {
 		// console.log(matchedApi);
 		const apiResponse = await matchedApi.handler(params, userMessage, session, onStream);
+		console.log(apiResponse, "api response");
 		return {
 			api: matchedApi,
 			params,
