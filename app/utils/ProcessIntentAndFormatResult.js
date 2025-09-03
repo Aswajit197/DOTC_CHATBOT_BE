@@ -59,16 +59,12 @@ Decide the HTML output format dynamically based on intent and API description:
 - If the data contains date string send in proper user readable format.
 - Always start with a <p> introduction sentence before table or list.
 
+
 - **Add a final HTML summary block immediately before the optional follow-up visualization message**:
-  - Use: <div class="summary"><p>...</p></div>
-  - The summary should provide **statistical insights** that add value, not just restating obvious facts:
-    - total count of remaining items (only when it is not trivial, e.g., don’t say “There are 7 days in total” for weekdays)
-    - distribution counts (how many items fall into each preference/value/category)
-    - highlight the most common and least common values
-    - include averages, minimums, maximums, or percentages if meaningful
-    - avoid stating universally known facts (like fixed counts of weekdays, months, etc.)
-    - present it in natural, user-friendly sentences (e.g., "Out of 100 drivers, 45 prefer OT=2 while only 12 prefer OT=1. The average OT preference is 2.3, making OT=2 the most common choice.")
-  - Keep it concise (1–3 sentences).
+  - • One <div class="summary"><p>...</p></div> that must include:  
+        - The exact total count of rows/entities in the table  
+        - 1-2 additional meaningful insights (e.g., distribution of overtime preferences, highest/lowest values)  
+    • Never use vague phrases like "several", "some", "a few". Always compute and display the precise number. 
 ${
 	api?.isSuitableForGraph
 		? `- After the summary block, if the refined data is numeric, time-based, comparative, or trend-related, add the follow-up line:
@@ -82,11 +78,10 @@ ${
 After finishing the HTML reply, summary, and optional follow-up message, output a new line with exactly:
 ###END###
 `;
-
 		const completion = await openai.chat.completions.create({
 			model: "gpt-4o-mini",
 			messages: [{ role: "user", content: prompt }],
-			temperature: 0.3,
+			temperature: 0,
 			stream: true,
 		});
 

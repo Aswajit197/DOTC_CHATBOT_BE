@@ -45,7 +45,9 @@ If Independent (Single Intent):
    * For missing required fields, leave them empty.
 
 ### Multi-Intent Case
-If the user message clearly requires **combination of multiple APIs**:
+If the user message clearly requires **combination of multiple distinct APIs**
+(i.e., more than one API from the list is needed to fulfill the request):
+
 Examples:
 - "list all drivers with their overtime preference"
 - "show drivers and their shift details"
@@ -56,18 +58,28 @@ Examples:
 → Return JSON in this format:
 {
   "apis": [
-    {
-      "apiName": "<exact API name from above>",
-      "params": { /* extracted params */ }
-    },
-    {
-      "apiName": "<exact API name from above>",
-      "params": { /* extracted params */ }
-    }
+    { "apiName": "<exact API name from above>", "params": { /* extracted params */ } },
+    { "apiName": "<another API name>", "params": { /* extracted params */ } }
   ],
   "dependent": false,
   "type": "multi_intent"
 }
+
+Important rule:
+- If only **one API** is matched (apis array length = 1), 
+  it must be treated as a **single independent intent**, not multi_intent,
+  even if the user message contains "and" or asks for multiple calculations.
+
+   Absolutely never output type = "multi_intent" when only one API is matched.
+   In that case, you must return a single independent intent and must NOT use the key "apis".
+ The correct format is:
+ {
+   "apiName": "<exact API name from above>",
+   "params": { ... },
+   "dependent": false,
+   "type": "independent"
+ }
+
 
 ### Special Case: Visualization Follow-up
 If the user message is a short confirmation (examples: "yes", "yeah", "sure", "ok", "give me a chart", "show me a graph", "plot it", "visualize it")
@@ -131,7 +143,6 @@ Important:
 - DO NOT add comments or extra text.
 - Output valid JSON only.
 `;
-
 	const completion = await openai.chat.completions.create({
 		model: "gpt-4o-mini",
 		messages: [
@@ -140,8 +151,6 @@ Important:
 		],
 		temperature: 0,
 	});
-
-	console.log(completion.choices[0].message);
 
 	let extracted;
 
@@ -282,7 +291,6 @@ Example format:
 	try {
 		// console.log(matchedApi);
 		const apiResponse = await matchedApi.handler(params, userMessage, session, onStream);
-		console.log(apiResponse, "api response");
 		return {
 			api: matchedApi,
 			params,
@@ -295,3 +303,7 @@ Example format:
 }
 
 module.exports = getIntentFromOpenAI;
+
+
+// 1.first check for missing field or not like in previous user asked for something but get bot message  missing field and  then provided the missing field 
+// 2.user message is for same like previous like 

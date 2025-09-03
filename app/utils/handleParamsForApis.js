@@ -26,7 +26,7 @@ function gatherMergedParams(session) {
 	return merged;
 }
 
-async function handleParamsForApi(matchedApi, params, userMessage, session, onStream) {
+async function handleParamsForApi(matchedApi, params, userMessage, session, onStream, type) {
 	// Normalize parameter casing
 	if (matchedApi?.requiredFields?.length) {
 		const normalized = {};
@@ -55,7 +55,10 @@ async function handleParamsForApi(matchedApi, params, userMessage, session, onSt
 	if (missingFields.length) {
 		try {
 			const tempParams = { ...params };
-			const tempResult = await matchedApi.handler(tempParams, userMessage, session, onStream);
+
+			let tempResult;
+			if (type === "multi_intent") tempResult = await matchedApi.multiHandler(tempParams, userMessage, session, onStream);
+			else tempResult = await matchedApi.handler(tempParams, userMessage, session, onStream);
 
 			if (!tempResult?.missingFields) {
 				return {
@@ -99,7 +102,6 @@ async function handleParamsForApi(matchedApi, params, userMessage, session, onSt
 		}
 		missingFields = matchedApi.requiredFields.filter((f) => !params[f]);
 	}
-
 
 	return { params, missingFields };
 }

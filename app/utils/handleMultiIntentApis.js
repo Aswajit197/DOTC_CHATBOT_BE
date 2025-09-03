@@ -16,14 +16,15 @@ async function handleMultiIntentApis(extracted, userMessage, session, onStream) 
 			});
 			continue;
 		}
-
 		// Validate params
+		let type = "multi_intent";
 		const { params: finalParams, missingFields } = await handleParamsForApi(
 			matchedApi,
 			apiInfo.params || {},
 			userMessage,
 			session,
-			onStream
+			onStream,
+			type
 		);
 
 		if (missingFields.length) {
@@ -64,21 +65,60 @@ async function handleMultiIntentApis(extracted, userMessage, session, onStream) 
 	// ✅ Now build prompt for OpenAI merge
 	let fullText = "";
 	try {
-const prompt = `
+		const prompt = `
 You're a smart assistant. The user asked:
 "${userMessage}"
 
-You have data from multiple APIs. Your tasks:
-1. Check whether user message intent is for a merged response and  the APIs share a common entity (e.g., both return driver name, or both contain IDs/keys that can be matched).
-   - If YES: Merge/combine these API results into a single cohesive response.
-   - If NO: Present each API's data separately, one after another, in the same message.
-2. When merging, join data into one table with all relevant merged columns.
-3. When showing separately, give each API its own block:
-   <p><strong>[API Name / Description]</strong></p>
-   followed by its data in table, list, or paragraph (whichever fits best).
-4. Respect any filters or requirements in the user message (e.g., "only active drivers", "show overtime preference").
-5. Always produce structured HTML output.
-6. IMPORTANT: Never wrap the HTML in Markdown code fences (\`\`\`html or \`\`\`). Only return plain HTML.
+You have data from one or more APIs. Your tasks:
+
+1. **Intent Check**  
+   - Determine if the user's request requires a *merged response* (e.g., APIs share a common entity such as driverName, driverId, or another key).  
+   - If YES → Only output a single unified merged result. Do **not** show any individual API data before merging.  
+   - If NO → Present each API's data separately, one section after another, in the same message.  
+   - If an API is used only as a filter (e.g., qualifications, status checks, min/max limits), its results must never be displayed separately. They should only constrain the merged output.
+
+2. **Formatting Rules**  
+   - Output must be **strictly valid HTML**.  
+   - Never use Markdown (\`\`\`html, \`\`\`, etc.).  
+   - Never repeat the same dataset in multiple formats.  
+   - Use semantic tags:  
+     • <table> for tabular data  
+     • <ul> for list data  
+     • <p> for descriptive text  
+   - Each section must include:  
+     • Exactly one <p> introduction sentence (tailored to the user’s request and API context)  
+     • Exactly one structured block (<table>, <ul>, or <p>)  
+     • One <div class="summary"><p>...</p></div> that must include:  
+        - The exact total count of rows/entities in the table  
+        - 1-2 additional meaningful insights (e.g., distribution of overtime preferences, highest/lowest values)  
+     • Never use vague phrases like "several", "some", "a few". Always compute and display the precise number. 
+
+3. **Merging Behavior**  
+   - If APIs share a common entity (e.g., drivers/LMDPs), always merge them into a single table.  
+   - Each row must represent one entity, with all relevant fields from all APIs combined into columns.  
+   - **Never output raw lists of entities separately** (e.g., “Here are the drivers …”).  
+   - Only show the merged table representation.  
+   - Qualification or filter-type APIs act only as filters. They influence which entities appear in the table but should never   produce a standalone section or list.
+   - Normalize entity keys (e.g., driverName, LMDPName) across APIs:
+      • Match case-insensitively  
+      • Ignore minor differences in spacing/capitalization  
+      • If an entity appears in the filter list but is missing from another API, still include it in the merged table with "N/A" for the missing fields.
+
+4. **Filters & Requirements**  
+   - Apply all user-specified conditions (e.g., "only active drivers", "qualification = 3", "show overtime preference").  
+   - Only include data relevant to these filters.  
+
+5. **Multiple APIs**  
+   - If unrelated: Present sequentially → finish one section completely before starting the next.  
+   - If related: Merge results → create a single, cohesive table.  
+
+6. **Strict Merge Enforcement**  
+   - If the intent is a merged request, stream the response only **after merging all relevant API data**.  
+   - Do not first output single-API results and then later merge them.  
+
+7. **Ending**  
+   - After the entire response, always append:
+     ###END###
 
 ---
 
@@ -86,34 +126,14 @@ You have data from multiple APIs. Your tasks:
 ${results
 	.map(
 		(r) => `
-API Name: ${r.api?.name}
-Description: ${r.api?.description}
-Query Params: ${JSON.stringify(r.params, null, 2)}
 Example Response: ${JSON.stringify(r.exampleResponse, null, 2)}
-Raw Data: ${JSON.stringify(r.rawData, null, 2)}
+Raw Data: ${JSON.stringify(r?.rawData?.data, null, 2)}
 `
 	)
 	.join("\n\n")}
 ---
-
-### Instructions
-- For each API section:
-  • Always begin with a short <p> introduction sentence.  
-  • The intro should be meaningful and based on:
-    - the user message
-    - the API description
-    - the type of data being shown
-  • Example: "Here is the list of drivers and their overtime (OT) preferences:" or 
-    "Here are the weekday priority factors as requested."
-- If multiple APIs are unrelated (no common joinable fields), present them sequentially in the same reply: finish one section completely (intro + table/list + summary) before starting the next.
-- If the APIs share a common entity, merge them into one table.
-- Use <table> for tabular data, <ul> for list data, <p> for descriptive data.
-- After each section, include <div class="summary"><p>...</p></div> with insights.
-- Keep summaries concise (1–3 sentences) and avoid trivial facts.
-- Output must be strictly valid HTML, no Markdown, no JSON, no plain text.
-At the very end, output:
-###END###
 `;
+
 		const completion = await openai.chat.completions.create({
 			model: "gpt-4o-mini",
 			messages: [{ role: "user", content: prompt }],
@@ -149,7 +169,7 @@ At the very end, output:
 
 		return { type: "multi_intent", results, combinedReply: finalReply };
 	} catch (err) {
-		console.log(err)
+		console.log(err);
 		console.error("Multi-intent OpenAI merge failed:", err.message);
 		return { type: "multi_intent", results, combinedReply: "Could not merge API results." };
 	}

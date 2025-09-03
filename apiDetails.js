@@ -250,7 +250,7 @@ module.exports = [
 				const { data } = await axios.get(
 					`${API_BASE}/GetLMDPDayPreferenceList?DriverId=${params.DriverId}&ClientId=${params.ClientId}`
 				);
-				console.log(data)
+				console.log(data);
 
 				let DayPreferenceList = data?.data?.map((item) => ({
 					driverName: item?.driverName,
@@ -317,9 +317,7 @@ module.exports = [
 		description:
 			"Retrieves each driver's OT (Overtime Preference) settings for a given StationId. This does NOT include qualifications or weekly date ranges — only the preference values.",
 		requiredFields: ["StationId"],
-		exampleResponse: {
-			DriversOTPPreferenceList: [{ driverName: "JORGE VALENCIA", preference: 2 }],
-		},
+		exampleResponse: [{ driverName: "JORGE VALENCIA", preference: 2 }],
 		handler: async (params, userMessage, session, onStream) => {
 			if (!params?.StationId) params.StationId = 2;
 
@@ -387,7 +385,7 @@ module.exports = [
 	{
 		name: "GetLMDPMaxQualificationsList",
 		description:
-			"Retrieves the qualifications of all drivers for a specific ClientId within a specified weekly date range (FromDate to ToDate). This is based on a Sunday–Saturday week.",
+			"Retrieves the maximum qualification level of all drivers (also called LMDPs) for a specific ClientId within a specified weekly date range (FromDate to ToDate), based on a Sunday–Saturday week. This API should also be used when the user requests qualifications alongside other driver-related information (such as overtime preferences, shifts, or assignments), or when the query involves filtering drivers by qualification level (e.g., 'show drivers with qualification 3 and their OT preferences' or 'list all LMDPs above qualification 2'). It also supports queries for a single driver by name or for the full list of drivers.",
 		requiredFields: ["ClientId", "FromDate", "ToDate"],
 		exampleResponse: [{ driverName: "JORGE VALENCIA", qualification: 2 }],
 		handler: async (params, userMessage, session, onStream) => {
@@ -515,7 +513,6 @@ Respond in JSON only:
 			}
 		},
 		multiHandler: async (params, userMessage, session, onStream) => {
-			console.log(onStream, "on stream on GetLMDPMaxQualificationsList");
 			// If FromDate/ToDate missing
 			if (!params?.FromDate || !params?.ToDate) {
 				const today = new Date();
@@ -611,9 +608,6 @@ Respond in JSON only:
 				const { data } = await axios.get(
 					`https://dotc-delivery.azurewebsites.net/GetLMDPMaxQualificationsList?ClientId=${params.ClientId}&FromDate=${params.FromDate}&ToDate=${params.ToDate}`
 				);
-
-
-				console.log(data,"max qualification data")
 
 				let DriversMaxQualificationList = data?.data?.map((item) => ({
 					driverName: item?.driverName,
