@@ -1,10 +1,24 @@
+
+
+
+
 const mongoose = require("mongoose");
+
+const apiDetailsSchema = new mongoose.Schema(
+	{
+		name: { type: String, required: true },
+		description: { type: String, required: true },
+		requiredFields: [{ type: String }],
+		exampleResponse: { type: mongoose.Schema.Types.Mixed },
+	},
+	{ _id: false }
+);
+
 const sessionSchema = new mongoose.Schema(
 	{
-		userId: { type: String, required: true },
 		ClientId: { type: String, required: true },
 		StationId: { type: String },
-		sessionName: { type: String },
+		sessionId: { type: String, required: true, unique: true },
 		history: [
 			{
 				sender: String,
@@ -13,6 +27,7 @@ const sessionSchema = new mongoose.Schema(
 				timestamp: Date,
 			},
 		],
+		apiDetailsHistory: [apiDetailsSchema],
 		lastResponseMessage: { type: String },
 		lastSuccessUserMessage: { type: String },
 		lastSuccessIntent: { type: String },

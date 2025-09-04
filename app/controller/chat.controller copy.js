@@ -2,10 +2,9 @@ const getIntentFromOpenAI = require("../utils/getIntentFromOpenAi");
 const Session = require("../model/session.model");
 const apiListData = require("../../apiDetails");
 
-// Chat Controller
+// Admin Controller
 const chat = {};
 
-// 🔹 Send Message Controller
 chat.sendMessage = async (req, res) => {
 	try {
 		const { sessionId, message } = req.body;
@@ -13,7 +12,7 @@ chat.sendMessage = async (req, res) => {
 			return res.status(400).json({ error: "Missing session or message" });
 		}
 
-		const session = await Session.findById(sessionId);
+		const session = await Session.findOne({ sessionId });
 		if (!session) return res.status(400).json({ error: "Session not initialized" });
 
 		// SSE headers
@@ -37,7 +36,7 @@ chat.sendMessage = async (req, res) => {
 			},
 		});
 
-		// Handle fallbacks and errors
+		// --- Fallback handling before sending final ---
 		if (intentResult.error === "No API matched" && intentResult.fallbackMessage) {
 			session.history.push({
 				sender: "bot",
@@ -50,19 +49,22 @@ chat.sendMessage = async (req, res) => {
 		}
 
 		if (intentResult.error === "Missing required fields" && intentResult.fallbackMessage) {
-			// 🔹 Save missing field context
+			// 🔹 Save missing field context into session
 			session.missingField = {
 				lastMissingFieldBotMessage: intentResult.fallbackMessage,
 				lastMissingApiIntent: intentResult?.api?.name,
 				lastParams: intentResult.params,
 				missingFields: intentResult?.requires || [],
 			};
+
 			session.history.push({
 				sender: "bot",
 				message: intentResult.fallbackMessage,
 				timestamp: new Date(),
 			});
+
 			await session.save();
+
 			res.write(`data: ${JSON.stringify({ type: "final", response: intentResult.fallbackMessage })}\n\n`);
 			return res.end();
 		}
@@ -83,15 +85,14 @@ chat.sendMessage = async (req, res) => {
 			res.end();
 			return;
 		}
-
 		if (intentResult.type === "same intent") {
 			res.write(`data: ${JSON.stringify({ type: "final", response: intentResult.formattedReply })}\n\n`);
 			res.end();
 			return;
 		}
 
-		// ✅ Send final successful response
-		res.write(`data: ${JSON.stringify({ type: "final", response: intentResult.formattedReply })}\n\n`);
+		// Send final successful response
+		// res.write(`data: ${JSON.stringify({ type: "final", response: intentResult.formattedReply })}\n\n`);
 		res.end();
 
 		// Save bot message
@@ -112,57 +113,48 @@ chat.sendMessage = async (req, res) => {
 	}
 };
 
-// 🔹 Create Session Controller
 chat.createSession = async (req, res) => {
 	try {
-		let { clientId, userId } = req.body;
+		let { sessionId, clientId } = req.body;
 
-		if (!clientId || !userId) {
-			return res.status(400).json({ error: "clientId, and userId are required." });
+		if (!sessionId || !clientId) {
+			return res.status(400).json({ error: "Either sessionId or clientId must be provided." });
 		}
+
+		// Check if session already exists
+		const existingSession = await Session.findOne({ sessionId });
+		if (existingSession) {
+			return res.json({ message: "Session already exists", session: existingSession });
+		}
+
 		// Greeting message
 		const greetingMessage = {
 			sender: "bot",
-			message: `Hi! 👋 I'm your SchedAI assistant. Ask me anything related to your tasks, drivers, or station work and I’ll help you out!`,
+			message:
+				"Hi Jim! 👋 I'm your SchedAI assistant. Ask me anything related to your tasks, drivers, or station work and I’ll help you out!",
 			context: {
-				lastParams: { StationId: clientId, ClientId: clientId },
+				lastParams: {
+					sessionId,
+					StationId: clientId,
+					ClientId: clientId,
+				},
 			},
 			timestamp: new Date(),
 		};
 
-		// Create new session
+		// Create new session with API list stored separately
 		const session = await Session.create({
+			sessionId,
 			ClientId: clientId,
 			StationId: clientId,
-			userId,
-			sessionName: "New Chat",
 			history: [greetingMessage],
+			apiDetailsHistory: apiListData,
 		});
 
 		res.json({ message: "Session created successfully", session });
 	} catch (err) {
 		console.error("Error creating chat session:", err);
 		res.status(500).json({ err, error: "Chat session creation failed" });
-	}
-};
-
-// 🔹 Fetch Sessions by userId
-chat.getSessionsByUserId = async (req, res) => {
-	try {
-		const { userId } = req.params;
-		if (!userId) {
-			return res.status(400).json({ error: "userId is required" });
-		}
-
-		const sessions = await Session.find({ userId }).sort({ createdAt: -1 });
-		if (!sessions.length) {
-			return res.status(404).json({ message: "No sessions found for this user" });
-		}
-
-		res.json({ sessions });
-	} catch (err) {
-		console.error("Error fetching chats:", err);
-		res.status(500).json({ err, error: "Failed to fetch chats" });
 	}
 };
 
