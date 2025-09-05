@@ -90,7 +90,7 @@ You have data from one or more APIs. Your tasks:
      • Exactly one structured block (<table>, <ul>, or <p>)  
      • One <div class="summary"><p>...</p></div> that must include:  
         - The exact total count of rows/entities in the table  
-        - 1-2 additional meaningful insights (e.g., distribution of overtime preferences, highest/lowest values)  
+        - short additional meaningful insights (e.g., distribution of overtime preferences, highest/lowest values)  
      • Never use vague phrases like "several", "some", "a few". Always compute and display the precise number. 
 
 3. **Merging Behavior**  

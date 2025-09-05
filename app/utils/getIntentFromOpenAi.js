@@ -156,7 +156,6 @@ Important:
 
 	try {
 		extracted = JSON.parse(completion.choices[0].message.content.trim());
-		console.log(extracted, "extracted");
 	} catch (err) {
 		console.error("Failed to parse OpenAI response:", err);
 		return { error: "OpenAI parsing failed" };

@@ -84,9 +84,7 @@ module.exports = [
 		description:
 			"Returns priority factors for each day of the week including saturday and sunday .If a day is provided, returns only that day's data. Supports filtering by given asked day or multiple day",
 		requiredFields: ["ClientId"],
-		exampleResponse: {
-			dayFactors: [{ id: 2, dayName: "Monday", factor: 2 }],
-		},
+		exampleResponse: [{ dayName: "Monday", factor: 2 }],
 		handler: async (params, userMessage, session, onStream) => {
 			// console.log(params,"params in get day factor handler")
 			if (!params?.ClientId) params.ClientId = 2;
@@ -110,9 +108,7 @@ module.exports = [
 						description: "Returns priority factors for each day of the week.",
 						isSuitableForGraph: true,
 					},
-					exampleResponse: {
-						dayFactors: [{ id: 2, dayName: "Monday", factor: 2 }],
-					},
+					exampleResponse: [{ dayName: "Monday", factor: 2 }],
 					actualData: dayFactors,
 					params,
 					session,
@@ -156,15 +152,14 @@ module.exports = [
 		description:
 			"Returns available shift types and their details for scheduling , including minimum qualification (minQualification) and hours per shift ",
 		requiredFields: ["ClientId"],
-		exampleResponse: {
-			shiftTypeList: [
-				{
-					shiftTitle: "Step Van",
-					minQualification: 2,
-					hoursPerShift: 10,
-				},
-			],
-		},
+		exampleResponse: [
+			{
+				shiftTitle: "Step Van",
+				minQualification: 2,
+				hoursPerShift: 10,
+			},
+		],
+
 		handler: async (params, userMessage, session, onStream) => {
 			if (!params?.ClientId) params.ClientId = 2;
 
@@ -184,15 +179,13 @@ module.exports = [
 						description: "Returns available shift types and their details for scheduling.",
 						isSuitableForGraph: true,
 					},
-					exampleResponse: {
-						shiftTypeList: [
-							{
-								shiftTitle: "Step Van",
-								minQualification: 2,
-								hoursPerShift: 10,
-							},
-						],
-					},
+					exampleResponse: [
+						{
+							shiftTitle: "Step Van",
+							minQualification: 2,
+							hoursPerShift: 10,
+						},
+					],
 					actualData: shiftTypeList,
 					params,
 					session,
@@ -232,26 +225,22 @@ module.exports = [
 		description:
 			"This API is used to fetch a driver’s day-wise work preference, showing which days they prefer to work, avoid, or are neutral about. The preference field represents the main value to consider, while oldPreference can be ignored. Use this intent when the user wants to know a driver’s preferred working days or availability patterns. For example: “What is Anthony Semidey’s day preference?”, “Show me which days Alejandro Reyes prefers to work”, “List all drivers and their day preferences”, or “Which days does a driver not want to work?” This helps managers align schedules with driver availability and reduce conflicts.",
 		requiredFields: ["DriverId", "ClientId"],
-		exampleResponse: {
-			DayPreferenceList: [
-				{
-					driverName: "JORGE VALENCIA",
-					day: "Sun",
-					preference: 2,
-				},
-			],
-		},
+		exampleResponse: [
+			{
+				driverName: "JORGE VALENCIA",
+				day: "Sun",
+				preference: 2,
+			},
+		],
+
 		handler: async (params, userMessage, session, onStream) => {
 			if (!params?.ClientId) params.ClientId = 2;
 			if (!params?.DriverId) return { missingFields: ["DriverId"] };
-
-			console.log(params.DriverId, "did");
 
 			try {
 				const { data } = await axios.get(
 					`${API_BASE}/GetLMDPDayPreferenceList?DriverId=${params.DriverId}&ClientId=${params.ClientId}`
 				);
-				console.log(data);
 
 				let DayPreferenceList = data?.data?.map((item) => ({
 					driverName: item?.driverName,
@@ -267,15 +256,13 @@ module.exports = [
 							"This API is used to fetch a driver’s day-wise work preference, showing which days they prefer to work, avoid, or are neutral about. The preference field represents the main value to consider, while oldPreference can be ignored. Use this intent when the user wants to know a driver’s preferred working days or availability patterns. For example: “What is Anthony Semidey’s day preference?”, “Show me which days Alejandro Reyes prefers to work”, “List all drivers and their day preferences”, or “Which days does a driver not want to work?” This helps managers align schedules with driver availability and reduce conflicts.",
 						isSuitableForGraph: true,
 					},
-					exampleResponse: {
-						DayPreferenceList: [
-							{
-								driverName: "JORGE VALENCIA",
-								day: "Sun",
-								preference: 2,
-							},
-						],
-					},
+					exampleResponse: [
+						{
+							driverName: "JORGE VALENCIA",
+							day: "Sun",
+							preference: 2,
+						},
+					],
 					actualData: DayPreferenceList,
 					params,
 					session,
@@ -341,14 +328,12 @@ module.exports = [
 						description: "Returns OTP preference for each drivers",
 						isSuitableForGraph: true,
 					},
-					exampleResponse: {
-						DriversOTPPreferenceList: [
-							{
-								driverName: "JORGE VALENCIA",
-								preference: 2,
-							},
-						],
-					},
+					exampleResponse: [
+						{
+							driverName: "JORGE VALENCIA",
+							preference: 2,
+						},
+					],
 					actualData: DriversOTPPreferenceList,
 					params,
 					session,
@@ -630,28 +615,27 @@ Respond in JSON only:
 		description:
 			"Returns total hours scheduled (for each shift type) between weeks 25(start week number) and 33(end Week number) of all LMDPs broken down by shift type , list of drivers with their name and  shift type(like Parcel Van , Step Van , Walker ,Box Truck etc..) with hours like for a given range of week like 25 to 33",
 		requiredFields: ["WeekStarting", "WeekEnding", "Year", "ClientId"],
-		exampleResponse: {
-			driversWeeklyWorkingHrList: [
-				{
-					driverName: "ALEJANDRO LAYA",
-					shifts: {
-						"Parcel Van": 0,
-						"Step Van": 280,
-						Walker: 32,
-						"Box Truck": 0,
-					},
+		exampleResponse: [
+			{
+				driverName: "ALEJANDRO LAYA",
+				shifts: {
+					"Parcel Van": 0,
+					"Step Van": 280,
+					Walker: 32,
+					"Box Truck": 0,
 				},
-				{
-					driverName: "Alejandro Reyes",
-					shifts: {
-						"Parcel Van": 0,
-						"Step Van": 0,
-						Walker: 128,
-						"Box Truck": 0,
-					},
+			},
+			{
+				driverName: "Alejandro Reyes",
+				shifts: {
+					"Parcel Van": 0,
+					"Step Van": 0,
+					Walker: 128,
+					"Box Truck": 0,
 				},
-			],
-		},
+			},
+		],
+
 		handler: async (params, userMessage, session, onStream) => {
 			if (!params?.ClientId !== 2) params.ClientId = 2;
 			if (!params?.WeekStarting) return { missingFields: ["WeekStarting"] };
@@ -680,28 +664,26 @@ Respond in JSON only:
 							"Returns total hours scheduled (for each shift type) between weeks 25(start week number) and 33(end Week number) of all LMDPs broken down by shift type , list of drivers with their name and  shift type(like Parcel Van , Step Van , Walker ,Box Truck etc..) with hours like for a given range of week like 25 to 33",
 						isSuitableForGraph: true,
 					},
-					exampleResponse: {
-						driversTotalScheduledHours: [
-							{
-								driverName: "ALEJANDRO LAYA",
-								shifts: {
-									"Parcel Van": 0,
-									"Step Van": 280,
-									Walker: 32,
-									"Box Truck": 0,
-								},
+					exampleResponse: [
+						{
+							driverName: "ALEJANDRO LAYA",
+							shifts: {
+								"Parcel Van": 0,
+								"Step Van": 280,
+								Walker: 32,
+								"Box Truck": 0,
 							},
-							{
-								driverName: "Alejandro Reyes",
-								shifts: {
-									"Parcel Van": 0,
-									"Step Van": 0,
-									Walker: 128,
-									"Box Truck": 0,
-								},
+						},
+						{
+							driverName: "Alejandro Reyes",
+							shifts: {
+								"Parcel Van": 0,
+								"Step Van": 0,
+								Walker: 128,
+								"Box Truck": 0,
 							},
-						],
-					},
+						},
+					],
 					actualData: driversTotalScheduledHours,
 					params,
 					session,
@@ -749,17 +731,15 @@ Respond in JSON only:
 		description:
 			"Returns a list of driver's time-off requests, including details such as driver name, request dates, reason for leave, and the current status (approved, declined, or pending). This API helps track when drivers have requested time off and whether those requests were accepted or not. Example queries include: 'Which driver takes the most leaves?', 'Give me pending leave requests', 'Show me drivers time-off requests.",
 		requiredFields: ["ClientId"],
-		exampleResponse: {
-			driversOffRequestList: [
-				{
-					driverName: "ALEJANDRO LAYA",
-					dateStart: "2025-03-05T00:00:00",
-					dateEnd: "2025-02-10T00:00:00",
-					requestReason: "request reason here",
-					requestStatus: "Declined",
-				},
-			],
-		},
+		exampleResponse: [
+			{
+				driverName: "ALEJANDRO LAYA",
+				dateStart: "2025-03-05T00:00:00",
+				dateEnd: "2025-02-10T00:00:00",
+				requestReason: "request reason here",
+				requestStatus: "Declined",
+			},
+		],
 		handler: async (params, userMessage, session, onStream) => {
 			if (!params?.ClientId !== 2) params.ClientId = 2;
 
@@ -782,17 +762,15 @@ Respond in JSON only:
 							"returns list of driver's time-off requests, including details such as driver name, request dates, reason for leave, and the current status (approved, declined, or pending). It is used to check when drivers have requested time off and whether those requests were accepted or not.",
 						isSuitableForGraph: false,
 					},
-					exampleResponse: {
-						driversOffRequestList: [
-							{
-								driverName: "ALEJANDRO LAYA",
-								dateStart: "2025-03-05T00:00:00",
-								dateEnd: "2025-02-10T00:00:00",
-								requestReason: "request reason here",
-								requestStatus: "Declined",
-							},
-						],
-					},
+					exampleResponse: [
+						{
+							driverName: "ALEJANDRO LAYA",
+							dateStart: "2025-03-05T00:00:00",
+							dateEnd: "2025-02-10T00:00:00",
+							requestReason: "request reason here",
+							requestStatus: "Declined",
+						},
+					],
 					actualData: driversOffRequestList,
 					params,
 					session,
@@ -834,18 +812,17 @@ Respond in JSON only:
 		description:
 			"returns a list of available locations for LMDPs/drivers along with their details, including name, address, city, state, zip code, type, and active status. It is used to identify and retrieve information about all operational locations in the system.",
 		requiredFields: ["ClientId"],
-		exampleResponse: {
-			locationLists: [
-				{
-					locationId: 163,
-					locationName: "DBK1",
-					locationAddress: "1 Bulova Ave",
-					locationCity: "Woodside",
-					locationZip: "11357",
-					locationState: "New York",
-				},
-			],
-		},
+		exampleResponse: [
+			{
+				locationId: 163,
+				locationName: "DBK1",
+				locationAddress: "1 Bulova Ave",
+				locationCity: "Woodside",
+				locationZip: "11357",
+				locationState: "New York",
+			},
+		],
+
 		handler: async (params, userMessage, session, onStream) => {
 			if (!params?.ClientId !== 2) params.ClientId = 2;
 
@@ -870,18 +847,16 @@ Respond in JSON only:
 							"returns a list of available locations for LMDPs along with their details, including name, address, city, state, zip code, type, and active status. It is used to identify and retrieve information about all operational locations in the system.",
 						isSuitableForGraph: false,
 					},
-					exampleResponse: {
-						locationLists: [
-							{
-								locationId: 163,
-								locationName: "DBK1",
-								locationAddress: "1 Bulova Ave",
-								locationCity: "Woodside",
-								locationZip: "11357",
-								locationState: "New York",
-							},
-						],
-					},
+					exampleResponse: [
+						{
+							locationId: 163,
+							locationName: "DBK1",
+							locationAddress: "1 Bulova Ave",
+							locationCity: "Woodside",
+							locationZip: "11357",
+							locationState: "New York",
+						},
+					],
 					actualData: locationLists,
 					params,
 					session,
@@ -925,19 +900,17 @@ Respond in JSON only:
 		description:
 			"returns the default scheduling and permission settings defined by the manager. It includes rules such as the maximum allowed unavailable days, maximum time-off length, whether weekend availability is required, and permissions for approving neutral or open shift requests. This API is used to understand the scheduling policies and restrictions that apply to drivers.",
 		requiredFields: ["ClientId"],
-		exampleResponse: {
-			permissionList: [
-				{
-					maxDaysUnavailable: 2,
-					requireWeekendDay: false,
-					maxTimeOffLength: 2,
-					approveNeutralRequests: true,
-					requireOpenShiftApproval: false,
-					canCreateLDMPGroups: false,
-					chatResponsesVisible: false,
-				},
-			],
-		},
+		exampleResponse: [
+			{
+				maxDaysUnavailable: 2,
+				requireWeekendDay: false,
+				maxTimeOffLength: 2,
+				approveNeutralRequests: true,
+				requireOpenShiftApproval: false,
+				canCreateLDMPGroups: false,
+				chatResponsesVisible: false,
+			},
+		],
 		handler: async (params, userMessage, session, onStream) => {
 			if (!params?.ClientId !== 2) params.ClientId = 2;
 
@@ -962,19 +935,17 @@ Respond in JSON only:
 							"returns the default scheduling and permission settings defined by the manager. It includes rules such as the maximum allowed unavailable days, maximum time-off length, whether weekend availability is required, and permissions for approving neutral or open shift requests. This API is used to understand the scheduling policies and restrictions that apply to drivers.",
 						isSuitableForGraph: false,
 					},
-					exampleResponse: {
-						permissionList: [
-							{
-								maxDaysUnavailable: 2,
-								requireWeekendDay: false,
-								maxTimeOffLength: 2,
-								approveNeutralRequests: true,
-								requireOpenShiftApproval: false,
-								canCreateLDMPGroups: false,
-								chatResponsesVisible: false,
-							},
-						],
-					},
+					exampleResponse: [
+						{
+							maxDaysUnavailable: 2,
+							requireWeekendDay: false,
+							maxTimeOffLength: 2,
+							approveNeutralRequests: true,
+							requireOpenShiftApproval: false,
+							canCreateLDMPGroups: false,
+							chatResponsesVisible: false,
+						},
+					],
 					actualData: permissionList,
 					params,
 					session,
@@ -1019,15 +990,13 @@ Respond in JSON only:
 		description:
 			"Retrieves the complete list of all drivers associated with the client. Use this intent when the user asks for 'all drivers list', 'give me the driver list', 'list all LMDPs', 'show all drivers with their details', or 'driver directory'. It returns each driver's ID, first name, last name, mobile number, email, and unique identifier. Always output in table format for easy viewing",
 		requiredFields: ["ClientId"],
-		exampleResponse: {
-			driverList: [
-				{
-					driverName: "Alejandaro Rayes",
-					mobilePhone: 9178334663,
-					email: "tincho76ny@gmail.com",
-				},
-			],
-		},
+		exampleResponse: [
+			{
+				driverName: "Alejandaro Rayes",
+				mobilePhone: 9178334663,
+				email: "tincho76ny@gmail.com",
+			},
+		],
 		handler: async (params, userMessage, session, onStream) => {
 			if (!params?.ClientId !== 2) params.ClientId = 2;
 
@@ -1049,16 +1018,14 @@ Respond in JSON only:
 							"retrieves the list of drivers associated with a client, including each driver’s ID, name, mobile number, email, and unique identifier. It is used to identify and access driver details linked to a specific client. Use when user asks for driver contact or ID details , return in table format",
 						isSuitableForGraph: false,
 					},
-					exampleResponse: {
-						driverList: [
-							{
-								firstName: "Alejandro",
-								lastName: "Rayes",
-								mobilePhone: 9178334663,
-								email: "tincho76ny@gmail.com",
-							},
-						],
-					},
+					exampleResponse: [
+						{
+							firstName: "Alejandro",
+							lastName: "Rayes",
+							mobilePhone: 9178334663,
+							email: "tincho76ny@gmail.com",
+						},
+					],
 					actualData: driverList,
 					params,
 					session,

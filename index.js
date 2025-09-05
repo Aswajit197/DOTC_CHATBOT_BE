@@ -25,7 +25,7 @@ app.use("/api", router);
 
 mongoose
 	.connect(process.env.MONGO_URL)
-	.then(() => console.log(`MongoDB connected ${process.env.MONGO_URL}`))
+	.then(() => console.log(`MongoDB connected `))
 	.catch((err) => console.error("MongoDB error:", err));
 
 app.get("/", async (req, res) => {

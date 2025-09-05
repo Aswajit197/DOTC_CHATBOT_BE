@@ -133,6 +133,17 @@ chat.sendMessage = async (req, res) => {
 			res.end();
 			return;
 		}
+		if (intentResult.type === "multi_intent") {
+			session.history.push({
+				sender: "bot",
+				message: intentResult?.combinedReply,
+				timestamp: new Date(),
+			});
+			await session.save();
+			res.write(`data: ${JSON.stringify({ type: "final", response: intentResult.combinedReply })}\n\n`);
+			res.end();
+			return;
+		}
 
 		// ✅ Send final successful response
 		res.write(`data: ${JSON.stringify({ type: "final", response: intentResult.formattedReply })}\n\n`);
@@ -200,10 +211,10 @@ chat.getSessionsByUserId = async (req, res) => {
 
 		const sessions = await Session.find({ userId }).sort({ createdAt: -1 });
 		if (!sessions.length) {
-			return res.status(404).json({ message: "No sessions found for this user" });
+			return res.status(200).json({ data: [], message: "No sessions found for this user" });
 		}
 
-		res.json({ sessions });
+		res.status(200).json({ data: sessions, message: "Sessions Fetched Successfully..." });
 	} catch (err) {
 		console.error("Error fetching chats:", err);
 		res.status(500).json({ err, error: "Failed to fetch chats" });

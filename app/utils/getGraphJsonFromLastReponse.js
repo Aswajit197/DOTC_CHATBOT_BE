@@ -21,7 +21,7 @@ async function getGraphJsonFromLastResponse(userMessage, session, { onStream } =
 		let systemPrompt = `
 You are an assistant that converts HTML table or list content into JSON array format.
 - Input will be HTML that contains tabular or list data.
-- Output must ONLY be valid JSON (no extra text).
+- Output must ONLY be valid JSON array(no extra text).
 - JSON must be an array of objects where keys are column/field names and values are row values.
 - Try to convert values into integer/number format if possible (e.g. "40 hours" → 40).
 `;
