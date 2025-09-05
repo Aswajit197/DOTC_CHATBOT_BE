@@ -10,6 +10,8 @@ const sessionSchema = new mongoose.Schema(
 				sender: String,
 				message: String,
 				context: {},
+				chatType: String,
+				data: { type: mongoose.Schema.Types.Mixed },
 				timestamp: Date,
 			},
 		],
@@ -28,7 +30,7 @@ const sessionSchema = new mongoose.Schema(
 		createdAt: {
 			type: Date,
 			default: Date.now,
-			expires: 60 * 60 * 24, // 24 hours
+			expires: 5 * 60 * 60 * 24, // 5* 24 hours
 		},
 	},
 	{ timestamps: true }

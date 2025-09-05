@@ -1,6 +1,7 @@
 const getIntentFromOpenAI = require("../utils/getIntentFromOpenAi");
 const Session = require("../model/session.model");
-const apiListData = require("../../apiDetails");
+const { OpenAI } = require("openai");
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 // Chat Controller
 const chat = {};
@@ -15,6 +16,35 @@ chat.sendMessage = async (req, res) => {
 
 		const session = await Session.findById(sessionId);
 		if (!session) return res.status(400).json({ error: "Session not initialized" });
+
+		// 🔹 Check if this is the first user message in the session
+		const hasUserMessage = session?.history?.some((h) => h.sender === "user");
+		console.log(hasUserMessage, "hasUserMessage");
+		// inside sendMessage controller -> first user message check
+		if (!hasUserMessage) {
+			try {
+				const completion = await openai.chat.completions.create({
+					model: "gpt-3.5-turbo", //
+					messages: [
+						{
+							role: "system",
+							content: "Generate a very short 2-4 word chat title based on the user's first message. No punctuation or quotes.",
+						},
+						{ role: "user", content: message },
+					],
+				});
+
+				const generatedName = completion.choices[0]?.message?.content?.trim();
+
+				console.log(generatedName, "name of messeage");
+				if (generatedName) {
+					session.sessionName = generatedName;
+					await session.save();
+				}
+			} catch (nameErr) {
+				console.error("Session name generation failed:", nameErr);
+			}
+		}
 
 		// SSE headers
 		res.writeHead(200, {
@@ -79,12 +109,26 @@ chat.sendMessage = async (req, res) => {
 		}
 
 		if (intentResult.type === "visualization") {
+			console.log(intentResult);
+			session.history.push({
+				sender: "bot",
+				data: intentResult?.data,
+				chatType: "visualization",
+				timestamp: new Date(),
+			});
+			await session.save();
 			res.write(`data: ${JSON.stringify({ type: "visualization", data: intentResult.data })}\n\n`);
 			res.end();
 			return;
 		}
 
 		if (intentResult.type === "same intent") {
+			session.history.push({
+				sender: "bot",
+				message: intentResult?.formattedReply,
+				timestamp: new Date(),
+			});
+			await session.save();
 			res.write(`data: ${JSON.stringify({ type: "final", response: intentResult.formattedReply })}\n\n`);
 			res.end();
 			return;
