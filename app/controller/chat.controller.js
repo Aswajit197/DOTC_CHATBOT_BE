@@ -19,7 +19,6 @@ chat.sendMessage = async (req, res) => {
 
 		// 🔹 Check if this is the first user message in the session
 		const hasUserMessage = session?.history?.some((h) => h.sender === "user");
-		console.log(hasUserMessage, "hasUserMessage");
 		// inside sendMessage controller -> first user message check
 		if (!hasUserMessage) {
 			try {
@@ -45,7 +44,6 @@ chat.sendMessage = async (req, res) => {
 				console.error("Session name generation failed:", nameErr);
 			}
 		}
-
 		// SSE headers
 		res.writeHead(200, {
 			"Content-Type": "text/event-stream",
@@ -114,10 +112,18 @@ chat.sendMessage = async (req, res) => {
 				sender: "bot",
 				data: intentResult?.data,
 				chatType: "visualization",
+				graphContents: intentResult?.graphContents,
 				timestamp: new Date(),
 			});
 			await session.save();
-			res.write(`data: ${JSON.stringify({ type: "visualization", data: intentResult.data })}\n\n`);
+			res.write(
+				`data: ${JSON.stringify({
+					type: "visualization",
+					data: intentResult.data,
+					chatType: "visualization",
+					graphContents: intentResult?.graphContents,
+				})}\n\n`
+			);
 			res.end();
 			return;
 		}

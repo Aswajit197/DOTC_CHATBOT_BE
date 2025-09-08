@@ -10,8 +10,13 @@ const sessionSchema = new mongoose.Schema(
 				sender: String,
 				message: String,
 				context: {},
-				chatType: String,
+				chatType: String, //used for type like visualization in frontend
 				data: { type: mongoose.Schema.Types.Mixed },
+				graphContents: {
+					lastGraphPrompt: { type: String },
+					lastGraphResponse: { type: String },
+					lastGraphParams: { type: mongoose.Schema.Types.Mixed },
+				},
 				timestamp: Date,
 			},
 		],
@@ -19,6 +24,7 @@ const sessionSchema = new mongoose.Schema(
 		lastSuccessUserMessage: { type: String },
 		lastSuccessIntent: { type: String },
 		lastSuccessApiResponse: { type: mongoose.Schema.Types.Mixed },
+		lastSuccessParams: { type: mongoose.Schema.Types.Mixed },
 
 		// 🔹 to persist missing field context
 		missingField: {

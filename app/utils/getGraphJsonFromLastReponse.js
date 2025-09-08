@@ -31,7 +31,6 @@ You are an assistant that converts HTML table or list content into JSON array fo
 			systemPrompt += `
 Here is the sample JSON structure you MUST follow:
 ${JSON.stringify(exampleResponse, null, 2)}
-
 Match the key names and structure exactly as shown in the example above.
 `;
 		}
@@ -56,10 +55,18 @@ Match the key names and structure exactly as shown in the example above.
 		}
 		// console.log(parsedJson, "parsed json");
 
+		console.log(session)
+		console.log(session.lastSuccessParams);
+
 		return {
 			type: "visualization",
 			data: parsedJson,
-			userReply: "Here’s the structured data ready for visualization.",
+			graphContents: {
+				lastGraphPrompt: session.lastSuccessIntent,
+				lastGraphResponse: session.lastResponseMessage,
+				lastGraphParams: session.lastSuccessParams,
+			},
+			userReply: "Here's the structured data ready for visualization.",
 		};
 	} catch (err) {
 		console.error("getGraphJson handler error:", err);

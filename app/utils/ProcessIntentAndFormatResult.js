@@ -119,6 +119,7 @@ After finishing the HTML reply, summary, and optional follow-up message, output 
 					lastSuccessUserMessage: userMessage,
 					lastSuccessIntent: api?.name || null,
 					lastSuccessApiResponse: actualData,
+					lastSuccessParams: params,
 					missingField: null,
 				},
 			}
