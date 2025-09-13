@@ -213,7 +213,6 @@ You're a helpful assistant for a LMDP and DELIVERY MANAGEMENT PLATFORM.
 ${apiListData.map((api) => `- ${api.description}`).join("\n")}
 
 DO NOT make up any new APIs. Just respond in a helpful and conversational tone.
-
 Respond ONLY with plain text.
 `;
 
