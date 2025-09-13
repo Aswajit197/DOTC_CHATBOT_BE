@@ -2,149 +2,466 @@ const { OpenAI } = require("openai");
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const Session = require("../model/session.model");
 
-/**
- * Streams GPT's partial plain text response until "###END###",
- * and returns the full HTML reply at the end.
- */
-const processIntentAndFormatResponse = async ({
-	userMessage,
-	api,
-	exampleResponse,
-	actualData,
-	params = {},
-	session,
-	onStream,
-}) => {
-	let fullText = "";
-	// console.log(actualData, "entered in process intent");
-	try {
-		const prompt = `
-You're a smart assistant designed to process structured API data intelligently and answer the user's message.
+function calculateSum(fieldName, values) {
+    console.log("🔢 Calculating sum for:", fieldName, "values:", values.length);
+    const total = values.reduce((sum, val) => sum + val, 0);
+    const result = {
+        operation: "sum",
+        field: fieldName,
+        total: total,
+        count: values.length
+    };
+    return result;
+}
 
-Your tasks:
-1. Understand the user's intent from their message.
-2. Filter, transform, or aggregate the provided API data as needed to directly answer the user's request.
-3. If the user asks for "top N items per category" (e.g., "top 10 drivers per shift type"), do the following:
-   - Treat each category in the data (like "Parcel Van", "Step Van", etc.) as a separate group.
-   - For each category, select up to N items sorted by the highest relevant metric (e.g., total shift hours).
-   - Always display each category, even if no matching items are found. In that case, display a table with a row stating "No drivers found" or similar message.
-   - Display each category in its own HTML table, starting with a clear introductory sentence.
-4. If the user provides numeric thresholds (e.g., "at least 800 hours", "more than 50 deliveries"), strictly filter the data so that only items satisfying those thresholds remain.
-5. Never include items that partially match the condition.
-6. If no explicit top-N or filter is present, display all data in the most meaningful way (table, list, or paragraph).
-7. check the response if its more likely a table format or list format or paragraph always try to give better format as per response
-8. Properly format any date strings into user-friendly readable formats.
+function calculateAverage(fieldName, values) {
+    console.log("📊 Calculating average for:", fieldName);
+    if (values.length === 0) {
+        return {
+            operation: "average",
+            field: fieldName,
+            average: 0,
+            count: 0,
+            min: null,
+            max: null
+        };
+    }
+    
+    const sum = values.reduce((acc, val) => acc + val, 0);
+    const average = Math.round((sum / values.length) * 100) / 100;
+    
+    const result = {
+        operation: "average",
+        field: fieldName,
+        average: average,
+        count: values.length,
+        min: Math.min(...values),
+        max: Math.max(...values)
+    };
+    return result;
+}
+
+function calculateMinMax(fieldName, values) {
+    if (values.length === 0) return { field: fieldName, min: null, max: null };
+    const result = {
+        operation: "min_max",
+        field: fieldName,
+        min: Math.min(...values),
+        max: Math.max(...values),
+        count: values.length
+    };
+    return result;
+}
+
+function calculateDeviation(fieldName, values) {
+    if (values.length === 0) return { field: fieldName, deviation: 0 };
+    if (values.length === 1) {
+        return {
+            operation: "standard_deviation",
+            field: fieldName,
+            average: values[0],
+            standardDeviation: 0,
+            variance: 0,
+            count: 1,
+            type: "single_value"
+        };
+    }
+    
+    const avg = values.reduce((sum, val) => sum + val, 0) / values.length;
+    
+    const sampleVariance = values.reduce((sum, val) => sum + Math.pow(val - avg, 2), 0) / (values.length - 1);
+    const sampleStdDev = Math.sqrt(sampleVariance);
+    
+   
+    const populationVariance = values.reduce((sum, val) => sum + Math.pow(val - avg, 2), 0) / values.length;
+    const populationStdDev = Math.sqrt(populationVariance);
+    
+    const result = {
+        operation: "standard_deviation",
+        field: fieldName,
+        average: Math.round(avg * 100) / 100,
+        sampleStandardDeviation: Math.round(sampleStdDev * 100) / 100,
+        populationStandardDeviation: Math.round(populationStdDev * 100) / 100,
+        sampleVariance: Math.round(sampleVariance * 100) / 100,
+        populationVariance: Math.round(populationVariance * 100) / 100,
+        count: values.length,
+        type: values.length > 30 ? "large_sample" : "small_sample"
+    };
+    
+    return result;
+}
+
+const processIntentAndFormatResponse = async ({
+    userMessage,
+    api,
+    exampleResponse,
+    actualData,
+    params = {},
+    session,
+    onStream,
+}) => {
+    console.log("🚀 Processing intent for:", userMessage);
+    
+    let fullText = "";
+    
+    try {
+        const tools = [
+            {
+                type: "function",
+                function: {
+                    name: "calculateSum",
+                    description: "Calculate sum of numeric values from data fields",
+                    parameters: {
+                        type: "object",
+                        properties: {
+                            fieldName: { 
+                                type: "string", 
+                                description: "Name of the field being calculated" 
+                            },
+                            values: { 
+                                type: "array", 
+                                items: { type: "number" },
+                                description: "Array of numeric values to sum"
+                            }
+                        },
+                        required: ["fieldName", "values"]
+                    }
+                }
+            },
+            {
+                type: "function",
+                function: {
+                    name: "calculateAverage",
+                    description: "Calculate average, min, max of numeric values",
+                    parameters: {
+                        type: "object",
+                        properties: {
+                            fieldName: { 
+                                type: "string", 
+                                description: "Name of the field being calculated" 
+                            },
+                            values: { 
+                                type: "array", 
+                                items: { type: "number" },
+                                description: "Array of numeric values to average"
+                            }
+                        },
+                        required: ["fieldName", "values"]
+                    }
+                }
+            },
+            {
+                type: "function",
+                function: {
+                    name: "calculateMinMax",
+                    description: "Find minimum and maximum values in a dataset",
+                    parameters: {
+                        type: "object",
+                        properties: {
+                            fieldName: { 
+                                type: "string", 
+                                description: "Name of the field being analyzed" 
+                            },
+                            values: { 
+                                type: "array", 
+                                items: { type: "number" },
+                                description: "Array of numeric values to analyze"
+                            }
+                        },
+                        required: ["fieldName", "values"]
+                    }
+                }
+            },
+            {
+                type: "function",
+                function: {
+                    name: "calculateDeviation",
+                    description: "Calculate standard deviation and variance of numeric values",
+                    parameters: {
+                        type: "object",
+                        properties: {
+                            fieldName: { 
+                                type: "string", 
+                                description: "Name of the field being analyzed" 
+                            },
+                            values: { 
+                                type: "array", 
+                                items: { type: "number" },
+                                description: "Array of numeric values for statistical analysis"
+                            }
+                        },
+                        required: ["fieldName", "values"]
+                    }
+                }
+            }
+        ];
+
+        // Get conversation history from session for context
+        let conversationHistory = [];
+        if (session.conversationHistory && session.conversationHistory.length > 0) {
+            // Get last 5 messages for context (adjust as needed)
+            const recentHistory = session.conversationHistory.slice(-10);
+            conversationHistory = recentHistory.map(msg => ({
+                role: msg.role,
+                content: msg.content
+            }));
+        }
+
+        const systemPrompt = `You are a smart data analysis assistant with conversation context. Your task is to:
+
+1. **Context Awareness**: Use the conversation history to understand the user's ongoing needs and maintain context.
+2. **Intent Understanding**: Analyze the current user message in context of previous interactions.
+3. **Data Processing**: Filter/transform the provided API data according to user requirements.
+4. **Numeric Analysis**: When users request calculations (sum, average, min, max, standard deviation), use the provided function tools.
+5. **Filtering**: When numeric thresholds are mentioned (e.g., "at least 800 hours", "maximum", "minimum"), strictly filter data to only include items meeting those conditions.
+6. **Response Format**: Generate user-friendly HTML responses that directly answer the user's question.
 
 ---
 
-### API Info
-Name: ${api.name}
-Description: ${api.description}
+### Conversation History:
+${conversationHistory.length > 0 ? JSON.stringify(conversationHistory, null, 2) : "No previous conversation"}
 
-### User Message
+### Current API Context:
+Name: ${api?.name || 'Unknown API'}
+Description: ${api?.description || 'No description available'}
+
+### Current User Message:
 "${userMessage}"
 
-### Query Parameters
+### Query Parameters:
 ${JSON.stringify(params, null, 2)}
 
-### Example Response Format
+### Example Response Format:
 ${JSON.stringify(exampleResponse, null, 2)}
 
-### Raw API Data
+### Current API Data:
 ${JSON.stringify(actualData, null, 2)}
 
 ---
 
-### Output Instructions
-Decide the HTML output format dynamically based on intent and API description:
+### Response Guidelines:
 
-- If the **user message** explicitly asks for "table", "tabular" or if the **API description** indicates tabular data, then format the reply as an HTML <table> with <thead>, <tbody>, <tr>, <th>, <td>.
-- If the data is best represented as a **list**, use <ul><li>...</li></ul>.
-- If userMessage intent is for specific one driver id or LMDP ID try to send in list format.
-- Try to provide complete list/table always if user message don't contains any filter action.
-- If the data is descriptive or narrative, use <p>...</p>.
-- If the data contains date string send in proper user readable format.
-- Always start with a <p> introduction sentence before table or list.
-- For top-N per category requests, provide multiple separate HTML <table> sections—one for each category (e.g., shift type).
-   - If a category has no matching items, include a single-row table with the message "No drivers found for this shift type."
-- Always include a <div class="summary"> block summarizing:
-    - Exact total counts per category or in total.
-    - 1-2 additional meaningful computed insights (e.g., highest working hours and by whom).
-    - Do not use vague terms like "several" or "some".
-- Format dates into readable forms (e.g., "September 12, 2025").
-- If the API is suitable for graphs, suggest a visualization follow-up only if applicable.
+**Format Selection:**
+- Use HTML <table> for tabular data or when user asks for "table"/"tabular" format
+- Use <ul><li> for lists or multiple items
+- Use <p> for descriptive/narrative content
+- Always start with an introductory <p> sentence
+- Format dates in user-readable format
+- Provide complete data unless user specifies filters
+
+**Required Elements:**
+1. **Summary Block**: Add before any follow-up message:
+   <div class="summary"><p>Total: [EXACT_COUNT] items. [Additional insights]</p></div>
+   - Always use exact numbers, never "several", "some", or "a few"
+   - Include 1-2 meaningful insights about the data
 
 ${
-	api?.isSuitableForGraph
-		? `<p class="followup-message">Would you like me to turn this into a graph or chart for easier analysis?</p>`
-		: ``
+    api?.isSuitableForGraph
+        ? `2. **Visualization Offer**: If data is numeric/comparative/trend-related, add:
+   <p class="followup-message">Would you like me to turn this into a visualization, such as a graph or chart?</p>
+   - Do NOT add for single values or purely descriptive responses`
+        : `2. **No Visualization Offers**: Do not suggest visualizations for this API`
 }
 
-- Do not include Markdown, JSON, or plain text—only valid HTML.
-- After the HTML reply, summary, and optional follow-up message, output exactly:
-###END###
-`;
-		const completion = await openai.chat.completions.create({
-			model: "gpt-4o-mini",
-			messages: [{ role: "user", content: prompt }],
-			temperature: 0,
-			stream: true,
-		});
+**Output Format**: HTML only (no Markdown, plain text, or JSON)
+**End Marker**: Conclude with exactly: ###END###`;
 
-		for await (const chunk of completion) {
-			const delta = chunk.choices?.[0]?.delta?.content || "";
-			if (!delta) continue;
+        const messages = [
+            { role: "system", content: systemPrompt },
+            ...conversationHistory,
+            { role: "user", content: userMessage }
+        ];
+        
+        console.log("📤 Making OpenAI call with context:", conversationHistory.length, "previous messages");
+        
+        let completion;
+        try {
+            completion = await Promise.race([
+                openai.chat.completions.create({
+                    model: "gpt-4o-mini",
+                    messages,
+                    temperature: 0.1,
+                    tools,
+                    tool_choice: "auto",
+                    stream: true,
+                }),
+                new Promise((_, reject) => 
+                    setTimeout(() => reject(new Error('OpenAI timeout')), 30000)
+                )
+            ]);
+        } catch (timeoutOrError) {
+            console.error("❌ OpenAI call failed, trying fallback:", timeoutOrError.message);
+            
+            // Fallback without tools
+            completion = await openai.chat.completions.create({
+                model: "gpt-4o-mini",
+                messages,
+                temperature: 0.1,
+                stream: true,
+            });
+        }
 
-			fullText += delta;
+        let currentToolCalls = [];
+        let assistantMessage = "";
+        let needsToolExecution = false;
 
-			// Stop when END marker appears
-			if (fullText.includes("###END###")) break;
-
-			const cleaned = delta.replace(/###\s*END\s*###/gi, "");
-			// console.log(cleaned, "cleaned....");
-			if (cleaned) {
-				const formatted = cleaned
-					// Add missing space between lowercase → UPPERCASE
-					.replace(/([a-z])([A-Z])/g, "$1 $2")
-					// Add space between number + letters (702hours → 702 hours)
-					.replace(/(\d)([A-Za-z])/g, "$1 $2")
-					// Add space between letters + number (hours702 → hours 702)
-					.replace(/([a-zA-Z])(\d)/g, "$1 $2");
-
-				if (onStream) onStream(formatted);
-			}
-		}
-		const finalReply = fullText.replace(/###END###/g, "").trim();
-
-		// ✅ Save the last reply in session
-		await Session.updateOne(
-			{ _id: session._id },
-			{
-				$set: {
-					lastResponseMessage: finalReply,
-					lastSuccessUserMessage: userMessage,
-					lastSuccessIntent: api?.name || null,
-					lastSuccessApiResponse: actualData,
-					lastSuccessParams: params,
-					missingField: null,
-				},
-			}
-		);
-
-		return {
-			userReply: fullText.replace(/###END###/g, "").trim(),
-			params,
-			api,
-		};
-	} catch (err) {
-		console.log(err);
-		console.error("processIntentAndFormatResponse error:", err.message);
-		return {
-			userReply: "Here's the available data. (Intent-based personalization failed.)",
-			params,
-			api,
-		};
-	}
+        // Process main stream
+        for await (const chunk of completion) {
+            const choice = chunk.choices?.[0];
+            const delta = choice?.delta;
+            
+            // Handle tool calls
+            if (delta?.tool_calls) {
+                console.log("🔧 Processing", delta.tool_calls.length, "tool calls");
+                for (const toolCall of delta.tool_calls) {
+                    if (!currentToolCalls[toolCall.index]) {
+                        currentToolCalls[toolCall.index] = {
+                            id: toolCall.id,
+                            type: 'function',
+                            function: { name: toolCall.function?.name || '', arguments: '' }
+                        };
+                    }
+                    
+                    if (toolCall.function?.arguments) {
+                        currentToolCalls[toolCall.index].function.arguments += toolCall.function.arguments;
+                    }
+                }
+                needsToolExecution = true;
+                continue;
+            }
+            
+            // Handle content
+            const content = delta?.content || "";
+            if (content) {
+                fullText += content;
+                assistantMessage += content;
+                
+                if (fullText.includes("###END###")) {
+                    break;
+                }
+                
+                const cleaned = content.replace(/###\s*END\s*###/gi, "");
+                if (cleaned && onStream) {
+                    onStream(cleaned);
+                }
+            }
+            
+            // Execute tools if needed
+            if (choice?.finish_reason === 'tool_calls' && needsToolExecution) {
+                console.log("🔧 Executing", currentToolCalls.filter(Boolean).length, "tools");
+                
+                const toolResults = [];
+                
+                for (const toolCall of currentToolCalls.filter(Boolean)) {
+                    try {
+                        const args = JSON.parse(toolCall.function.arguments || "{}");
+                        let result;
+                        
+                        switch (toolCall.function.name) {
+                            case "calculateSum":
+                                result = calculateSum(args.fieldName, args.values);
+                                break;
+                            case "calculateAverage":
+                                result = calculateAverage(args.fieldName, args.values);
+                                break;
+                            case "calculateMinMax":
+                                result = calculateMinMax(args.fieldName, args.values);
+                                break;
+                            case "calculateDeviation":
+                                result = calculateDeviation(args.fieldName, args.values);
+                                break;
+                            default:
+                                console.log("❌ Unknown tool:", toolCall.function.name);
+                                continue;
+                        }
+                        
+                        if (result) {
+                            toolResults.push({
+                                role: "tool",
+                                tool_call_id: toolCall.id,
+                                content: JSON.stringify(result)
+                            });
+                        }
+                    } catch (err) {
+                        console.error("❌ Tool execution error:", err.message);
+                    }
+                }
+                
+                // Continue conversation with tool results
+                const continueMessages = [
+                    ...messages,
+                    { role: "assistant", content: assistantMessage, tool_calls: currentToolCalls.filter(Boolean) },
+                    ...toolResults
+                ];
+                
+                const continueCompletion = await openai.chat.completions.create({
+                    model: "gpt-4o-mini",
+                    messages: continueMessages,
+                    temperature: 0.1,
+                    stream: true,
+                });
+                
+                // Stream continuation
+                for await (const continueChunk of continueCompletion) {
+                    const continueDelta = continueChunk.choices?.[0]?.delta?.content || "";
+                    if (!continueDelta) continue;
+                    
+                    fullText += continueDelta;
+                    if (fullText.includes("###END###")) {
+                        break;
+                    }
+                    
+                    const cleaned = continueDelta.replace(/###\s*END\s*###/gi, "");
+                    if (cleaned && onStream) {
+                        onStream(cleaned);
+                    }
+                }
+                break;
+            } else if (choice?.finish_reason && choice.finish_reason !== 'tool_calls') {
+                break;
+            }
+        }
+        
+        // Save to session with conversation history
+        const finalReply = fullText.replace(/###END###/g, "").trim();
+        
+        // Update conversation history
+        const updatedHistory = [
+            ...conversationHistory,
+            { role: "user", content: userMessage },
+            { role: "assistant", content: finalReply }
+        ];
+        
+        // Keep only last 20 messages to prevent token overflow
+        const trimmedHistory = updatedHistory.slice(-20);
+        
+        await Session.updateOne(
+            { _id: session._id },
+            {
+                $set: {
+                    conversationHistory: trimmedHistory,
+                    lastResponseMessage: finalReply,
+                    lastSuccessUserMessage: userMessage,
+                    lastSuccessIntent: api?.name || null,
+                    lastSuccessApiResponse: actualData,
+                    lastSuccessParams: params,
+                    missingField: null
+                }
+            }
+        );
+        
+        console.log("✅ Response processed successfully");
+        return { userReply: finalReply, params, api };
+        
+    } catch (err) {
+        console.error("❌ ERROR in processIntentAndFormatResponse:", err.message);
+        
+        return {
+            userReply: "I encountered an issue processing your request. Here's the available data without personalization.",
+            params,
+            api
+        };
+    }
 };
 
 module.exports = processIntentAndFormatResponse;
