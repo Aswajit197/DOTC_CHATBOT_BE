@@ -38,6 +38,7 @@ Rules:
  * e.g., filtering, removing/adding columns, sorting, reformatting last response.
  */
 async function refineResponseFromLastResponse(userMessage, session, { onStream } = {}) {
+	console.log("Entered in refinement")
 	try {
 
 		// ✅ Get API details to check if suitable for graph

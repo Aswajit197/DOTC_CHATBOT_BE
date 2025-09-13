@@ -12,12 +12,11 @@ module.exports = [
 		description:
 			"This API should be triggered whenever the user asks about a driver’s preferred weekly working hours. It provides the number of hours each driver wishes to work in a week along with their name. This is useful for managers to align schedules with driver availability and preferences. Use this API when the user asks questions such as: “How many hours does Alejandro Reyes want to work per week?”, “Show me all drivers with their weekly working hour preferences”, “Who prefers 40 hours per week?”, “List drivers with less than 35 weekly hours preference”, or “What is Anthony Semidey’s weekly working hour preference?",
 		requiredFields: ["StationId"],
-		exampleResponse: {
-			driversWeeklyWorkingHrList: [
-				{ driverName: "Alejandro Reyes", hours: 30 },
-				{ driverName: "Hele Reyes", hours: 40 },
-			],
-		},
+		exampleResponse: [
+			{ driverName: "Alejandro Reyes", hours: 30 },
+			{ driverName: "Hele Reyes", hours: 40 },
+		],
+
 		handler: async (params, userMessage, session, onStream) => {
 			if (!params?.StationId) params.StationId = 2;
 			try {
@@ -38,12 +37,10 @@ module.exports = [
 						description: "Returns a list of drivers with their total weekly working hours preference for the given station.",
 						isSuitableForGraph: true,
 					},
-					exampleResponse: {
-						driversWeeklyWorkingHrList: [
-							{ driverName: "Alejandro Reyes", hours: 30 },
-							{ driverName: "Hele Reyes", hours: 40 },
-						],
-					},
+					exampleResponse: [
+						{ driverName: "Alejandro Reyes", hours: 30 },
+						{ driverName: "Hele Reyes", hours: 40 },
+					],
 					actualData: driversWeeklyWorkingHrList,
 					params,
 					session,
@@ -646,6 +643,9 @@ Respond in JSON only:
 			}
 
 			try {
+				console.log(
+					`${API_BASE}/GetBlobShiftDriverData?WeekStarting=${params?.WeekStarting}&WeekEnding=${params?.WeekEnding}&Year=${params?.Year}&ClientId=${params?.ClientId}`
+				);
 				const { data } = await axios.get(
 					`${API_BASE}/GetBlobShiftDriverData?WeekStarting=${params?.WeekStarting}&WeekEnding=${params?.WeekEnding}&Year=${params?.Year}&ClientId=${params?.ClientId}`
 				);
@@ -706,6 +706,9 @@ Respond in JSON only:
 			}
 
 			try {
+				console.log(
+					`${API_BASE}/GetBlobShiftDriverData?WeekStarting=${params?.WeekStarting}&WeekEnding=${params?.WeekEnding}&Year=${params?.Year}&ClientId=${params?.ClientId}`
+				);
 				const { data } = await axios.get(
 					`${API_BASE}/GetBlobShiftDriverData?WeekStarting=${params?.WeekStarting}&WeekEnding=${params?.WeekEnding}&Year=${params?.Year}&ClientId=${params?.ClientId}`
 				);

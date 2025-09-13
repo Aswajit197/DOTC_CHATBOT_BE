@@ -8,11 +8,28 @@ const chat = {};
 
 // 🔹 Send Message Controller
 chat.sendMessage = async (req, res) => {
+	let clientDisconnected = false;
+
+	// req.on("close", () => {
+	// 	console.log("Client disconnected, aborting streaming");
+	// 	clientDisconnected = true;
+	// });
+
+	req.on("close", () => {
+		console.log("Client connection closed (onclose handler)");
+	});
+
+	res.on("close", () => {
+		console.log('Response stream closed (res.on("close"))');
+	});
+
 	try {
-		const { sessionId, message } = req.body;
+		const { sessionId, message } = req.query;
 		if (!sessionId || !message) {
 			return res.status(400).json({ error: "Missing session or message" });
 		}
+
+		console.log(message, "userMessage");
 
 		const session = await Session.findById(sessionId);
 		if (!session) return res.status(400).json({ error: "Session not initialized" });
@@ -59,11 +76,22 @@ chat.sendMessage = async (req, res) => {
 		// Detect intent & stream partials
 		const intentResult = await getIntentFromOpenAI(message, session, {
 			onStream: (chunk) => {
+				// if (clientDisconnected) return; // 🚨 Stop streaming if client disconnected
+				if (res.writableEnded || res.destroyed) {
+					console.log("Stream already closed, stopping early");
+					return;
+				}
 				if (chunk) {
 					res.write(`data: ${JSON.stringify({ type: "partial", text: chunk })}\n\n`);
 				}
 			},
 		});
+
+		// if (clientDisconnected) return; // Stop completely if disconnected
+		if (res.writableEnded || res.destroyed) {
+			console.log("Stream already closed, stopping early");
+			return;
+		}
 
 		// Handle fallbacks and errors
 		if (intentResult.error === "No API matched" && intentResult.fallbackMessage) {
@@ -152,7 +180,7 @@ chat.sendMessage = async (req, res) => {
 		}
 
 		// ✅ Send final successful response
-		res.write(`data: ${JSON.stringify({ type: "final", response: intentResult.formattedReply })}\n\n`);
+		res.write(`data: ${JSON.stringify({ type: "final", response: intentResult?.formattedReply })}\n\n`);
 		res.end();
 
 		// Save bot message

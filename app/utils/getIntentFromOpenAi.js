@@ -42,7 +42,8 @@ If Independent (Single Intent):
    * Identify the most appropriate API from the Available APIs list.
    * Extract parameters only if they are explicitly in the message.
    * Do NOT assume or invent values (like ClientId, StationId, etc).
-   * For missing required fields, leave them empty.
+   * Do NOT fill in defaults except ClientId or StationId (which is allowed to default to ${session.ClientId}).
+   * If week range or year is not mentioned explicitly, leave WeekStarting, WeekEnding, and Year as empty.
 
 ### Multi-Intent Case
 If the user message clearly requires **combination of multiple distinct APIs**
@@ -143,6 +144,8 @@ Important:
 - DO NOT add comments or extra text.
 - Output valid JSON only.
 `;
+
+	// console.log(systemPrompt);
 	const completion = await openai.chat.completions.create({
 		model: "gpt-4o-mini",
 		messages: [
@@ -160,6 +163,8 @@ Important:
 		console.error("Failed to parse OpenAI response:", err);
 		return { error: "OpenAI parsing failed" };
 	}
+
+	console.log(extracted, "extracted");
 
 	const matchedApi = apiListData.find((api) => api.name === extracted.apiName);
 	let params = extracted.params || {};
@@ -192,9 +197,9 @@ Important:
 	}
 
 	//reducing api call and token if user intent matches the last intent
-	if (matchedApi?.name === session?.lastSuccessIntent) {
-		return await refineResponseFromLastResponse(userMessage, session, { onStream });
-	}
+	// if (matchedApi?.name === session?.lastSuccessIntent) {
+	// 	return await refineResponseFromLastResponse(userMessage, session, { onStream });
+	// }
 
 	// Fallback case: No matching API   responding user with a proper fallback message
 	if (!matchedApi || extracted.apiName === null) {
@@ -288,7 +293,7 @@ Example format:
 
 	// Step 3: All fields ready → call API
 	try {
-		// console.log(matchedApi);
+		console.log(matchedApi.name,"matched api");
 		const apiResponse = await matchedApi.handler(params, userMessage, session, onStream);
 		return {
 			api: matchedApi,
@@ -303,6 +308,5 @@ Example format:
 
 module.exports = getIntentFromOpenAI;
 
-
-// 1.first check for missing field or not like in previous user asked for something but get bot message  missing field and  then provided the missing field 
-// 2.user message is for same like previous like 
+// 1.first check for missing field or not like in previous user asked for something but get bot message  missing field and  then provided the missing field
+// 2.user message is for same like previous like

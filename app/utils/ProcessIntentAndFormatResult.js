@@ -19,14 +19,21 @@ const processIntentAndFormatResponse = async ({
 	// console.log(actualData, "entered in process intent");
 	try {
 		const prompt = `
-You're a smart assistant. Your task is to:
+You're a smart assistant designed to process structured API data intelligently and answer the user's message.
+
+Your tasks:
 1. Understand the user's intent from their message.
-2. Filter/transform the provided API data accordingly.
-3. When the user request ("${userMessage}") includes a numeric threshold 
-   (e.g., "at least 800 hours", maximum, minimum, average, sum, greater, less), 
-   you MUST strictly filter the Raw API Data so that only items meeting that condition remain.
-4. Never include items that fail the condition, even partially.
-5. Generate a user-friendly response that directly answers the user's message.
+2. Filter, transform, or aggregate the provided API data as needed to directly answer the user's request.
+3. If the user asks for "top N items per category" (e.g., "top 10 drivers per shift type"), do the following:
+   - Treat each category in the data (like "Parcel Van", "Step Van", etc.) as a separate group.
+   - For each category, select up to N items sorted by the highest relevant metric (e.g., total shift hours).
+   - Always display each category, even if no matching items are found. In that case, display a table with a row stating "No drivers found" or similar message.
+   - Display each category in its own HTML table, starting with a clear introductory sentence.
+4. If the user provides numeric thresholds (e.g., "at least 800 hours", "more than 50 deliveries"), strictly filter the data so that only items satisfying those thresholds remain.
+5. Never include items that partially match the condition.
+6. If no explicit top-N or filter is present, display all data in the most meaningful way (table, list, or paragraph).
+7. check the response if its more likely a table format or list format or paragraph always try to give better format as per response
+8. Properly format any date strings into user-friendly readable formats.
 
 ---
 
@@ -34,21 +41,21 @@ You're a smart assistant. Your task is to:
 Name: ${api.name}
 Description: ${api.description}
 
-### User Message:
+### User Message
 "${userMessage}"
 
-### Query Parameters:
+### Query Parameters
 ${JSON.stringify(params, null, 2)}
 
-### Example Response Format:
+### Example Response Format
 ${JSON.stringify(exampleResponse, null, 2)}
 
-### Raw API Data:
+### Raw API Data
 ${JSON.stringify(actualData, null, 2)}
 
 ---
 
-### Instructions
+### Output Instructions
 Decide the HTML output format dynamically based on intent and API description:
 
 - If the **user message** explicitly asks for "table", "tabular" or if the **API description** indicates tabular data, then format the reply as an HTML <table> with <thead>, <tbody>, <tr>, <th>, <td>.
@@ -58,24 +65,23 @@ Decide the HTML output format dynamically based on intent and API description:
 - If the data is descriptive or narrative, use <p>...</p>.
 - If the data contains date string send in proper user readable format.
 - Always start with a <p> introduction sentence before table or list.
+- For top-N per category requests, provide multiple separate HTML <table> sections—one for each category (e.g., shift type).
+   - If a category has no matching items, include a single-row table with the message "No drivers found for this shift type."
+- Always include a <div class="summary"> block summarizing:
+    - Exact total counts per category or in total.
+    - 1-2 additional meaningful computed insights (e.g., highest working hours and by whom).
+    - Do not use vague terms like "several" or "some".
+- Format dates into readable forms (e.g., "September 12, 2025").
+- If the API is suitable for graphs, suggest a visualization follow-up only if applicable.
 
-
-- **Add a final HTML summary block immediately before the optional follow-up visualization message**:
-  - • One <div class="summary"><p>...</p></div> that must include:  
-        - The exact total count of rows/entities in the table  
-        - 1-2 additional meaningful insights (e.g., distribution of overtime preferences, highest/lowest values)  
-    • Never use vague phrases like "several", "some", "a few". Always compute and display the precise number. 
 ${
 	api?.isSuitableForGraph
-		? `- After the summary block, if the refined data is numeric, time-based, comparative, or trend-related, add the follow-up line:
-    <p class="followup-message">Would you like me to turn this into a visualization, such as a graph or chart?</p>
-  - Do NOT add the follow-up if the response is just a single value, a short list, or purely descriptive text.`
-		: `- Do NOT add any follow-up visualization message.`
+		? `<p class="followup-message">Would you like me to turn this into a graph or chart for easier analysis?</p>`
+		: ``
 }
 
-- Do not include Markdown, plain text, or JSON in this section. Only valid HTML.
-
-After finishing the HTML reply, summary, and optional follow-up message, output a new line with exactly:
+- Do not include Markdown, JSON, or plain text—only valid HTML.
+- After the HTML reply, summary, and optional follow-up message, output exactly:
 ###END###
 `;
 		const completion = await openai.chat.completions.create({
