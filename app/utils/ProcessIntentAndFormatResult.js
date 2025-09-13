@@ -3,7 +3,7 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const Session = require("../model/session.model");
 
 function calculateSum(fieldName, values) {
-    console.log("🔢 Calculating sum for:", fieldName, "values:", values.length);
+    console.log("🔢 calculateSum called:", { fieldName, valuesCount: values.length, values: values.slice(0, 3) });
     const total = values.reduce((sum, val) => sum + val, 0);
     const result = {
         operation: "sum",
@@ -11,11 +11,12 @@ function calculateSum(fieldName, values) {
         total: total,
         count: values.length
     };
+    console.log("🔢 calculateSum result:", result);
     return result;
 }
 
 function calculateAverage(fieldName, values) {
-    console.log("📊 Calculating average for:", fieldName);
+    console.log("📊 calculateAverage called:", { fieldName, valuesCount: values.length });
     if (values.length === 0) {
         return {
             operation: "average",
@@ -38,10 +39,12 @@ function calculateAverage(fieldName, values) {
         min: Math.min(...values),
         max: Math.max(...values)
     };
+    console.log("📊 calculateAverage result:", result);
     return result;
 }
 
 function calculateMinMax(fieldName, values) {
+    console.log("⬆️⬇️ calculateMinMax called:", { fieldName, valuesCount: values.length });
     if (values.length === 0) return { field: fieldName, min: null, max: null };
     const result = {
         operation: "min_max",
@@ -50,44 +53,23 @@ function calculateMinMax(fieldName, values) {
         max: Math.max(...values),
         count: values.length
     };
+    console.log("⬆️⬇️ calculateMinMax result:", result);
     return result;
 }
 
 function calculateDeviation(fieldName, values) {
+    console.log("📈 calculateDeviation called:", { fieldName, valuesCount: values.length });
     if (values.length === 0) return { field: fieldName, deviation: 0 };
-    if (values.length === 1) {
-        return {
-            operation: "standard_deviation",
-            field: fieldName,
-            average: values[0],
-            standardDeviation: 0,
-            variance: 0,
-            count: 1,
-            type: "single_value"
-        };
-    }
-    
     const avg = values.reduce((sum, val) => sum + val, 0) / values.length;
-    
-    const sampleVariance = values.reduce((sum, val) => sum + Math.pow(val - avg, 2), 0) / (values.length - 1);
-    const sampleStdDev = Math.sqrt(sampleVariance);
-    
-   
-    const populationVariance = values.reduce((sum, val) => sum + Math.pow(val - avg, 2), 0) / values.length;
-    const populationStdDev = Math.sqrt(populationVariance);
-    
+    const variance = values.reduce((sum, val) => sum + Math.pow(val - avg, 2), 0) / values.length;
     const result = {
         operation: "standard_deviation",
         field: fieldName,
         average: Math.round(avg * 100) / 100,
-        sampleStandardDeviation: Math.round(sampleStdDev * 100) / 100,
-        populationStandardDeviation: Math.round(populationStdDev * 100) / 100,
-        sampleVariance: Math.round(sampleVariance * 100) / 100,
-        populationVariance: Math.round(populationVariance * 100) / 100,
-        count: values.length,
-        type: values.length > 30 ? "large_sample" : "small_sample"
+        standardDeviation: Math.round(Math.sqrt(variance) * 100) / 100,
+        count: values.length
     };
-    
+    console.log("📈 calculateDeviation result:", result);
     return result;
 }
 
@@ -100,7 +82,11 @@ const processIntentAndFormatResponse = async ({
     session,
     onStream,
 }) => {
-    console.log("🚀 Processing intent for:", userMessage);
+    console.log("🚀 === STARTING processIntentAndFormatResponse ===");
+    console.log("📝 User Message:", userMessage);
+    console.log("🔧 API Name:", api?.name);
+    console.log("📊 Data Length:", Array.isArray(actualData) ? actualData.length : typeof actualData);
+    console.log("🎛️ Has onStream callback:", typeof onStream === 'function');
     
     let fullText = "";
     
@@ -110,19 +96,12 @@ const processIntentAndFormatResponse = async ({
                 type: "function",
                 function: {
                     name: "calculateSum",
-                    description: "Calculate sum of numeric values from data fields",
+                    description: "Calculate sum of numeric values",
                     parameters: {
                         type: "object",
                         properties: {
-                            fieldName: { 
-                                type: "string", 
-                                description: "Name of the field being calculated" 
-                            },
-                            values: { 
-                                type: "array", 
-                                items: { type: "number" },
-                                description: "Array of numeric values to sum"
-                            }
+                            fieldName: { type: "string" },
+                            values: { type: "array", items: { type: "number" } }
                         },
                         required: ["fieldName", "values"]
                     }
@@ -136,15 +115,8 @@ const processIntentAndFormatResponse = async ({
                     parameters: {
                         type: "object",
                         properties: {
-                            fieldName: { 
-                                type: "string", 
-                                description: "Name of the field being calculated" 
-                            },
-                            values: { 
-                                type: "array", 
-                                items: { type: "number" },
-                                description: "Array of numeric values to average"
-                            }
+                            fieldName: { type: "string" },
+                            values: { type: "array", items: { type: "number" } }
                         },
                         required: ["fieldName", "values"]
                     }
@@ -154,19 +126,12 @@ const processIntentAndFormatResponse = async ({
                 type: "function",
                 function: {
                     name: "calculateMinMax",
-                    description: "Find minimum and maximum values in a dataset",
+                    description: "Calculate minimum and maximum values",
                     parameters: {
                         type: "object",
                         properties: {
-                            fieldName: { 
-                                type: "string", 
-                                description: "Name of the field being analyzed" 
-                            },
-                            values: { 
-                                type: "array", 
-                                items: { type: "number" },
-                                description: "Array of numeric values to analyze"
-                            }
+                            fieldName: { type: "string" },
+                            values: { type: "array", items: { type: "number" } }
                         },
                         required: ["fieldName", "values"]
                     }
@@ -176,19 +141,12 @@ const processIntentAndFormatResponse = async ({
                 type: "function",
                 function: {
                     name: "calculateDeviation",
-                    description: "Calculate standard deviation and variance of numeric values",
+                    description: "Calculate standard deviation",
                     parameters: {
                         type: "object",
                         properties: {
-                            fieldName: { 
-                                type: "string", 
-                                description: "Name of the field being analyzed" 
-                            },
-                            values: { 
-                                type: "array", 
-                                items: { type: "number" },
-                                description: "Array of numeric values for statistical analysis"
-                            }
+                            fieldName: { type: "string" },
+                            values: { type: "array", items: { type: "number" } }
                         },
                         required: ["fieldName", "values"]
                     }
@@ -196,36 +154,24 @@ const processIntentAndFormatResponse = async ({
             }
         ];
 
-        // Get conversation history from session for context
-        let conversationHistory = [];
-        if (session.conversationHistory && session.conversationHistory.length > 0) {
-            // Get last 5 messages for context (adjust as needed)
-            const recentHistory = session.conversationHistory.slice(-10);
-            conversationHistory = recentHistory.map(msg => ({
-                role: msg.role,
-                content: msg.content
-            }));
-        }
-
-        const systemPrompt = `You are a smart data analysis assistant with conversation context. Your task is to:
-
-1. **Context Awareness**: Use the conversation history to understand the user's ongoing needs and maintain context.
-2. **Intent Understanding**: Analyze the current user message in context of previous interactions.
-3. **Data Processing**: Filter/transform the provided API data according to user requirements.
-4. **Numeric Analysis**: When users request calculations (sum, average, min, max, standard deviation), use the provided function tools.
-5. **Filtering**: When numeric thresholds are mentioned (e.g., "at least 800 hours", "maximum", "minimum"), strictly filter data to only include items meeting those conditions.
-6. **Response Format**: Generate user-friendly HTML responses that directly answer the user's question.
+        const prompt = `
+You're a smart assistant. Your task is to:
+1. Understand the user's intent from their message.
+2. Filter/transform the provided API data accordingly.
+3. When the user request ("${userMessage}") includes a numeric threshold 
+   (e.g., "at least 800 hours", maximum, minimum, average, sum, greater, less), 
+   always use function tools for calculating those values.
+   you MUST strictly filter the Raw API Data so that only items meeting that condition remain.
+4. Never include items that fail the condition, even partially.
+5. Generate a user-friendly response that directly answers the user's message.
 
 ---
 
-### Conversation History:
-${conversationHistory.length > 0 ? JSON.stringify(conversationHistory, null, 2) : "No previous conversation"}
+### API Info
+Name: ${api.name}
+Description: ${api.description}
 
-### Current API Context:
-Name: ${api?.name || 'Unknown API'}
-Description: ${api?.description || 'No description available'}
-
-### Current User Message:
+### User Message:
 "${userMessage}"
 
 ### Query Parameters:
@@ -234,127 +180,171 @@ ${JSON.stringify(params, null, 2)}
 ### Example Response Format:
 ${JSON.stringify(exampleResponse, null, 2)}
 
-### Current API Data:
+### Raw API Data:
 ${JSON.stringify(actualData, null, 2)}
 
 ---
 
-### Response Guidelines:
+### Instructions
+Decide the HTML output format dynamically based on intent and API description:
 
-**Format Selection:**
-- Use HTML <table> for tabular data or when user asks for "table"/"tabular" format
-- Use <ul><li> for lists or multiple items
-- Use <p> for descriptive/narrative content
-- Always start with an introductory <p> sentence
-- Format dates in user-readable format
-- Provide complete data unless user specifies filters
+- If the **user message** explicitly asks for "table", "tabular" or if the **API description** indicates tabular data, then format the reply as an HTML <table> with <thead>, <tbody>, <tr>, <th>, <td>.
+- If the data is best represented as a **list**, use <ul><li>...</li></ul>.
+- If userMessage intent is for specific one driver id or LMDP ID try to send in list format.
+- Try to provide complete list/table always if user message don't contains any filter action.
+- If the data is descriptive or narrative, use <p>...</p>.
+- If the data contains date string send in proper user readable format.
+- Always start with a <p> introduction sentence before table or list.
 
-**Required Elements:**
-1. **Summary Block**: Add before any follow-up message:
-   <div class="summary"><p>Total: [EXACT_COUNT] items. [Additional insights]</p></div>
-   - Always use exact numbers, never "several", "some", or "a few"
-   - Include 1-2 meaningful insights about the data
-
+- **Add a final HTML summary block immediately before the optional follow-up visualization message**:
+  - • One <div class="summary"><p>...</p></div> that must include:  
+        - The exact total count of rows/entities in the table  
+        - 1-2 additional meaningful insights (e.g., distribution of overtime preferences, highest/lowest values)  
+    • Never use vague phrases like "several", "some", "a few". Always compute and display the precise number. 
 ${
     api?.isSuitableForGraph
-        ? `2. **Visualization Offer**: If data is numeric/comparative/trend-related, add:
-   <p class="followup-message">Would you like me to turn this into a visualization, such as a graph or chart?</p>
-   - Do NOT add for single values or purely descriptive responses`
-        : `2. **No Visualization Offers**: Do not suggest visualizations for this API`
+        ? `- After the summary block, if the refined data is numeric, time-based, comparative, or trend-related, add the follow-up line:
+    <p class="followup-message">Would you like me to turn this into a visualization, such as a graph or chart?</p>
+  - Do NOT add the follow-up if the response is just a single value, a short list, or purely descriptive text.`
+        : `- Do NOT add any follow-up visualization message.`
 }
 
-**Output Format**: HTML only (no Markdown, plain text, or JSON)
-**End Marker**: Conclude with exactly: ###END###`;
+- Do not include Markdown, plain text, or JSON in this section. Only valid HTML.
 
-        const messages = [
-            { role: "system", content: systemPrompt },
-            ...conversationHistory,
-            { role: "user", content: userMessage }
-        ];
+After finishing the HTML reply, summary, and optional follow-up message, output a new line with exactly:
+###END###
+`;
+
+        console.log("📤 About to call OpenAI with streaming...");
+        const messages = [{ role: "user", content: prompt }];
         
-        console.log("📤 Making OpenAI call with context:", conversationHistory.length, "previous messages");
+        console.log("🔑 API Key exists:", !!process.env.OPENAI_API_KEY);
+        console.log("🔑 API Key length:", process.env.OPENAI_API_KEY?.length || 0);
+        console.log("📝 Messages array:", messages.length);
+        console.log("🛠️ Tools count:", tools.length);
         
         let completion;
         try {
+            console.log("⏳ Making OpenAI call...");
             completion = await Promise.race([
                 openai.chat.completions.create({
                     model: "gpt-4o-mini",
                     messages,
-                    temperature: 0.1,
+                    temperature: 0,
                     tools,
                     tool_choice: "auto",
                     stream: true,
                 }),
                 new Promise((_, reject) => 
-                    setTimeout(() => reject(new Error('OpenAI timeout')), 30000)
+                    setTimeout(() => reject(new Error('OpenAI call timeout after 30s')), 30000)
                 )
             ]);
+            console.log("✅ OpenAI call successful, got completion object");
         } catch (timeoutOrError) {
-            console.error("❌ OpenAI call failed, trying fallback:", timeoutOrError.message);
+            console.error("❌ OpenAI call failed:", timeoutOrError.message);
             
-            // Fallback without tools
+            // Try without tools as fallback
+            console.log("🔄 Retrying without tools...");
             completion = await openai.chat.completions.create({
                 model: "gpt-4o-mini",
                 messages,
-                temperature: 0.1,
+                temperature: 0,
                 stream: true,
             });
+            console.log("✅ Fallback call successful");
         }
+        
+        console.log("✅ OpenAI call initiated, starting stream processing...");
 
         let currentToolCalls = [];
         let assistantMessage = "";
         let needsToolExecution = false;
+        let chunkCount = 0;
 
-        // Process main stream
+        // Process the stream
         for await (const chunk of completion) {
+            chunkCount++;
+           
+            
             const choice = chunk.choices?.[0];
             const delta = choice?.delta;
             
             // Handle tool calls
             if (delta?.tool_calls) {
-                console.log("🔧 Processing", delta.tool_calls.length, "tool calls");
+                console.log("🔧 Tool calls detected in chunk:", delta.tool_calls.length);
                 for (const toolCall of delta.tool_calls) {
+                    console.log("🔧 Tool call details:", {
+                        index: toolCall.index,
+                        id: toolCall.id,
+                        name: toolCall.function?.name,
+                        argsLength: toolCall.function?.arguments?.length || 0
+                    });
+                    
                     if (!currentToolCalls[toolCall.index]) {
                         currentToolCalls[toolCall.index] = {
                             id: toolCall.id,
                             type: 'function',
                             function: { name: toolCall.function?.name || '', arguments: '' }
                         };
+                        
                     }
                     
                     if (toolCall.function?.arguments) {
                         currentToolCalls[toolCall.index].function.arguments += toolCall.function.arguments;
+                        
                     }
                 }
                 needsToolExecution = true;
-                continue;
+                continue; // Don't stream tool calls
             }
             
-            // Handle content
+            // Handle regular content
             const content = delta?.content || "";
             if (content) {
+                console.log("📄 Content chunk received:", {
+                    length: content.length,
+                    preview: content.substring(0, 50) + (content.length > 50 ? '...' : ''),
+                    hasEndMarker: content.includes('###END###')
+                });
+                
                 fullText += content;
                 assistantMessage += content;
                 
+                // Stop when END marker appears
                 if (fullText.includes("###END###")) {
+                    console.log("🔚 END marker found, stopping stream");
                     break;
                 }
                 
                 const cleaned = content.replace(/###\s*END\s*###/gi, "");
                 if (cleaned && onStream) {
-                    onStream(cleaned);
+                    const formatted = cleaned
+                        .replace(/([a-z])([A-Z])/g, "$1 $2")
+                        .replace(/(\d)([A-Za-z])/g, "$1 $2")
+                        .replace(/([a-zA-Z])(\d)/g, "$1 $2");
+                   
+                    onStream(formatted);
+                } else if (cleaned) {
+                    console.log("⚠️ Content cleaned but not streamed (no onStream callback)");
                 }
             }
             
-            // Execute tools if needed
+            // Check if the stream is finished and we have tool calls
             if (choice?.finish_reason === 'tool_calls' && needsToolExecution) {
-                console.log("🔧 Executing", currentToolCalls.filter(Boolean).length, "tools");
+                console.log("🔧 Stream finished with tool_calls, executing tools...");
+                console.log("🔧 Current tool calls:", currentToolCalls.filter(Boolean).map(tc => ({
+                    name: tc.function?.name,
+                    argsLength: tc.function?.arguments?.length
+                })));
                 
+                // Execute tools and continue conversation
                 const toolResults = [];
                 
                 for (const toolCall of currentToolCalls.filter(Boolean)) {
+                    console.log("⚙️ Executing tool:", toolCall.function.name);
                     try {
                         const args = JSON.parse(toolCall.function.arguments || "{}");
+                        console.log("⚙️ Tool arguments:", args);
                         let result;
                         
                         switch (toolCall.function.name) {
@@ -372,7 +362,6 @@ ${
                                 break;
                             default:
                                 console.log("❌ Unknown tool:", toolCall.function.name);
-                                continue;
                         }
                         
                         if (result) {
@@ -381,11 +370,14 @@ ${
                                 tool_call_id: toolCall.id,
                                 content: JSON.stringify(result)
                             });
+                            console.log("✅ Tool result added to queue");
                         }
                     } catch (err) {
-                        console.error("❌ Tool execution error:", err.message);
+                        console.error("❌ Tool execution error:", err);
                     }
                 }
+                
+                console.log("🔄 Making continuation call with", toolResults.length, "tool results");
                 
                 // Continue conversation with tool results
                 const continueMessages = [
@@ -397,49 +389,57 @@ ${
                 const continueCompletion = await openai.chat.completions.create({
                     model: "gpt-4o-mini",
                     messages: continueMessages,
-                    temperature: 0.1,
+                    temperature: 0,
                     stream: true,
                 });
                 
-                // Stream continuation
+                
+                let continueChunkCount = 0;
+                
+                // Stream the continuation
                 for await (const continueChunk of continueCompletion) {
+                    continueChunkCount++;
+                    
+                    
                     const continueDelta = continueChunk.choices?.[0]?.delta?.content || "";
                     if (!continueDelta) continue;
                     
+                    
+                    
                     fullText += continueDelta;
                     if (fullText.includes("###END###")) {
+                        
                         break;
                     }
                     
                     const cleaned = continueDelta.replace(/###\s*END\s*###/gi, "");
                     if (cleaned && onStream) {
-                        onStream(cleaned);
+                        const formatted = cleaned
+                            .replace(/([a-z])([A-Z])/g, "$1 $2")
+                            .replace(/(\d)([A-Za-z])/g, "$1 $2")
+                            .replace(/([a-zA-Z])(\d)/g, "$1 $2");
+                      
+                        onStream(formatted);
                     }
                 }
-                break;
+                console.log("🏁 Continuation stream complete");
+                break; // Exit main loop after tool execution
             } else if (choice?.finish_reason && choice.finish_reason !== 'tool_calls') {
+               
                 break;
             }
         }
         
-        // Save to session with conversation history
+    
+        
+        // Save session
         const finalReply = fullText.replace(/###END###/g, "").trim();
-        
-        // Update conversation history
-        const updatedHistory = [
-            ...conversationHistory,
-            { role: "user", content: userMessage },
-            { role: "assistant", content: finalReply }
-        ];
-        
-        // Keep only last 20 messages to prevent token overflow
-        const trimmedHistory = updatedHistory.slice(-20);
+       
         
         await Session.updateOne(
             { _id: session._id },
             {
                 $set: {
-                    conversationHistory: trimmedHistory,
                     lastResponseMessage: finalReply,
                     lastSuccessUserMessage: userMessage,
                     lastSuccessIntent: api?.name || null,
@@ -450,14 +450,19 @@ ${
             }
         );
         
-        console.log("✅ Response processed successfully");
+       
         return { userReply: finalReply, params, api };
         
     } catch (err) {
-        console.error("❌ ERROR in processIntentAndFormatResponse:", err.message);
+        console.error(" === ERROR IN processIntentAndFormatResponse ===");
+        console.error("Error details:", {
+            message: err.message,
+            stack: err.stack?.substring(0, 500),
+            name: err.name
+        });
         
         return {
-            userReply: "I encountered an issue processing your request. Here's the available data without personalization.",
+            userReply: "Here's the available data. (Intent-based personalization failed.)",
             params,
             api
         };
