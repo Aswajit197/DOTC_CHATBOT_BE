@@ -8,13 +8,7 @@ const { handleMultiIntentApis } = require("./handleMultiIntentApis");
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-async function getIntentFromOpenAI(userMessage, session, { onStream, abortSignal } = {}) {
-	// 🔹 Check if already aborted before starting
-	if (abortSignal?.aborted) {
-		console.log("🚫 getIntentFromOpenAI: Already aborted, exiting early");
-		return { error: "Request aborted" };
-	}
-
+async function getIntentFromOpenAI(userMessage, session, { onStream } = {}) {
 	const topApis = await searchAPIs(userMessage);
 	// console.log(topApis)
 	const systemPrompt = `
@@ -152,36 +146,14 @@ Important:
 `;
 
 	// console.log(systemPrompt);
-
-	// 🔹 Check abort before OpenAI call
-	if (abortSignal?.aborted) {
-		console.log("🚫 getIntentFromOpenAI: Aborted before OpenAI completion call");
-		return { error: "Request aborted" };
-	}
-
-	let completion;
-	try {
-		completion = await openai.chat.completions.create({
-			model: "gpt-4o-mini",
-			messages: [
-				{ role: "system", content: systemPrompt },
-				{ role: "user", content: userMessage },
-			],
-			temperature: 0,
-		});
-	} catch (error) {
-		if (error.name === "AbortError" || abortSignal?.aborted) {
-			console.log("🚫 OpenAI completion call was aborted");
-			return { error: "Request aborted" };
-		}
-		throw error;
-	}
-
-	// 🔹 Check abort after OpenAI call
-	if (abortSignal?.aborted) {
-		console.log("🚫 getIntentFromOpenAI: Aborted after OpenAI completion");
-		return { error: "Request aborted" };
-	}
+	const completion = await openai.chat.completions.create({
+		model: "gpt-4o-mini",
+		messages: [
+			{ role: "system", content: systemPrompt },
+			{ role: "user", content: userMessage },
+		],
+		temperature: 0,
+	});
 
 	let extracted;
 
@@ -198,32 +170,20 @@ Important:
 	let params = extracted.params || {};
 	// console.log(params, "extracted params");
 
-	// 🔹 Check abort before multi-intent handling
-	if (abortSignal?.aborted) {
-		console.log("🚫 getIntentFromOpenAI: Aborted before multi-intent processing");
-		return { error: "Request aborted" };
-	}
-
 	if (extracted?.type === "multi_intent") {
 		console.log("Entering In multi intent....");
 		//a separate function which handles that multi intent(multiple api call)
-		return await handleMultiIntentApis(extracted, userMessage, session, { onStream, abortSignal });
+		return await handleMultiIntentApis(extracted, userMessage, session, onStream);
 	}
 
 	// If dependent, route based on type
 	if (extracted.dependent) {
-		// 🔹 Check abort before dependent processing
-		if (abortSignal?.aborted) {
-			console.log("🚫 getIntentFromOpenAI: Aborted before dependent processing");
-			return { error: "Request aborted" };
-		}
-
 		if (extracted.type === "visualization_request") {
-			return await getGraphJsonFromLastResponse(userMessage, session, { onStream, abortSignal });
+			return await getGraphJsonFromLastResponse(userMessage, session, { onStream });
 		} else if (extracted.type === "refinement_request") {
 			if (session.lastSuccessApiResponse && session.lastSuccessIntent === matchedApi.name) {
 				// refine only if last response exists
-				return await refineResponseFromLastResponse(userMessage, session, { onStream, abortSignal });
+				return await refineResponseFromLastResponse(userMessage, session, { onStream });
 			} else {
 				// fallback → treat as independent request
 				extracted.dependent = false;
@@ -238,17 +198,11 @@ Important:
 
 	//reducing api call and token if user intent matches the last intent
 	// if (matchedApi?.name === session?.lastSuccessIntent) {
-	// 	return await refineResponseFromLastResponse(userMessage, session, { onStream, abortSignal });
+	// 	return await refineResponseFromLastResponse(userMessage, session, { onStream });
 	// }
 
 	// Fallback case: No matching API   responding user with a proper fallback message
 	if (!matchedApi || extracted.apiName === null) {
-		// 🔹 Check abort before fallback processing
-		if (abortSignal?.aborted) {
-			console.log("🚫 getIntentFromOpenAI: Aborted before fallback processing");
-			return { error: "Request aborted" };
-		}
-
 		const fallbackPrompt = `
 The user sent this message: "${userMessage}"
 
@@ -262,26 +216,11 @@ DO NOT make up any new APIs. Just respond in a helpful and conversational tone.
 Respond ONLY with plain text.
 `;
 
-		let fallbackResponse;
-		try {
-			fallbackResponse = await openai.chat.completions.create({
-				model: "gpt-3.5-turbo",
-				messages: [{ role: "system", content: fallbackPrompt }],
-				temperature: 0.7,
-			});
-		} catch (error) {
-			if (error.name === "AbortError" || abortSignal?.aborted) {
-				console.log("🚫 Fallback OpenAI call was aborted");
-				return { error: "Request aborted" };
-			}
-			throw error;
-		}
-
-		// 🔹 Check abort after fallback call
-		if (abortSignal?.aborted) {
-			console.log("🚫 getIntentFromOpenAI: Aborted after fallback call");
-			return { error: "Request aborted" };
-		}
+		const fallbackResponse = await openai.chat.completions.create({
+			model: "gpt-3.5-turbo",
+			messages: [{ role: "system", content: fallbackPrompt }],
+			temperature: 0.7,
+		});
 
 		const fallbackMessage = fallbackResponse.choices[0].message.content.trim();
 
@@ -291,26 +230,14 @@ Respond ONLY with plain text.
 		};
 	}
 
-	// 🔹 Check abort before param handling
-	if (abortSignal?.aborted) {
-		console.log("🚫 getIntentFromOpenAI: Aborted before param handling");
-		return { error: "Request aborted" };
-	}
-
 	// Proceed with matched API and param handling
 	const {
 		params: finalParams,
 		missingFields,
 		formattedReply,
-	} = await handleParamsForApi(matchedApi, params, userMessage, session, { onStream, abortSignal });
+	} = await handleParamsForApi(matchedApi, params, userMessage, session, onStream);
 
 	params = finalParams;
-
-	// 🔹 Check abort after param handling
-	if (abortSignal?.aborted) {
-		console.log("🚫 getIntentFromOpenAI: Aborted after param handling");
-		return { error: "Request aborted" };
-	}
 
 	if (formattedReply) {
 		// handler already responded early
@@ -322,12 +249,6 @@ Respond ONLY with plain text.
 	}
 
 	if (missingFields.length) {
-		// 🔹 Check abort before missing fields processing
-		if (abortSignal?.aborted) {
-			console.log("🚫 getIntentFromOpenAI: Aborted before missing fields processing");
-			return { error: "Request aborted" };
-		}
-
 		// Generate a helpful fallback message using OpenAI
 		console.log(missingFields, "missingFields");
 		const fallbackHelpPrompt = `
@@ -351,26 +272,11 @@ Example format:
 "To help you assign a shift, I need the DriverId and shiftType. Could you please provide them?"
 `;
 
-		let fallbackResponse;
-		try {
-			fallbackResponse = await openai.chat.completions.create({
-				model: "gpt-3.5-turbo",
-				messages: [{ role: "system", content: fallbackHelpPrompt }],
-				temperature: 0.7,
-			});
-		} catch (error) {
-			if (error.name === "AbortError" || abortSignal?.aborted) {
-				console.log("🚫 Missing fields OpenAI call was aborted");
-				return { error: "Request aborted" };
-			}
-			throw error;
-		}
-
-		// 🔹 Check abort after missing fields call
-		if (abortSignal?.aborted) {
-			console.log("🚫 getIntentFromOpenAI: Aborted after missing fields call");
-			return { error: "Request aborted" };
-		}
+		const fallbackResponse = await openai.chat.completions.create({
+			model: "gpt-3.5-turbo",
+			messages: [{ role: "system", content: fallbackHelpPrompt }],
+			temperature: 0.7,
+		});
 
 		const fallbackMessage = fallbackResponse.choices[0].message.content.trim();
 		console.log(fallbackMessage, "fallbackMessage");
@@ -384,36 +290,22 @@ Example format:
 		};
 	}
 
-	// 🔹 Check abort before API execution
-	if (abortSignal?.aborted) {
-		console.log("🚫 getIntentFromOpenAI: Aborted before API execution");
-		return { error: "Request aborted" };
-	}
-
 	// Step 3: All fields ready → call API
 	try {
-		console.log(matchedApi.name, "matched api");
-		const apiResponse = await matchedApi.handler(params, userMessage, session, { onStream, abortSignal });
-
-		// 🔹 Check abort after API execution
-		if (abortSignal?.aborted) {
-			console.log("🚫 getIntentFromOpenAI: Aborted after API execution");
-			return { error: "Request aborted" };
-		}
-
+		console.log(matchedApi.name,"matched api");
+		const apiResponse = await matchedApi.handler(params, userMessage, session, onStream);
 		return {
 			api: matchedApi,
 			params,
 			formattedReply: apiResponse?.userReply,
 		};
 	} catch (err) {
-		if (err.name === "AbortError" || abortSignal?.aborted) {
-			console.log("🚫 API handler was aborted");
-			return { error: "Request aborted" };
-		}
 		console.error("API handler error:", err);
 		return { error: "API execution failed" };
 	}
 }
 
 module.exports = getIntentFromOpenAI;
+
+// 1.first check for missing field or not like in previous user asked for something but get bot message  missing field and  then provided the missing field
+// 2.user message is for same like previous like
