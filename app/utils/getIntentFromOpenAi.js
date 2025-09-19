@@ -393,7 +393,7 @@ Example format:
 	// Step 3: All fields ready → call API
 	try {
 		console.log(matchedApi.name, "matched api");
-		const apiResponse = await matchedApi.handler(params, userMessage, session, { onStream, abortSignal });
+		const apiResponse = await matchedApi.handler(params, userMessage, session, onStream, abortSignal);
 
 		// 🔹 Check abort after API execution
 		if (abortSignal?.aborted) {

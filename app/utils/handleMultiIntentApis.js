@@ -4,10 +4,20 @@ const apiListData = require("../../apiDetails");
 const Session = require("../model/session.model");
 const { handleParamsForApi } = require("./handleParamsForApis");
 
-async function handleMultiIntentApis(extracted, userMessage, session, onStream) {
+async function handleMultiIntentApis(extracted, userMessage, session, { onStream, abortSignal }) {
+	// 🔹 Exit early if aborted before starting
+	if (abortSignal?.aborted) {
+		console.log("🚫 handleMultiIntentApis: Already aborted at start");
+		return { type: "multi_intent", error: "Request aborted early" };
+	}
 	const results = [];
 
 	for (const apiInfo of extracted.apis) {
+		// 🔹 Stop loop if aborted mid-way
+		if (abortSignal?.aborted) {
+			console.log("🚫 handleMultiIntentApis: Aborted during API loop");
+			break;
+		}
 		const matchedApi = apiListData.find((api) => api.name === apiInfo.apiName);
 		if (!matchedApi) {
 			results.push({
@@ -23,9 +33,14 @@ async function handleMultiIntentApis(extracted, userMessage, session, onStream) 
 			apiInfo.params || {},
 			userMessage,
 			session,
-			onStream,
+			{ onStream, abortSignal },
 			type
 		);
+
+		if (abortSignal?.aborted) {
+			console.log("🚫 handleMultiIntentApis: Aborted after param handling");
+			break;
+		}
 
 		if (missingFields.length) {
 			results.push({
@@ -60,6 +75,12 @@ async function handleMultiIntentApis(extracted, userMessage, session, onStream) 
 				error: "multiHandler not implemented",
 			});
 		}
+	}
+
+	// 🔹 Before OpenAI call, check again
+	if (abortSignal?.aborted) {
+		console.log("🚫 handleMultiIntentApis: Aborted before OpenAI call");
+		return { type: "multi_intent", results, error: "Request aborted before merge" };
 	}
 
 	// ✅ Now build prompt for OpenAI merge
@@ -142,6 +163,10 @@ Raw Data: ${JSON.stringify(r?.rawData?.data, null, 2)}
 		});
 
 		for await (const chunk of completion) {
+			if (abortSignal?.aborted) {
+				console.log("🚫 handleMultiIntentApis: Aborted during OpenAI streaming");
+				break;
+			}
 			const delta = chunk.choices?.[0]?.delta?.content || "";
 			if (!delta) continue;
 
@@ -169,7 +194,10 @@ Raw Data: ${JSON.stringify(r?.rawData?.data, null, 2)}
 
 		return { type: "multi_intent", results, combinedReply: finalReply };
 	} catch (err) {
-		console.log(err);
+		if (abortSignal?.aborted) {
+			console.log("🚫 Multi-intent OpenAI merge aborted");
+			return { type: "multi_intent", results, error: "Request aborted during merge" };
+		}
 		console.error("Multi-intent OpenAI merge failed:", err.message);
 		return { type: "multi_intent", results, combinedReply: "Could not merge API results." };
 	}

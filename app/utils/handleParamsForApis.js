@@ -1,30 +1,30 @@
 const { OpenAI } = require("openai");
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-// Get last context from session
-function getLastContext(session) {
-	const reversed = [...(session.history || [])].reverse();
-	for (const entry of reversed) {
-		if (entry.sender === "bot" && entry.context?.lastIntent && entry.context?.lastParams) {
-			return {
-				lastIntent: entry.context.lastIntent,
-				lastParams: entry.context.lastParams,
-			};
-		}
-	}
-	return null;
-}
+// // Get last context from session
+// function getLastContext(session) {
+// 	const reversed = [...(session.history || [])].reverse();
+// 	for (const entry of reversed) {
+// 		if (entry.sender === "bot" && entry.context?.lastIntent && entry.context?.lastParams) {
+// 			return {
+// 				lastIntent: entry.context.lastIntent,
+// 				lastParams: entry.context.lastParams,
+// 			};
+// 		}
+// 	}
+// 	return null;
+// }
 
-// Merge all historic params
-function gatherMergedParams(session) {
-	const merged = {};
-	for (const entry of session.history || []) {
-		if (entry.context?.lastParams) {
-			Object.assign(merged, entry.context.lastParams);
-		}
-	}
-	return merged;
-}
+// // Merge all historic params
+// function gatherMergedParams(session) {
+// 	const merged = {};
+// 	for (const entry of session.history || []) {
+// 		if (entry.context?.lastParams) {
+// 			Object.assign(merged, entry.context.lastParams);
+// 		}
+// 	}
+// 	return merged;
+// }
 
 // Get current ISO week number
 function getCurrentWeekNumber() {
@@ -81,7 +81,6 @@ Return a valid JSON object like:
   "Year": number or null
 }
 `;
-
 	try {
 		const completion = await openai.chat.completions.create({
 			messages: [{ role: "user", content: prompt }],
@@ -102,8 +101,14 @@ Return a valid JSON object like:
 }
 
 // Main param handler
-async function handleParamsForApi(matchedApi, params, userMessage, session, onStream, type) {
+async function handleParamsForApi(matchedApi, params, userMessage, session, { onStream, abortSignal } = {}, type) {
 	console.log(params, "params in param handler");
+	// 🔹 Exit early if aborted
+	if (abortSignal?.aborted) {
+		console.log("🚫 handleParamsForApi: Aborted before processing");
+		return { params, missingFields: matchedApi?.requiredFields || [], formattedReply: null };
+	}
+
 	// Normalize casing
 	if (matchedApi?.requiredFields?.length) {
 		const normalized = {};
@@ -128,6 +133,11 @@ async function handleParamsForApi(matchedApi, params, userMessage, session, onSt
 	// Pre-run handler
 	if (missingFields.length) {
 		try {
+			// 🔹 Abort check
+			if (abortSignal?.aborted) {
+				console.log("🚫 handleParamsForApi aborted before pre-run handler");
+				return { params, missingFields, formattedReply: null };
+			}
 			const tempParams = { ...params };
 			let tempResult;
 			if (type === "multi_intent") {
@@ -150,6 +160,10 @@ async function handleParamsForApi(matchedApi, params, userMessage, session, onSt
 
 			missingFields = matchedApi.requiredFields.filter((f) => !params[f]);
 		} catch (err) {
+			if (abortSignal?.aborted) {
+				console.log("🚫 Pre-run handler aborted");
+				return { params, missingFields, formattedReply: null };
+			}
 			console.warn("Pre-run handler check failed:", err.message);
 		}
 	}
@@ -160,8 +174,12 @@ async function handleParamsForApi(matchedApi, params, userMessage, session, onSt
 
 	if (needsDateExtraction) {
 		const extracted = await extractDateParamsFromOpenAI(userMessage);
-		console.log("OpenAI extracted:", extracted);
 
+		if (abortSignal?.aborted) {
+			console.log("🚫 handleParamsForApi aborted during date extraction");
+			return { params, missingFields, formattedReply: null };
+		}
+		// console.log("OpenAI extracted:", extracted);
 		const { WeekStartingDescription, WeekEndingDescription, Year } = extracted;
 		const currentWeek = getCurrentWeekNumber();
 

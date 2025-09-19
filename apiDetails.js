@@ -10,25 +10,40 @@ module.exports = [
 	{
 		name: "GetDriverWeeklyWorkingHrList",
 		description:
-			"This API should be triggered whenever the user asks about a driver’s preferred weekly working hours. It provides the number of hours each driver wishes to work in a week along with their name. This is useful for managers to align schedules with driver availability and preferences. Use this API when the user asks questions such as: “How many hours does Alejandro Reyes want to work per week?”, “Show me all drivers with their weekly working hour preferences”, “Who prefers 40 hours per week?”, “List drivers with less than 35 weekly hours preference”, or “What is Anthony Semidey’s weekly working hour preference?",
+			"This API should be triggered whenever the user asks about a driver’s preferred weekly working hours. It provides the number of hours each driver wishes to work in a week along with their name. This is useful for managers to align schedules with driver availability and preferences. Use this API when the user asks questions such as: “How many hours does Alejandro Reyes want to work per week?”, “Show me all drivers with their weekly working hour preferences”, “Who prefers 40 hours per week?”, “List drivers with less than 35 weekly hours preference”, or “What is Anthony Semidey’s weekly working hour preference?”",
 		requiredFields: ["StationId"],
 		exampleResponse: [
 			{ driverName: "Alejandro Reyes", hours: 30 },
 			{ driverName: "Hele Reyes", hours: 40 },
 		],
 
-		handler: async (params, userMessage, session, onStream) => {
+		handler: async (params, userMessage, session, onStream, abortSignal) => {
+			// 🔹 Check abort at start
+			if (abortSignal?.aborted) {
+				console.log("🚫 GetDriverWeeklyWorkingHrList handler: Aborted before execution");
+				return { error: "Request aborted" };
+			}
+
 			if (!params?.StationId) params.StationId = 2;
+
 			try {
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetDriverWeeklyWorkingHrList handler: Aborted before axios call");
+					return { error: "Request aborted" };
+				}
+
 				const { data } = await axios.get(`${API_BASE}/GetDriverWeeklyWorkingHrList?StationId=${params.StationId}`);
+
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetDriverWeeklyWorkingHrList handler: Aborted after axios call");
+					return { error: "Request aborted" };
+				}
 
 				const driversWeeklyWorkingHrList =
 					data?.data?.map((item) => ({
 						driverName: item?.driverName,
 						hours: item?.hours,
 					})) || [];
-
-				// console.log(driversWeeklyWorkingHrList);
 
 				return await processIntentAndFormatResponse({
 					userMessage,
@@ -45,18 +60,42 @@ module.exports = [
 					params,
 					session,
 					onStream,
+					abortSignal,
 				});
 			} catch (err) {
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetDriverWeeklyWorkingHrList handler: Aborted during execution");
+					return { error: "Request aborted" };
+				}
+
 				return {
 					error: true,
 					message: err.response?.data?.message || "Failed to fetch drivers' working hours list.",
 				};
 			}
 		},
-		multiHandler: async (params, userMessage, session, onStream) => {
+
+		multiHandler: async (params, userMessage, session, onStream, abortSignal) => {
+			// 🔹 Check abort at start
+			if (abortSignal?.aborted) {
+				console.log("🚫 GetDriverWeeklyWorkingHrList multiHandler: Aborted before execution");
+				return { error: "Request aborted" };
+			}
+
 			if (!params?.StationId) params.StationId = 2;
+
 			try {
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetDriverWeeklyWorkingHrList multiHandler: Aborted before axios call");
+					return { error: "Request aborted" };
+				}
+
 				const { data } = await axios.get(`${API_BASE}/GetDriverWeeklyWorkingHrList?StationId=${params.StationId}`);
+
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetDriverWeeklyWorkingHrList multiHandler: Aborted after axios call");
+					return { error: "Request aborted" };
+				}
 
 				const driversWeeklyWorkingHrList =
 					data?.data?.map((item) => ({
@@ -64,10 +103,13 @@ module.exports = [
 						hours: item?.hours,
 					})) || [];
 
-				// console.log(driversWeeklyWorkingHrList);
-
 				return { data: driversWeeklyWorkingHrList };
 			} catch (err) {
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetDriverWeeklyWorkingHrList multiHandler: Aborted during execution");
+					return { error: "Request aborted" };
+				}
+
 				return {
 					error: true,
 					message: err.response?.data?.message || "Failed to fetch drivers' working hours list.",
@@ -82,13 +124,29 @@ module.exports = [
 			"Returns priority factors for each day of the week including saturday and sunday .If a day is provided, returns only that day's data. Supports filtering by given asked day or multiple day",
 		requiredFields: ["ClientId"],
 		exampleResponse: [{ dayName: "Monday", factor: 2 }],
-		handler: async (params, userMessage, session, onStream) => {
-			// console.log(params,"params in get day factor handler")
+		handler: async (params, userMessage, session, onStream, abortSignal) => {
+			console.log(onStream, "onStream in get day factor handler");
+			// 🔹 Check abort at start
+			if (abortSignal?.aborted) {
+				console.log("🚫 GetDayFactor handler: Aborted before execution");
+				return { error: "Request aborted" };
+			}
+
 			if (!params?.ClientId) params.ClientId = 2;
 
 			try {
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetDayFactor handler: Aborted before axios call");
+					return { error: "Request aborted" };
+				}
 				const { data } = await axios.get(`${API_BASE}/GetDayFactor?ClientId=${params.ClientId}`);
 				// console.log(data)
+				// 🔹 Check abort after API call
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetDayFactor handler: Aborted after axios call");
+					return { error: "Request aborted" };
+				}
+
 				const dayFactors =
 					data?.data?.map((item) => ({
 						id: item.id,
@@ -110,8 +168,13 @@ module.exports = [
 					params,
 					session,
 					onStream,
+					abortSignal,
 				});
 			} catch (err) {
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetDayFactor handler: Aborted during execution");
+					return { error: "Request aborted" };
+				}
 				return {
 					error: true,
 					message: err.response?.data?.message || "Failed to fetch day factor data.",
@@ -147,7 +210,7 @@ module.exports = [
 	{
 		name: "GetSchedulingShiftTypeList",
 		description:
-			"Returns available shift types and their details for scheduling , including minimum qualification (minQualification) and hours per shift ",
+			"Returns available shift types and their details for scheduling, including minimum qualification (minQualification) and hours per shift",
 		requiredFields: ["ClientId"],
 		exampleResponse: [
 			{
@@ -157,11 +220,28 @@ module.exports = [
 			},
 		],
 
-		handler: async (params, userMessage, session, onStream) => {
+		handler: async (params, userMessage, session, onStream, abortSignal) => {
+			// 🔹 Check abort at start
+			if (abortSignal?.aborted) {
+				console.log("🚫 GetSchedulingShiftTypeList handler: Aborted before execution");
+				return { error: "Request aborted" };
+			}
+
 			if (!params?.ClientId) params.ClientId = 2;
 
 			try {
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetSchedulingShiftTypeList handler: Aborted before axios call");
+					return { error: "Request aborted" };
+				}
+
 				const { data } = await axios.get(`${API_BASE}/GetSchedulingShiftTypeList?ClientId=${params.ClientId}`);
+
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetSchedulingShiftTypeList handler: Aborted after axios call");
+					return { error: "Request aborted" };
+				}
+
 				const shiftTypeList =
 					data?.data?.map((item) => ({
 						shiftTitle: item?.description,
@@ -187,19 +267,43 @@ module.exports = [
 					params,
 					session,
 					onStream,
+					abortSignal,
 				});
 			} catch (err) {
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetSchedulingShiftTypeList handler: Aborted during execution");
+					return { error: "Request aborted" };
+				}
+
 				return {
 					error: true,
 					message: err.response?.data?.message || "Failed to fetch scheduling shift types.",
 				};
 			}
 		},
-		multiHandler: async (params, userMessage, session, onStream) => {
+
+		multiHandler: async (params, userMessage, session, onStream, abortSignal) => {
+			// 🔹 Check abort at start
+			if (abortSignal?.aborted) {
+				console.log("🚫 GetSchedulingShiftTypeList multiHandler: Aborted before execution");
+				return { error: "Request aborted" };
+			}
+
 			if (!params?.ClientId) params.ClientId = 2;
 
 			try {
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetSchedulingShiftTypeList multiHandler: Aborted before axios call");
+					return { error: "Request aborted" };
+				}
+
 				const { data } = await axios.get(`${API_BASE}/GetSchedulingShiftTypeList?ClientId=${params.ClientId}`);
+
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetSchedulingShiftTypeList multiHandler: Aborted after axios call");
+					return { error: "Request aborted" };
+				}
+
 				const shiftTypeList =
 					data?.data?.map((item) => ({
 						shiftTitle: item?.description,
@@ -209,6 +313,11 @@ module.exports = [
 
 				return { data: shiftTypeList };
 			} catch (err) {
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetSchedulingShiftTypeList multiHandler: Aborted during execution");
+					return { error: "Request aborted" };
+				}
+
 				return {
 					error: true,
 					message: err.response?.data?.message || "Failed to fetch scheduling shift types.",
@@ -230,25 +339,42 @@ module.exports = [
 			},
 		],
 
-		handler: async (params, userMessage, session, onStream) => {
+		handler: async (params, userMessage, session, onStream, abortSignal) => {
+			// 🔹 Check abort at start
+			if (abortSignal?.aborted) {
+				console.log("🚫 GetLMDPDayPreferenceList handler: Aborted before execution");
+				return { error: "Request aborted" };
+			}
+
 			if (!params?.ClientId) params.ClientId = 2;
 			if (!params?.DriverId) return { missingFields: ["DriverId"] };
 
 			try {
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetLMDPDayPreferenceList handler: Aborted before axios call");
+					return { error: "Request aborted" };
+				}
+
 				const { data } = await axios.get(
 					`${API_BASE}/GetLMDPDayPreferenceList?DriverId=${params.DriverId}&ClientId=${params.ClientId}`
 				);
 
-				let DayPreferenceList = data?.data?.map((item) => ({
-					driverName: item?.driverName,
-					day: item?.day,
-					preference: item?.preference,
-				}));
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetLMDPDayPreferenceList handler: Aborted after axios call");
+					return { error: "Request aborted" };
+				}
+
+				const DayPreferenceList =
+					data?.data?.map((item) => ({
+						driverName: item?.driverName,
+						day: item?.day,
+						preference: item?.preference,
+					})) || [];
 
 				return await processIntentAndFormatResponse({
 					userMessage,
 					api: {
-						name: "GetSchedulingShiftTypeList",
+						name: "GetLMDPDayPreferenceList",
 						description:
 							"This API is used to fetch a driver’s day-wise work preference, showing which days they prefer to work, avoid, or are neutral about. The preference field represents the main value to consider, while oldPreference can be ignored. Use this intent when the user wants to know a driver’s preferred working days or availability patterns. For example: “What is Anthony Semidey’s day preference?”, “Show me which days Alejandro Reyes prefers to work”, “List all drivers and their day preferences”, or “Which days does a driver not want to work?” This helps managers align schedules with driver availability and reduce conflicts.",
 						isSuitableForGraph: true,
@@ -264,34 +390,63 @@ module.exports = [
 					params,
 					session,
 					onStream,
+					abortSignal,
 				});
 			} catch (err) {
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetLMDPDayPreferenceList handler: Aborted during execution");
+					return { error: "Request aborted" };
+				}
+
 				return {
 					error: true,
-					message: err.response?.data?.message || "Failed to fetch scheduling shift types.",
+					message: err.response?.data?.message || "Failed to fetch day preference list.",
 				};
 			}
 		},
-		multiHandler: async (params, userMessage, session, onStream) => {
+
+		multiHandler: async (params, userMessage, session, onStream, abortSignal) => {
+			// 🔹 Check abort at start
+			if (abortSignal?.aborted) {
+				console.log("🚫 GetLMDPDayPreferenceList multiHandler: Aborted before execution");
+				return { error: "Request aborted" };
+			}
+
 			if (!params?.ClientId) params.ClientId = 2;
 			if (!params?.DriverId) return { missingFields: ["DriverId"] };
 
 			try {
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetLMDPDayPreferenceList multiHandler: Aborted before axios call");
+					return { error: "Request aborted" };
+				}
+
 				const { data } = await axios.get(
 					`${API_BASE}/GetLMDPDayPreferenceList?DriverId=${params.DriverId}&ClientId=${params.ClientId}`
 				);
 
-				let DayPreferenceList = data?.data?.map((item) => ({
-					driverName: item?.driverName,
-					day: item?.day,
-					preference: item?.preference,
-				}));
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetLMDPDayPreferenceList multiHandler: Aborted after axios call");
+					return { error: "Request aborted" };
+				}
+
+				const DayPreferenceList =
+					data?.data?.map((item) => ({
+						driverName: item?.driverName,
+						day: item?.day,
+						preference: item?.preference,
+					})) || [];
 
 				return { data: DayPreferenceList };
 			} catch (err) {
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetLMDPDayPreferenceList multiHandler: Aborted during execution");
+					return { error: "Request aborted" };
+				}
+
 				return {
 					error: true,
-					message: err.response?.data?.message || "Failed to fetch scheduling shift types.",
+					message: err.response?.data?.message || "Failed to fetch day preference list.",
 				};
 			}
 		},
@@ -303,26 +458,42 @@ module.exports = [
 			"Retrieves each driver's OT (Overtime Preference) settings for a given StationId. This does NOT include qualifications or weekly date ranges — only the preference values.",
 		requiredFields: ["StationId"],
 		exampleResponse: [{ driverName: "JORGE VALENCIA", preference: 2 }],
-		handler: async (params, userMessage, session, onStream) => {
+
+		handler: async (params, userMessage, session, onStream, abortSignal) => {
+			// 🔹 Check abort at start
+			if (abortSignal?.aborted) {
+				console.log("🚫 GetDriverOTPreferenceList handler: Aborted before execution");
+				return { error: "Request aborted" };
+			}
+
 			if (!params?.StationId) params.StationId = 2;
 
 			try {
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetDriverOTPreferenceList handler: Aborted before axios call");
+					return { error: "Request aborted" };
+				}
+
 				const { data } = await axios.get(
 					`https://dotc-delivery.azurewebsites.net/GetDriverOTPreferenceList?StationId=${params.StationId}`
 				);
 
-				// console.log(data);
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetDriverOTPreferenceList handler: Aborted after axios call");
+					return { error: "Request aborted" };
+				}
 
-				let DriversOTPPreferenceList = data?.data?.map((item) => ({
-					driverName: item?.driverName,
-					preference: item?.preference,
-				}));
+				const DriversOTPPreferenceList =
+					data?.data?.map((item) => ({
+						driverName: item?.driverName,
+						preference: item?.preference,
+					})) || [];
 
 				return await processIntentAndFormatResponse({
 					userMessage,
 					api: {
 						name: "GetDriverOTPreferenceList",
-						description: "Returns OTP preference for each drivers",
+						description: "Returns OTP preference for each driver",
 						isSuitableForGraph: true,
 					},
 					exampleResponse: [
@@ -335,28 +506,58 @@ module.exports = [
 					params,
 					session,
 					onStream,
+					abortSignal,
 				});
 			} catch (err) {
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetDriverOTPreferenceList handler: Aborted during execution");
+					return { error: "Request aborted" };
+				}
+
 				return {
 					error: true,
-					message: err.response?.data?.message || "Failed to fetch drivers OTP preference list",
+					message: err.response?.data?.message || "Failed to fetch drivers OT preference list",
 				};
 			}
 		},
-		multiHandler: async (params, userMessage, session, onStream) => {
+
+		multiHandler: async (params, userMessage, session, onStream, abortSignal) => {
+			// 🔹 Check abort at start
+			if (abortSignal?.aborted) {
+				console.log("🚫 GetDriverOTPreferenceList multiHandler: Aborted before execution");
+				return { error: "Request aborted" };
+			}
+
 			if (!params?.StationId) params.StationId = 2;
 
 			try {
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetDriverOTPreferenceList multiHandler: Aborted before axios call");
+					return { error: "Request aborted" };
+				}
+
 				const { data } = await axios.get(
 					`https://dotc-delivery.azurewebsites.net/GetDriverOTPreferenceList?StationId=${params.StationId}`
 				);
-				let DriversOTPPreferenceList = data?.data?.map((item) => ({
-					driverName: item?.driverName,
-					preference: item?.preference,
-				}));
+
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetDriverOTPreferenceList multiHandler: Aborted after axios call");
+					return { error: "Request aborted" };
+				}
+
+				const DriversOTPPreferenceList =
+					data?.data?.map((item) => ({
+						driverName: item?.driverName,
+						preference: item?.preference,
+					})) || [];
 
 				return { data: DriversOTPPreferenceList };
 			} catch (err) {
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetDriverOTPreferenceList multiHandler: Aborted during execution");
+					return { error: "Request aborted" };
+				}
+
 				return {
 					error: true,
 					message: err.response?.data?.message || "Failed to fetch drivers OTP preference list",
@@ -364,6 +565,7 @@ module.exports = [
 			}
 		},
 	},
+
 	//6. GetLMDPMaxQualificationsList
 	{
 		name: "GetLMDPMaxQualificationsList",
@@ -371,13 +573,19 @@ module.exports = [
 			"Retrieves the maximum qualification level of all drivers (also called LMDPs) for a specific ClientId within a specified weekly date range (FromDate to ToDate), based on a Sunday–Saturday week. This API should also be used when the user requests qualifications alongside other driver-related information (such as overtime preferences, shifts, or assignments), or when the query involves filtering drivers by qualification level (e.g., 'show drivers with qualification 3 and their OT preferences' or 'list all LMDPs above qualification 2'). It also supports queries for a single driver by name or for the full list of drivers.",
 		requiredFields: ["ClientId", "FromDate", "ToDate"],
 		exampleResponse: [{ driverName: "JORGE VALENCIA", qualification: 2 }],
-		handler: async (params, userMessage, session, onStream) => {
-			console.log(onStream, "on stream on GetLMDPMaxQualificationsList");
-			// If FromDate/ToDate missing
-			if (!params?.FromDate || !params?.ToDate) {
-				const today = new Date();
-				const todayStr = today.toISOString().split("T")[0]; // YYYY-MM-DD
 
+		handler: async (params, userMessage, session, onStream, abortSignal) => {
+			console.log(onStream, "on stream on GetLMDPMaxQualificationsList");
+
+			if (abortSignal?.aborted) {
+				console.log("🚫 GetLMDPMaxQualificationsList handler: Aborted before execution");
+				return { error: "Request aborted" };
+			}
+
+			const today = new Date();
+			const todayStr = today.toISOString().split("T")[0];
+
+			if (!params?.FromDate || !params?.ToDate) {
 				try {
 					const prompt = `
 You are a date extraction assistant.
@@ -389,7 +597,7 @@ you MUST calculate based on today's date.
 Rules:
 - A week starts on SUNDAY and ends on SATURDAY.
 - FromDate = the Sunday of the week containing the reference date.
-- ToDate = the Saturday of the week containing the reference date.
+- ToDate = the Saturday of that week containing the reference date.
 
 Steps:
 1. Identify the reference date (either explicit or relative to today).
@@ -416,14 +624,18 @@ Respond in JSON only:
 						temperature: 0,
 					});
 
+					if (abortSignal?.aborted) {
+						console.log("🚫 GetLMDPMaxQualificationsList handler: Aborted after OpenAI call");
+						return { error: "Request aborted" };
+					}
+
 					const dateResult = JSON.parse(aiResp.choices[0].message.content || "{}");
 
 					if (dateResult?.FromDate && dateResult?.ToDate) {
 						params.FromDate = dateResult.FromDate;
 						params.ToDate = dateResult.ToDate;
 					} else {
-						// 🛠 No date found → default to current week Sunday–Saturday
-						const dayOfWeek = today.getDay(); // 0=Sunday
+						const dayOfWeek = today.getDay();
 						const sunday = new Date(today);
 						sunday.setDate(today.getDate() - dayOfWeek);
 						const saturday = new Date(sunday);
@@ -438,7 +650,6 @@ Respond in JSON only:
 				} catch (err) {
 					console.error("Date parsing failed:", err);
 
-					// 🛠 On error → default to current week Sunday–Saturday
 					const dayOfWeek = today.getDay();
 					const sunday = new Date(today);
 					sunday.setDate(today.getDate() - dayOfWeek);
@@ -453,7 +664,6 @@ Respond in JSON only:
 				}
 			}
 
-			// 3️⃣ Final param validation
 			const missingFields = [];
 			if (!params?.ClientId) params.ClientId = 2;
 			if (!params?.FromDate) missingFields.push("FromDate");
@@ -463,16 +673,26 @@ Respond in JSON only:
 				return { missingFields };
 			}
 
-			// 4️⃣ API call
 			try {
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetLMDPMaxQualificationsList handler: Aborted before axios call");
+					return { error: "Request aborted" };
+				}
+
 				const { data } = await axios.get(
 					`https://dotc-delivery.azurewebsites.net/GetLMDPMaxQualificationsList?ClientId=${params.ClientId}&FromDate=${params.FromDate}&ToDate=${params.ToDate}`
 				);
 
-				let DriversMaxQualificationList = data?.data?.map((item) => ({
-					driverName: item?.driverName,
-					qualification: item?.qualification,
-				}));
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetLMDPMaxQualificationsList handler: Aborted after axios call");
+					return { error: "Request aborted" };
+				}
+
+				const DriversMaxQualificationList =
+					data?.data?.map((item) => ({
+						driverName: item?.driverName,
+						qualification: item?.qualification,
+					})) || [];
 
 				return await processIntentAndFormatResponse({
 					userMessage,
@@ -487,20 +707,31 @@ Respond in JSON only:
 					params,
 					session,
 					onStream,
+					abortSignal,
 				});
 			} catch (err) {
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetLMDPMaxQualificationsList handler: Aborted during execution");
+					return { error: "Request aborted" };
+				}
+
 				return {
 					error: true,
-					message: err.response?.data?.message || "Failed to fetch drivers Drivers MaxQualification list",
+					message: err.response?.data?.message || "Failed to fetch drivers MaxQualification list",
 				};
 			}
 		},
-		multiHandler: async (params, userMessage, session, onStream) => {
-			// If FromDate/ToDate missing
-			if (!params?.FromDate || !params?.ToDate) {
-				const today = new Date();
-				const todayStr = today.toISOString().split("T")[0]; // YYYY-MM-DD
 
+		multiHandler: async (params, userMessage, session, onStream, abortSignal) => {
+			if (abortSignal?.aborted) {
+				console.log("🚫 GetLMDPMaxQualificationsList multiHandler: Aborted before execution");
+				return { error: "Request aborted" };
+			}
+
+			const today = new Date();
+			const todayStr = today.toISOString().split("T")[0];
+
+			if (!params?.FromDate || !params?.ToDate) {
 				try {
 					const prompt = `
 You are a date extraction assistant.
@@ -512,7 +743,7 @@ you MUST calculate based on today's date.
 Rules:
 - A week starts on SUNDAY and ends on SATURDAY.
 - FromDate = the Sunday of the week containing the reference date.
-- ToDate = the Saturday of the week containing the reference date.
+- ToDate = the Saturday of that week containing the reference date.
 
 Steps:
 1. Identify the reference date (either explicit or relative to today).
@@ -539,14 +770,18 @@ Respond in JSON only:
 						temperature: 0,
 					});
 
+					if (abortSignal?.aborted) {
+						console.log("🚫 GetLMDPMaxQualificationsList multiHandler: Aborted after OpenAI call");
+						return { error: "Request aborted" };
+					}
+
 					const dateResult = JSON.parse(aiResp.choices[0].message.content || "{}");
 
 					if (dateResult?.FromDate && dateResult?.ToDate) {
 						params.FromDate = dateResult.FromDate;
 						params.ToDate = dateResult.ToDate;
 					} else {
-						// 🛠 No date found → default to current week Sunday–Saturday
-						const dayOfWeek = today.getDay(); // 0=Sunday
+						const dayOfWeek = today.getDay();
 						const sunday = new Date(today);
 						sunday.setDate(today.getDate() - dayOfWeek);
 						const saturday = new Date(sunday);
@@ -561,7 +796,6 @@ Respond in JSON only:
 				} catch (err) {
 					console.error("Date parsing failed:", err);
 
-					// 🛠 On error → default to current week Sunday–Saturday
 					const dayOfWeek = today.getDay();
 					const sunday = new Date(today);
 					sunday.setDate(today.getDate() - dayOfWeek);
@@ -576,7 +810,6 @@ Respond in JSON only:
 				}
 			}
 
-			// 3️⃣ Final param validation
 			const missingFields = [];
 			if (!params?.ClientId) params.ClientId = 2;
 			if (!params?.FromDate) missingFields.push("FromDate");
@@ -586,22 +819,37 @@ Respond in JSON only:
 				return { missingFields };
 			}
 
-			// 4️⃣ API call
 			try {
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetLMDPMaxQualificationsList multiHandler: Aborted before axios call");
+					return { error: "Request aborted" };
+				}
+
 				const { data } = await axios.get(
 					`https://dotc-delivery.azurewebsites.net/GetLMDPMaxQualificationsList?ClientId=${params.ClientId}&FromDate=${params.FromDate}&ToDate=${params.ToDate}`
 				);
 
-				let DriversMaxQualificationList = data?.data?.map((item) => ({
-					driverName: item?.driverName,
-					qualification: item?.qualification,
-				}));
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetLMDPMaxQualificationsList multiHandler: Aborted after axios call");
+					return { error: "Request aborted" };
+				}
+
+				const DriversMaxQualificationList =
+					data?.data?.map((item) => ({
+						driverName: item?.driverName,
+						qualification: item?.qualification,
+					})) || [];
 
 				return { data: DriversMaxQualificationList };
 			} catch (err) {
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetLMDPMaxQualificationsList multiHandler: Aborted during execution");
+					return { error: "Request aborted" };
+				}
+
 				return {
 					error: true,
-					message: err.response?.data?.message || "Failed to fetch drivers Drivers MaxQualification list",
+					message: err.response?.data?.message || "Failed to fetch drivers MaxQualification list",
 				};
 			}
 		},
@@ -610,7 +858,7 @@ Respond in JSON only:
 	{
 		name: "GetBlobShiftDriverData",
 		description:
-			"Returns total hours scheduled (for each shift type) between weeks 25(start week number) and 33(end Week number) of all LMDPs broken down by shift type , list of drivers with their name and  shift type(like Parcel Van , Step Van , Walker ,Box Truck etc..) with hours like for a given range of week like 25 to 33",
+			"Returns total hours scheduled (for each shift type) between weeks 25(start week number) and 33(end Week number) of all LMDPs broken down by shift type, list of drivers with their name and shift type (like Parcel Van, Step Van, Walker, Box Truck, etc.) with hours for a given range of weeks.",
 		requiredFields: ["WeekStarting", "WeekEnding", "Year", "ClientId"],
 		exampleResponse: [
 			{
@@ -633,22 +881,29 @@ Respond in JSON only:
 			},
 		],
 
-		handler: async (params, userMessage, session, onStream) => {
-			if (!params?.ClientId !== 2) params.ClientId = 2;
+		handler: async (params, userMessage, session, onStream, abortSignal) => {
+			if (abortSignal?.aborted) {
+				console.log("🚫 GetBlobShiftDriverData handler: Aborted before execution");
+				return { error: "Request aborted" };
+			}
+
+			if (params?.ClientId !== 2) params.ClientId = 2;
 			if (!params?.WeekStarting) return { missingFields: ["WeekStarting"] };
 			if (!params?.WeekEnding) return { missingFields: ["WeekEnding"] };
-			// Auto-fill current year if missing
 			if (!params?.Year) {
 				params.Year = new Date().getFullYear();
 			}
 
 			try {
-				console.log(
-					`${API_BASE}/GetBlobShiftDriverData?WeekStarting=${params?.WeekStarting}&WeekEnding=${params?.WeekEnding}&Year=${params?.Year}&ClientId=${params?.ClientId}`
-				);
-				const { data } = await axios.get(
-					`${API_BASE}/GetBlobShiftDriverData?WeekStarting=${params?.WeekStarting}&WeekEnding=${params?.WeekEnding}&Year=${params?.Year}&ClientId=${params?.ClientId}`
-				);
+				const url = `${API_BASE}/GetBlobShiftDriverData?WeekStarting=${params.WeekStarting}&WeekEnding=${params.WeekEnding}&Year=${params.Year}&ClientId=${params.ClientId}`;
+				console.log(url);
+
+				const { data } = await axios.get(url);
+
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetBlobShiftDriverData handler: Aborted after axios call");
+					return { error: "Request aborted" };
+				}
 
 				const driversTotalScheduledHours =
 					data?.data?.map((item) => ({
@@ -661,7 +916,7 @@ Respond in JSON only:
 					api: {
 						name: "GetBlobShiftDriverData",
 						description:
-							"Returns total hours scheduled (for each shift type) between weeks 25(start week number) and 33(end Week number) of all LMDPs broken down by shift type , list of drivers with their name and  shift type(like Parcel Van , Step Van , Walker ,Box Truck etc..) with hours like for a given range of week like 25 to 33",
+							"Returns total hours scheduled (for each shift type) between weeks of all LMDPs broken down by shift type and driver.",
 						isSuitableForGraph: true,
 					},
 					exampleResponse: [
@@ -688,30 +943,44 @@ Respond in JSON only:
 					params,
 					session,
 					onStream,
+					abortSignal,
 				});
 			} catch (err) {
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetBlobShiftDriverData handler: Aborted during execution");
+					return { error: "Request aborted" };
+				}
+
 				return {
 					error: true,
 					message: err.response?.data?.message || "Failed to fetch drivers' working hours list.",
 				};
 			}
 		},
-		multiHandler: async (params, userMessage, session, onStream) => {
-			if (!params?.ClientId !== 2) params.ClientId = 2;
+
+		multiHandler: async (params, userMessage, session, onStream, abortSignal) => {
+			if (abortSignal?.aborted) {
+				console.log("🚫 GetBlobShiftDriverData multiHandler: Aborted before execution");
+				return { error: "Request aborted" };
+			}
+
+			if (params?.ClientId !== 2) params.ClientId = 2;
 			if (!params?.WeekStarting) return { missingFields: ["WeekStarting"] };
 			if (!params?.WeekEnding) return { missingFields: ["WeekEnding"] };
-			// Auto-fill current year if missing
 			if (!params?.Year) {
 				params.Year = new Date().getFullYear();
 			}
 
 			try {
-				console.log(
-					`${API_BASE}/GetBlobShiftDriverData?WeekStarting=${params?.WeekStarting}&WeekEnding=${params?.WeekEnding}&Year=${params?.Year}&ClientId=${params?.ClientId}`
-				);
-				const { data } = await axios.get(
-					`${API_BASE}/GetBlobShiftDriverData?WeekStarting=${params?.WeekStarting}&WeekEnding=${params?.WeekEnding}&Year=${params?.Year}&ClientId=${params?.ClientId}`
-				);
+				const url = `${API_BASE}/GetBlobShiftDriverData?WeekStarting=${params.WeekStarting}&WeekEnding=${params.WeekEnding}&Year=${params.Year}&ClientId=${params.ClientId}`;
+				console.log(url);
+
+				const { data } = await axios.get(url);
+
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetBlobShiftDriverData multiHandler: Aborted after axios call");
+					return { error: "Request aborted" };
+				}
 
 				const driversTotalScheduledHours =
 					data?.data?.map((item) => ({
@@ -721,6 +990,11 @@ Respond in JSON only:
 
 				return { data: driversTotalScheduledHours };
 			} catch (err) {
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetBlobShiftDriverData multiHandler: Aborted during execution");
+					return { error: "Request aborted" };
+				}
+
 				return {
 					error: true,
 					message: err.response?.data?.message || "Failed to fetch drivers' working hours list.",
@@ -813,7 +1087,7 @@ Respond in JSON only:
 	{
 		name: "GetLocationListForBackEnd",
 		description:
-			"returns a list of available locations for LMDPs/drivers along with their details, including name, address, city, state, zip code, type, and active status. It is used to identify and retrieve information about all operational locations in the system.",
+			"Returns a list of available locations for LMDPs/drivers along with their details, including name, address, city, state, zip code, type, and active status. It is used to identify and retrieve information about all operational locations in the system.",
 		requiredFields: ["ClientId"],
 		exampleResponse: [
 			{
@@ -826,11 +1100,24 @@ Respond in JSON only:
 			},
 		],
 
-		handler: async (params, userMessage, session, onStream) => {
-			if (!params?.ClientId !== 2) params.ClientId = 2;
+		handler: async (params, userMessage, session, onStream, abortSignal) => {
+			if (abortSignal?.aborted) {
+				console.log("🚫 GetLocationListForBackEnd handler: Aborted before execution");
+				return { error: "Request aborted" };
+			}
+
+			if (params?.ClientId !== 2) params.ClientId = 2;
 
 			try {
-				const { data } = await axios.get(`${API_BASE}/GetLocationListForBackEnd?ClientId=${params?.ClientId}`);
+				const url = `${API_BASE}/GetLocationListForBackEnd?ClientId=${params.ClientId}`;
+				console.log(url);
+
+				const { data } = await axios.get(url);
+
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetLocationListForBackEnd handler: Aborted after axios call");
+					return { error: "Request aborted" };
+				}
 
 				const locationLists =
 					data?.data?.map((item) => ({
@@ -847,7 +1134,7 @@ Respond in JSON only:
 					api: {
 						name: "GetLocationListForBackEnd",
 						description:
-							"returns a list of available locations for LMDPs along with their details, including name, address, city, state, zip code, type, and active status. It is used to identify and retrieve information about all operational locations in the system.",
+							"Returns a list of available locations for LMDPs along with their details, including name, address, city, state, zip code, type, and active status.",
 						isSuitableForGraph: false,
 					},
 					exampleResponse: [
@@ -864,19 +1151,39 @@ Respond in JSON only:
 					params,
 					session,
 					onStream,
+					abortSignal,
 				});
 			} catch (err) {
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetLocationListForBackEnd handler: Aborted during execution");
+					return { error: "Request aborted" };
+				}
+
 				return {
 					error: true,
 					message: err.response?.data?.message || "Failed to fetch available locations for LMDPs.",
 				};
 			}
 		},
-		multiHandler: async (params, userMessage, session, onStream) => {
-			if (!params?.ClientId !== 2) params.ClientId = 2;
+
+		multiHandler: async (params, userMessage, session, onStream, abortSignal) => {
+			if (abortSignal?.aborted) {
+				console.log("🚫 GetLocationListForBackEnd multiHandler: Aborted before execution");
+				return { error: "Request aborted" };
+			}
+
+			if (params?.ClientId !== 2) params.ClientId = 2;
 
 			try {
-				const { data } = await axios.get(`${API_BASE}/GetLocationListForBackEnd?ClientId=${params?.ClientId}`);
+				const url = `${API_BASE}/GetLocationListForBackEnd?ClientId=${params.ClientId}`;
+				console.log(url);
+
+				const { data } = await axios.get(url);
+
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetLocationListForBackEnd multiHandler: Aborted after axios call");
+					return { error: "Request aborted" };
+				}
 
 				const locationLists =
 					data?.data?.map((item) => ({
@@ -890,6 +1197,11 @@ Respond in JSON only:
 
 				return { data: locationLists };
 			} catch (err) {
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetLocationListForBackEnd multiHandler: Aborted during execution");
+					return { error: "Request aborted" };
+				}
+
 				return {
 					error: true,
 					message: err.response?.data?.message || "Failed to fetch available locations for LMDPs.",
@@ -901,7 +1213,7 @@ Respond in JSON only:
 	{
 		name: "GetSchedAlignEngineLMDPPermissions",
 		description:
-			"returns the default scheduling and permission settings defined by the manager. It includes rules such as the maximum allowed unavailable days, maximum time-off length, whether weekend availability is required, and permissions for approving neutral or open shift requests. This API is used to understand the scheduling policies and restrictions that apply to drivers.",
+			"Returns the default scheduling and permission settings defined by the manager. It includes rules such as the maximum allowed unavailable days, maximum time-off length, whether weekend availability is required, and permissions for approving neutral or open shift requests. This API is used to understand the scheduling policies and restrictions that apply to drivers.",
 		requiredFields: ["ClientId"],
 		exampleResponse: [
 			{
@@ -914,11 +1226,25 @@ Respond in JSON only:
 				chatResponsesVisible: false,
 			},
 		],
-		handler: async (params, userMessage, session, onStream) => {
-			if (!params?.ClientId !== 2) params.ClientId = 2;
+
+		handler: async (params, userMessage, session, onStream, abortSignal) => {
+			if (abortSignal?.aborted) {
+				console.log("🚫 GetSchedAlignEngineLMDPPermissions handler: Aborted before execution");
+				return { error: "Request aborted" };
+			}
+
+			if (params?.ClientId !== 2) params.ClientId = 2;
 
 			try {
-				const { data } = await axios.get(`${API_BASE}/GetLocationListForBackEnd?ClientId=${params?.ClientId}`);
+				const url = `${API_BASE}/GetSchedAlignEngineLMDPPermissions?ClientId=${params.ClientId}`;
+				console.log(url);
+
+				const { data } = await axios.get(url);
+
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetSchedAlignEngineLMDPPermissions handler: Aborted after axios call");
+					return { error: "Request aborted" };
+				}
 
 				const permissionList =
 					data?.data?.map((item) => ({
@@ -926,6 +1252,7 @@ Respond in JSON only:
 						requireWeekendDay: item?.requireWeekendDay,
 						maxTimeOffLength: item?.maxTimeOffLength,
 						approveNeutralRequests: item?.approveNeutralRequests,
+						requireOpenShiftApproval: item?.requireOpenShiftApproval,
 						canCreateLDMPGroups: item?.canCreateLDMPGroups,
 						chatResponsesVisible: item?.chatResponsesVisible,
 					})) || [];
@@ -935,7 +1262,7 @@ Respond in JSON only:
 					api: {
 						name: "GetSchedAlignEngineLMDPPermissions",
 						description:
-							"returns the default scheduling and permission settings defined by the manager. It includes rules such as the maximum allowed unavailable days, maximum time-off length, whether weekend availability is required, and permissions for approving neutral or open shift requests. This API is used to understand the scheduling policies and restrictions that apply to drivers.",
+							"Returns the default scheduling and permission settings defined by the manager. Includes max unavailable days, max time-off length, weekend requirement, and permissions for approving neutral/open shift requests.",
 						isSuitableForGraph: false,
 					},
 					exampleResponse: [
@@ -953,19 +1280,39 @@ Respond in JSON only:
 					params,
 					session,
 					onStream,
+					abortSignal,
 				});
 			} catch (err) {
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetSchedAlignEngineLMDPPermissions handler: Aborted during execution");
+					return { error: "Request aborted" };
+				}
+
 				return {
 					error: true,
-					message: err.response?.data?.message || "Failed to fetch  default scheduling and permission settings.",
+					message: err.response?.data?.message || "Failed to fetch default scheduling and permission settings.",
 				};
 			}
 		},
-		multiHandler: async (params, userMessage, session, onStream) => {
-			if (!params?.ClientId !== 2) params.ClientId = 2;
+
+		multiHandler: async (params, userMessage, session, onStream, abortSignal) => {
+			if (abortSignal?.aborted) {
+				console.log("🚫 GetSchedAlignEngineLMDPPermissions multiHandler: Aborted before execution");
+				return { error: "Request aborted" };
+			}
+
+			if (params?.ClientId !== 2) params.ClientId = 2;
 
 			try {
-				const { data } = await axios.get(`${API_BASE}/GetLocationListForBackEnd?ClientId=${params?.ClientId}`);
+				const url = `${API_BASE}/GetSchedAlignEngineLMDPPermissions?ClientId=${params.ClientId}`;
+				console.log(url);
+
+				const { data } = await axios.get(url);
+
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetSchedAlignEngineLMDPPermissions multiHandler: Aborted after axios call");
+					return { error: "Request aborted" };
+				}
 
 				const permissionList =
 					data?.data?.map((item) => ({
@@ -973,20 +1320,25 @@ Respond in JSON only:
 						requireWeekendDay: item?.requireWeekendDay,
 						maxTimeOffLength: item?.maxTimeOffLength,
 						approveNeutralRequests: item?.approveNeutralRequests,
+						requireOpenShiftApproval: item?.requireOpenShiftApproval,
 						canCreateLDMPGroups: item?.canCreateLDMPGroups,
 						chatResponsesVisible: item?.chatResponsesVisible,
 					})) || [];
 
 				return { data: permissionList };
 			} catch (err) {
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetSchedAlignEngineLMDPPermissions multiHandler: Aborted during execution");
+					return { error: "Request aborted" };
+				}
+
 				return {
 					error: true,
-					message: err.response?.data?.message || "Failed to fetch  default scheduling and permission settings.",
+					message: err.response?.data?.message || "Failed to fetch default scheduling and permission settings.",
 				};
 			}
 		},
 	},
-
 	//11.GetDriverByClientId
 	{
 		name: "GetDriverByClientId",
@@ -1000,11 +1352,26 @@ Respond in JSON only:
 				email: "tincho76ny@gmail.com",
 			},
 		],
-		handler: async (params, userMessage, session, onStream) => {
+		handler: async (params, userMessage, session, onStream, abortSignal) => {
 			if (!params?.ClientId !== 2) params.ClientId = 2;
 
+			if (abortSignal?.aborted) {
+				console.log("🚫 getDriverByClientId handler: Aborted before execution");
+				return { error: "Request aborted" };
+			}
+
 			try {
+				if (abortSignal?.aborted) {
+					console.log("🚫 getDriverByClientId handler: Aborted Before Api Call");
+					return { error: "Request aborted" };
+				}
+
 				const { data } = await axios.get(`${API_BASE}/GetDriverByClientId?ClientId=${params?.ClientId}`);
+
+				if (abortSignal?.aborted) {
+					console.log("🚫 getDriverByClientId handler: Aborted After Api Call");
+					return { error: "Request aborted" };
+				}
 
 				const driverList =
 					data?.data?.map((item) => ({
@@ -1118,7 +1485,7 @@ Respond in JSON only:
 				};
 			}
 		},
-		multiHandler: async (params, userMessage, session, onStream) => {
+		multiHandler: async (params, userMessage, session, onStream, abortSignal) => {
 			if (!params?.ClientId !== 2) params.ClientId = 2;
 
 			try {
@@ -1140,7 +1507,6 @@ Respond in JSON only:
 			}
 		},
 	},
-
 	//13.GetSchedAlignEngineWeeklySetting
 	{
 		name: "GetSchedAlignEngineWeeklySetting",
@@ -1156,21 +1522,21 @@ Respond in JSON only:
 			intolerableThreshold: 20,
 		},
 		handler: async (params, userMessage, session, onStream) => {
-			if (!params?.ClientId !== 2) params.ClientId = 2;
+			if (!params?.ClientId) params.ClientId = 2;
 
 			try {
-				const { data } = await axios.get(`${API_BASE}/GetSchedAlignEngineWeeklySetting?ClientId=${params?.ClientId}`);
+				const { data } = await axios.get(`${API_BASE}/GetSchedAlignEngineWeeklySetting?ClientId=${params.ClientId}`);
 
-				const defaultRules =
-					data?.data?.map((item) => ({
-						maxHrs: item?.maxHrs,
-						preferenceWeight: item?.preferenceWeight,
-						maxConsecutiveDaysWork: item?.maxConsecutiveDaysWork,
-						maxConsecutiveHrsWork: item?.maxConsecutiveHrsWork,
-						maxStandbyShifts: item?.maxStandbyShifts,
-						tolerableThreshold: item?.tolerableThreshold,
-						intolerableThreshold: item?.intolerableThreshold,
-					})) || [];
+				const defaultRules = data?.data
+					? {
+							maxHrs: data.data.maxHrs,
+							maxConsecutiveDaysWork: data.data.maxConsecutiveDaysWork,
+							maxConsecutiveHrsWork: data.data.maxConsecutiveHrsWork,
+							maxStandbyShifts: data.data.maxStandbyShifts,
+							tolerableThreshold: data.data.tolerableThreshold,
+							intolerableThreshold: data.data.intolerableThreshold,
+					  }
+					: null;
 
 				return await processIntentAndFormatResponse({
 					userMessage,
@@ -1196,32 +1562,32 @@ Respond in JSON only:
 			} catch (err) {
 				return {
 					error: true,
-					message: err.response?.data?.message || "Failed to fetch list of drivers associated with a client.",
+					message: err.response?.data?.message || "Failed to fetch weekly scheduler settings.",
 				};
 			}
 		},
 		multiHandler: async (params, userMessage, session, onStream) => {
-			if (!params?.ClientId !== 2) params.ClientId = 2;
+			if (!params?.ClientId) params.ClientId = 2;
 
 			try {
-				const { data } = await axios.get(`${API_BASE}/GetSchedAlignEngineWeeklySetting?ClientId=${params?.ClientId}`);
+				const { data } = await axios.get(`${API_BASE}/GetSchedAlignEngineWeeklySetting?ClientId=${params.ClientId}`);
 
-				const defaultRules =
-					data?.data?.map((item) => ({
-						maxHrs: item?.maxHrs,
-						preferenceWeight: item?.preferenceWeight,
-						maxConsecutiveDaysWork: item?.maxConsecutiveDaysWork,
-						maxConsecutiveHrsWork: item?.maxConsecutiveHrsWork,
-						maxStandbyShifts: item?.maxStandbyShifts,
-						tolerableThreshold: item?.tolerableThreshold,
-						intolerableThreshold: item?.intolerableThreshold,
-					})) || [];
+				const defaultRules = data?.data
+					? {
+							maxHrs: data.data.maxHrs,
+							maxConsecutiveDaysWork: data.data.maxConsecutiveDaysWork,
+							maxConsecutiveHrsWork: data.data.maxConsecutiveHrsWork,
+							maxStandbyShifts: data.data.maxStandbyShifts,
+							tolerableThreshold: data.data.tolerableThreshold,
+							intolerableThreshold: data.data.intolerableThreshold,
+					  }
+					: null;
 
 				return { data: defaultRules };
 			} catch (err) {
 				return {
 					error: true,
-					message: err.response?.data?.message || "Failed to fetch list of drivers associated with a client.",
+					message: err.response?.data?.message || "Failed to fetch weekly scheduler settings.",
 				};
 			}
 		},
@@ -1545,7 +1911,6 @@ Respond in JSON only:
   "ToDate": "YYYY/MM/DD" or null
 }
 `;
-
 					const aiResp = await openai.chat.completions.create({
 						model: "gpt-4o-mini",
 						messages: [
@@ -1657,11 +2022,25 @@ Respond in JSON only:
 				expiration: "0001-01-01T00:00:00",
 			},
 		],
-		handler: async (params, userMessage, session, onStream) => {
-			if (!params?.ClientId !== 2) params.ClientId = 2;
+
+		handler: async (params, userMessage, session, onStream, abortSignal) => {
+			if (abortSignal?.aborted) {
+				console.log("🚫 GetOpenShiftForBackEnd handler: Aborted before execution");
+				return { error: "Request aborted" };
+			}
+
+			if (params?.ClientId !== 2) params.ClientId = 2;
 
 			try {
-				const { data } = await axios.get(`${API_BASE}/GetOpenShiftForBackEnd?ClientId=${params?.ClientId}`);
+				const url = `${API_BASE}/GetOpenShiftForBackEnd?ClientId=${params.ClientId}`;
+				console.log(url);
+
+				const { data } = await axios.get(url);
+
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetOpenShiftForBackEnd handler: Aborted after axios call");
+					return { error: "Request aborted" };
+				}
 
 				const openShiftData =
 					data?.data?.map((item) => ({
@@ -1691,7 +2070,7 @@ Respond in JSON only:
 					api: {
 						name: "GetOpenShiftForBackEnd",
 						description:
-							"This API should be used whenever the user asks about open shift requests that the manager has assigned to drivers outside their regular schedules. It provides details such as the driver name and ID, the shift type and duration, the delivery date, whether the driver has accepted the request, and related operational details like arrival time, arrival location, wave time, and loadout location. Use this API when the user asks questions like: “Which drivers have been requested to work additional shifts?”, “Has driver 5130 accepted the open shift?”, “Show me all open shift requests for a particular driver or date”, “What extra shifts are currently pending or accepted?”, or “Tell me the details of the additional Step Van shift assigned to a driver.”",
+							"This API should be used whenever the user asks about open shift requests that the manager has assigned to drivers outside their regular schedules. It provides details such as the driver name and ID, the shift type and duration, the delivery date, whether the driver has accepted the request, and related operational details like arrival time, arrival location, wave time, and loadout location.",
 						isSuitableForGraph: false,
 					},
 					exampleResponse: [
@@ -1721,19 +2100,39 @@ Respond in JSON only:
 					params,
 					session,
 					onStream,
+					abortSignal,
 				});
 			} catch (err) {
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetOpenShiftForBackEnd handler: Aborted during execution");
+					return { error: "Request aborted" };
+				}
+
 				return {
 					error: true,
 					message: err.response?.data?.message || "Failed to fetch list for open shifts.",
 				};
 			}
 		},
-		multiHandler: async (params, userMessage, session, onStream) => {
-			if (!params?.ClientId !== 2) params.ClientId = 2;
+
+		multiHandler: async (params, userMessage, session, onStream, abortSignal) => {
+			if (abortSignal?.aborted) {
+				console.log("🚫 GetOpenShiftForBackEnd multiHandler: Aborted before execution");
+				return { error: "Request aborted" };
+			}
+
+			if (params?.ClientId !== 2) params.ClientId = 2;
 
 			try {
-				const { data } = await axios.get(`${API_BASE}/GetOpenShiftForBackEnd?ClientId=${params?.ClientId}`);
+				const url = `${API_BASE}/GetOpenShiftForBackEnd?ClientId=${params.ClientId}`;
+				console.log(url);
+
+				const { data } = await axios.get(url);
+
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetOpenShiftForBackEnd multiHandler: Aborted after axios call");
+					return { error: "Request aborted" };
+				}
 
 				const openShiftData =
 					data?.data?.map((item) => ({
@@ -1760,6 +2159,11 @@ Respond in JSON only:
 
 				return { data: openShiftData };
 			} catch (err) {
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetOpenShiftForBackEnd multiHandler: Aborted during execution");
+					return { error: "Request aborted" };
+				}
+
 				return {
 					error: true,
 					message: err.response?.data?.message || "Failed to fetch list for open shifts.",
@@ -1767,7 +2171,6 @@ Respond in JSON only:
 			}
 		},
 	},
-
 	//16.GetAllPreferenceHistoryForBackEnd
 	{
 		name: "GetAllPreferenceHistoryForBackEnd",
@@ -1786,11 +2189,25 @@ Respond in JSON only:
 				expiration: "2025-09-03T06:08:24.173",
 			},
 		],
-		handler: async (params, userMessage, session, onStream) => {
-			if (!params?.ClientId !== 2) params.ClientId = 2;
+
+		handler: async (params, userMessage, session, onStream, abortSignal) => {
+			if (abortSignal?.aborted) {
+				console.log("🚫 GetAllPreferenceHistoryForBackEnd handler: Aborted before execution");
+				return { error: "Request aborted" };
+			}
+
+			if (params?.ClientId !== 2) params.ClientId = 2;
 
 			try {
-				const { data } = await axios.get(`${API_BASE}/GetAllPreferenceHistoryForBackEnd?ClientId=${params?.ClientId}`);
+				const url = `${API_BASE}/GetAllPreferenceHistoryForBackEnd?ClientId=${params.ClientId}`;
+				console.log(url);
+
+				const { data } = await axios.get(url);
+
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetAllPreferenceHistoryForBackEnd handler: Aborted after axios call");
+					return { error: "Request aborted" };
+				}
 
 				const preferenceHistory =
 					data?.data?.map((item) => ({
@@ -1809,7 +2226,7 @@ Respond in JSON only:
 					api: {
 						name: "GetAllPreferenceHistoryForBackEnd",
 						description:
-							"This API should be used whenever the user asks about the history of driver preference changes, specifically which drivers modified their preferences, what type of preference was changed (e.g., day, shift, standby, OT), the old value, the new value, and the date of the change. It only returns approved preference change history. Use this API when the user asks questions like: “Which drivers have recently updated their day preferences?”, “Show me the preference change history for Alejandro Reyes”, “What was the old and new value when a driver changed their shift preference?”, “List all approved preference changes from last week”, or “Has anyone changed their OT or standby preference recently?”",
+							"This API should be used whenever the user asks about the history of driver preference changes, specifically which drivers modified their preferences, what type of preference was changed (e.g., day, shift, standby, OT), the old value, the new value, and the date of the change. It only returns approved preference change history.",
 						isSuitableForGraph: false,
 					},
 					exampleResponse: [
@@ -1828,19 +2245,39 @@ Respond in JSON only:
 					params,
 					session,
 					onStream,
+					abortSignal,
 				});
 			} catch (err) {
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetAllPreferenceHistoryForBackEnd handler: Aborted during execution");
+					return { error: "Request aborted" };
+				}
+
 				return {
 					error: true,
 					message: err.response?.data?.message || "Failed to fetch list of preference history drivers.",
 				};
 			}
 		},
-		multiHandler: async (params, userMessage, session, onStream) => {
-			if (!params?.ClientId !== 2) params.ClientId = 2;
+
+		multiHandler: async (params, userMessage, session, onStream, abortSignal) => {
+			if (abortSignal?.aborted) {
+				console.log("🚫 GetAllPreferenceHistoryForBackEnd multiHandler: Aborted before execution");
+				return { error: "Request aborted" };
+			}
+
+			if (params?.ClientId !== 2) params.ClientId = 2;
 
 			try {
-				const { data } = await axios.get(`${API_BASE}/GetAllPreferenceHistoryForBackEnd?ClientId=${params?.ClientId}`);
+				const url = `${API_BASE}/GetAllPreferenceHistoryForBackEnd?ClientId=${params.ClientId}`;
+				console.log(url);
+
+				const { data } = await axios.get(url);
+
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetAllPreferenceHistoryForBackEnd multiHandler: Aborted after axios call");
+					return { error: "Request aborted" };
+				}
 
 				const preferenceHistory =
 					data?.data?.map((item) => ({
@@ -1856,6 +2293,11 @@ Respond in JSON only:
 
 				return { data: preferenceHistory };
 			} catch (err) {
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetAllPreferenceHistoryForBackEnd multiHandler: Aborted during execution");
+					return { error: "Request aborted" };
+				}
+
 				return {
 					error: true,
 					message: err.response?.data?.message || "Failed to fetch list of preference history drivers.",

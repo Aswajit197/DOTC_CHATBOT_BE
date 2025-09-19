@@ -6,8 +6,12 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 /**
  * ✅ Lightweight semantic check for intent equality
  */
-async function isSameIntent(userMessage, lastMessage) {
+async function isSameIntent(userMessage, lastMessage, abortSignal) {
 	if (!lastMessage) return false;
+	if (abortSignal?.aborted) {
+		console.log("🚫 isSameIntent aborted early");
+		return false;
+	}
 
 	const prompt = `
 You are an intent comparator.
@@ -22,35 +26,60 @@ Rules:
 - Only respond with "YES" or "NO".
 `;
 
-	const completion = await openai.chat.completions.create({
-		model: "gpt-4o-mini",
-		messages: [{ role: "user", content: prompt }],
-		temperature: 0,
-		max_tokens: 5,
-	});
+	try {
+		const completion = await openai.chat.completions.create({
+			model: "gpt-4o-mini",
+			messages: [{ role: "user", content: prompt }],
+			temperature: 0,
+			max_tokens: 5,
+			signal: abortSignal, // 🔹 Pass abort signal
+		});
 
-	const answer = completion.choices[0].message.content.trim().toUpperCase();
-	return answer === "YES";
+		if (abortSignal?.aborted) {
+			console.log("🚫 isSameIntent aborted after OpenAI call");
+			return false;
+		}
+
+		const answer = completion.choices[0].message.content.trim().toUpperCase();
+		return answer === "YES";
+	} catch (err) {
+		if (abortSignal?.aborted) {
+			console.log("🚫 isSameIntent caught abort during OpenAI call");
+			return false;
+		}
+		console.warn("isSameIntent failed:", err.message);
+		return false;
+	}
 }
 
 /**
  * Handles dependent refinements:
  * e.g., filtering, removing/adding columns, sorting, reformatting last response.
  */
-async function refineResponseFromLastResponse(userMessage, session, { onStream } = {}) {
-	console.log("Entered in refinement")
-	try {
+async function refineResponseFromLastResponse(userMessage, session, { onStream, abortSignal } = {}) {
+	console.log("Entered in refinement");
 
-		// ✅ Get API details to check if suitable for graph
+	// 🔹 Check abort before anything heavy
+	if (abortSignal?.aborted) {
+		console.log("🚫 refineResponseFromLastResponse: Aborted before processing");
+		return { error: "Request aborted" };
+	}
+
+	try {
 		const api = apiListData.find((api) => api.name === session.lastSuccessIntent);
 		const isSuitableForGraph = api?.isSuitableForGraph || false;
 
 		// ✅ Early exit if same intent
-		if (session.lastSuccessUserMessage && (await isSameIntent(userMessage, session.lastSuccessUserMessage))) {
+		if (session.lastSuccessUserMessage && (await isSameIntent(userMessage, session.lastSuccessUserMessage, abortSignal))) {
 			return {
 				formattedReply: session.lastResponseMessage,
 				type: "same intent",
 			};
+		}
+
+		if (abortSignal?.aborted) {
+			console.log("🚫 refineResponseFromLastResponse: Aborted before OpenAI refinement");
+			return { error: "Request aborted" };
 		}
 
 		let fullText = "";
@@ -87,7 +116,6 @@ ${session.lastSuccessIntent || "Unknown"}
 ${JSON.stringify(session.lastSuccessApiResponse, null, 2)}
 
 ---
-
 ### Instructions for Formatting
 - If refinement results in **tabular data**, return as <table>.
 - If results in a **list**, return <ul>.
@@ -96,29 +124,19 @@ ${JSON.stringify(session.lastSuccessApiResponse, null, 2)}
 - If the data contains date string send in proper user readable format.
 
 - **Add a final HTML summary block immediately before the optional follow-up visualization message**:
-  - Use: <div class="summary"><p>...</p></div>
-  - The summary should provide **statistical insights** that add value, not just restating obvious facts:
-    - total count of remaining items (only when it is not trivial, e.g., don’t say “There are 7 days in total” for weekdays)
-    - distribution counts (how many items fall into each preference/value/category)
-    - highlight the most common and least common values
-    - include averages, minimums, maximums, or percentages if meaningful
-    - avoid stating universally known facts (like fixed counts of weekdays, months, etc.)
-    - present it in natural, user-friendly sentences (e.g., "Out of 100 drivers, 45 prefer OT=2 while only 12 prefer OT=1. The average OT preference is 2.3, making OT=2 the most common choice.")
-  - Keep it concise (1–3 sentences).
-
+  <div class="summary"><p>...</p></div>
+  (Include meaningful stats, counts, averages, min/max, etc. Avoid trivial facts.)
 
 ${
 	isSuitableForGraph
 		? `- After the summary block (if it exists), evaluate if the refined data is suitable for visualization.
-  - If yes, append the follow-up line:
-    <p class="followup-message">Would you like me to turn this into a visualization, such as a graph or chart?</p>
-  - Do NOT add the follow-up if the response is just a single value, a short list, or purely descriptive text.`
+  - If yes, append:
+    <p class="followup-message">Would you like me to turn this into a visualization, such as a graph or chart?</p>`
 		: `- Do NOT add any follow-up visualization message.`
 }
 
 - Only output valid HTML, no markdown, no JSON.
-
-After finishing the HTML reply (main output, optional summary, and optional follow-up), output a new line with exactly:
+- After finishing the reply, output:
 ###END###
 `;
 
@@ -127,18 +145,22 @@ After finishing the HTML reply (main output, optional summary, and optional foll
 			messages: [{ role: "user", content: prompt }],
 			temperature: 0.3,
 			stream: true,
+			signal: abortSignal, // 🔹 Pass abort signal here too
 		});
 
 		for await (const chunk of completion) {
+			if (abortSignal?.aborted) {
+				console.log("🚫 refineResponseFromLastResponse aborted mid-stream");
+				return { error: "Request aborted" };
+			}
+
 			const delta = chunk.choices?.[0]?.delta?.content || "";
 			if (!delta) continue;
 
 			fullText += delta;
 
 			const mergedMatch = delta.match(/MERGED_USER_MESSAGE:\s*(.*)/);
-			if (mergedMatch) {
-				mergedMessage = mergedMatch[1].trim();
-			}
+			if (mergedMatch) mergedMessage = mergedMatch[1].trim();
 
 			if (fullText.includes("###END###")) break;
 
@@ -150,6 +172,11 @@ After finishing the HTML reply (main output, optional summary, and optional foll
 					.replace(/([a-zA-Z])(\d)/g, "$1 $2");
 				onStream(formatted);
 			}
+		}
+
+		if (abortSignal?.aborted) {
+			console.log("🚫 refineResponseFromLastResponse aborted before final reply");
+			return { error: "Request aborted" };
 		}
 
 		const finalReply = fullText
@@ -169,10 +196,12 @@ After finishing the HTML reply (main output, optional summary, and optional foll
 			}
 		);
 
-		return {
-			userReply: finalReply,
-		};
+		return { userReply: finalReply };
 	} catch (err) {
+		if (abortSignal?.aborted) {
+			console.log("🚫 refineResponseFromLastResponse caught abort in catch");
+			return { error: "Request aborted" };
+		}
 		console.error("refineResponseFromLastResponse error:", err);
 		return { error: "Failed to refine Response data..." };
 	}
