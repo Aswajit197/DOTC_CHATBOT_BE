@@ -439,23 +439,38 @@ ${
 		: ""
 }
 
-- Output only valid HTML, no Markdown or JSON
-- End with exactly: ###END###
-`;
+  - Output only valid HTML, no Markdown or JSON
+  - End with exactly: ###END###
+`;            
+
+// <-- STEP 1: LOAD the rich history from the session
+        const richHistory = session.history || [];
+
+        // <-- STEP 2: TRANSFORM the rich history into the simple format OpenAI needs
+        const messagesForAPI = richHistory.map(turn => ({
+            role: turn.sender === 'user' ? 'user' : 'assistant',
+            content: turn.message
+        }));
+
+        // <-- STEP 3: BUILD the full messages array, including the history
+        const messages = [
+            {
+                role: "system",
+                content: "You are a data analysis expert. Create comprehensive HTML responses using provided calculations. Never recalculate math - use the pre-calculated results provided.",
+            },
+            // Add all previous messages from the history
+            ...messagesForAPI,
+            // Add the new user message with all its context for this turn
+            { role: "user", content: prompt },
+        ];
+
+        console.log(`🤖 Starting AI streaming with ${richHistory.length} previous turns in history...`);
 
 		// STEP 3: Single AI call with all context and pre-calculated results
-		console.log("🤖 Starting AI streaming with pre-calculated results...");
 
 		const completion = await openai.chat.completions.create({
 			model: "gpt-4o-mini",
-			messages: [
-				{
-					role: "system",
-					content:
-						"You are a data analysis expert. Create comprehensive HTML responses using provided calculations. Never recalculate math - use the pre-calculated results provided.",
-				},
-				{ role: "user", content: prompt },
-			],
+			messages: messages,
 			temperature: 0,
 			tools: openAITools,
 			tool_choice: "auto",
@@ -489,19 +504,35 @@ ${
 
 		const finalReply = fullText.replace(/###END###/g, "").trim();
 
+         const userHistoryTurn = {
+            sender: 'user',
+            message: userMessage, // The simple, original message
+            timestamp: new Date()
+        };
+        const assistantHistoryTurn = {
+            sender: 'assistant',
+            message: finalReply,
+            data: actualData, // Save the data used for this response
+            chatType: 'response', // Or determine this dynamically
+            timestamp: new Date()
+        };
+
 		// Save to session
 		await Session.updateOne(
 			{ _id: session._id },
-			{
+            {
+				$push: { 
+					history: { $each: [userHistoryTurn, assistantHistoryTurn] } 
+				},
 				$set: {
 					lastResponseMessage: finalReply,
 					lastSuccessUserMessage: userMessage,
 					lastSuccessIntent: api?.name,
 					lastSuccessApiResponse: actualData,
 					lastSuccessParams: params,
-					lastCalculationResults: functionResults,
+					lastCalculationResults: preCalculatedResults,
 					missingField: null,
-				},
+				}
 			}
 		);
 
@@ -510,7 +541,7 @@ ${
 			userReply: finalReply,
 			params,
 			api,
-			calculations: functionResults,
+			calculations: preCalculatedResults,
 		};
 
 	} catch (err) {
@@ -519,7 +550,7 @@ ${
 			userReply: fallback,
 			params,
 			api,
-			calculations: functionResults,
+			calculations: preCalculatedResults,
 			error: err.message
 		};
 	}
