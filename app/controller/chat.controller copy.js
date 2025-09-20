@@ -8,23 +8,58 @@ const chat = {};
 
 // 🔹 Send Message Controller
 chat.sendMessage = async (req, res) => {
-	let isAborted = false;
+	let clientDisconnected = false;
+
+	// ✅ UNCOMMENT AND FIX - Detect client disconnect
+	req.on("close", () => {
+		console.log("Client disconnected, aborting streaming");
+		clientDisconnected = true;
+	});
+
+	req.on("close", () => {
+		console.log("Client connection closed (onclose handler)");
+	});
+
+	res.on("close", () => {
+		console.log('Response stream closed (res.on("close"))');
+		clientDisconnected = true; // ✅ Also set flag when response closes
+	});
+
+	// ✅ Add error handler to detect disconnects
+	req.on("error", (err) => {
+		console.log("Request error - client likely disconnected:", err.message);
+		clientDisconnected = true;
+	});
+
+	res.on("error", (err) => {
+		console.log("Response error:", err.message);
+		clientDisconnected = true;
+	});
+
 	try {
-		const { sessionId, message } = req.body;
+		const { sessionId, message } = req.query;
 		if (!sessionId || !message) {
 			return res.status(400).json({ error: "Missing session or message" });
 		}
 
+		console.log(message, "userMessage");
+
 		const session = await Session.findById(sessionId);
 		if (!session) return res.status(400).json({ error: "Session not initialized" });
 
+		// ✅ Check disconnection before processing
+		if (clientDisconnected) {
+			console.log("Client disconnected before processing, aborting");
+			return;
+		}
+
 		// 🔹 Check if this is the first user message in the session
 		const hasUserMessage = session?.history?.some((h) => h.sender === "user");
-		// inside sendMessage controller -> first user message check
+
 		if (!hasUserMessage) {
 			try {
 				const completion = await openai.chat.completions.create({
-					model: "gpt-3.5-turbo", //
+					model: "gpt-3.5-turbo",
 					messages: [
 						{
 							role: "system",
@@ -36,8 +71,8 @@ chat.sendMessage = async (req, res) => {
 
 				const generatedName = completion.choices[0]?.message?.content?.trim();
 
-				console.log(generatedName, "name of messeage");
-				if (generatedName) {
+				console.log(generatedName, "name of message");
+				if (generatedName && !clientDisconnected) {
 					session.sessionName = generatedName;
 					await session.save();
 				}
@@ -45,6 +80,13 @@ chat.sendMessage = async (req, res) => {
 				console.error("Session name generation failed:", nameErr);
 			}
 		}
+
+		// ✅ Check disconnection before setting up SSE
+		if (clientDisconnected) {
+			console.log("Client disconnected before SSE setup, aborting");
+			return;
+		}
+
 		// SSE headers
 		res.writeHead(200, {
 			"Content-Type": "text/event-stream",
@@ -53,101 +95,76 @@ chat.sendMessage = async (req, res) => {
 		});
 		res.flushHeaders();
 
-		// 🔹 Create AbortController for internal operations
-		const internalAbortController = new AbortController();
-
-		// 🔹 If client disconnects, abort internal operations
-		const abortInternalOperations = () => {
-			if (!internalAbortController.signal.aborted) {
-				internalAbortController.abort();
-				console.log("🚫 Aborting internal operations due to client disconnect");
-			}
-		};
-		// 🔹 Detect client disconnect/abort
-		req.on("close", () => {
-			if (!res.finished) {
-				isAborted = true;
-				console.log("🚫 USER ABORTED THE API CALL - Request was cancelled by client");
-				// You can add additional cleanup logic here
-				// For example: cancel any ongoing operations, log metrics, etc.
-				abortInternalOperations();
-			}
-		});
-
-		req.on("aborted", () => {
-			isAborted = true;
-			console.log("🚫 USER ABORTED THE API CALL - Request was aborted");
-			abortInternalOperations();
-		});
-
-		// Optional: You can also listen to the response object
-		res.on("close", () => {
-			if (!res.finished) {
-				isAborted = true;
-				console.log("🚫 USER ABORTED THE API CALL - Response connection closed");
-				abortInternalOperations();
-			}
-		});
-
 		// Save user message
 		session.history.push({ sender: "user", message, timestamp: new Date() });
 		await session.save();
 
-		// 🔹 Check if aborted before proceeding
-		if (isAborted) {
-			console.log("⚠️ Request aborted before processing intent");
+		// ✅ Check disconnection before main processing
+		if (clientDisconnected) {
+			console.log("Client disconnected before intent detection, aborting");
 			return;
 		}
 
 		// Detect intent & stream partials
 		const intentResult = await getIntentFromOpenAI(message, session, {
 			onStream: (chunk) => {
-				// 🔹 Check if aborted before streaming
-				if (isAborted || internalAbortController.signal.aborted) {
-					console.log("⚠️ Stream aborted, stopping chunk processing");
+				// ✅ UNCOMMENT AND IMPROVE - Stop streaming if client disconnected
+				if (clientDisconnected) {
+					console.log("Client disconnected during streaming, stopping");
+					return;
+				}
+
+				if (res.writableEnded || res.destroyed) {
+					console.log("Stream already closed, stopping early");
+					clientDisconnected = true; // Set flag to stop further processing
 					return;
 				}
 
 				if (chunk) {
 					try {
 						res.write(`data: ${JSON.stringify({ type: "partial", text: chunk })}\n\n`);
-					} catch (writeError) {
-						// This can happen if client disconnected
-						console.log("🚫 Failed to write chunk - likely user aborted:", writeError.message);
-						isAborted = true;
-						abortInternalOperations();
+					} catch (writeErr) {
+						console.log("Error writing to stream (client likely disconnected):", writeErr.message);
+						clientDisconnected = true;
 					}
 				}
 			},
-			abortSignal: internalAbortController.signal,
 		});
 
-		// 🔹 Check if aborted after intent processing
-		if (isAborted) {
-			console.log("⚠️ Request aborted after intent processing");
+		// ✅ Check disconnection after intent processing
+		if (clientDisconnected) {
+			console.log("Client disconnected after intent processing, not sending final response");
+			return;
+		}
+
+		if (res.writableEnded || res.destroyed) {
+			console.log("Stream already closed, stopping early");
 			return;
 		}
 
 		// Handle fallbacks and errors
 		if (intentResult.error === "No API matched" && intentResult.fallbackMessage) {
-			if (!isAborted) {
+			if (!clientDisconnected) {
 				session.history.push({
 					sender: "bot",
 					message: intentResult.fallbackMessage,
 					timestamp: new Date(),
 				});
 				await session.save();
+
 				try {
 					res.write(`data: ${JSON.stringify({ type: "final", response: intentResult.fallbackMessage })}\n\n`);
 					return res.end();
-				} catch (writeError) {
-					console.log("🚫 Failed to write fallback response - user aborted:", writeError.message);
+				} catch (writeErr) {
+					console.log("Error writing fallback response:", writeErr.message);
 					return;
 				}
 			}
+			return;
 		}
+
 		if (intentResult.error === "Missing required fields" && intentResult.fallbackMessage) {
-			if (!isAborted) {
+			if (!clientDisconnected) {
 				// 🔹 Save missing field context
 				session.missingField = {
 					lastMissingFieldBotMessage: intentResult.fallbackMessage,
@@ -161,36 +178,40 @@ chat.sendMessage = async (req, res) => {
 					timestamp: new Date(),
 				});
 				await session.save();
+
 				try {
 					res.write(`data: ${JSON.stringify({ type: "final", response: intentResult.fallbackMessage })}\n\n`);
 					return res.end();
-				} catch (writeError) {
-					console.log("🚫 Failed to write missing fields response - user aborted:", writeError.message);
+				} catch (writeErr) {
+					console.log("Error writing missing fields response:", writeErr.message);
 					return;
 				}
 			}
+			return;
 		}
 
 		if (intentResult.error) {
-			if (!isAborted) {
+			if (!clientDisconnected) {
 				session.history.push({
 					sender: "bot",
 					message: intentResult.error,
 					timestamp: new Date(),
 				});
 				await session.save();
+
 				try {
 					res.write(`data: ${JSON.stringify({ type: "final", response: intentResult.error })}\n\n`);
 					return res.end();
-				} catch (writeError) {
-					console.log("🚫 Failed to write error response - user aborted:", writeError.message);
+				} catch (writeErr) {
+					console.log("Error writing error response:", writeErr.message);
 					return;
 				}
 			}
+			return;
 		}
 
 		if (intentResult.type === "visualization") {
-			if (!isAborted) {
+			if (!clientDisconnected) {
 				console.log(intentResult);
 				session.history.push({
 					sender: "bot",
@@ -200,6 +221,7 @@ chat.sendMessage = async (req, res) => {
 					timestamp: new Date(),
 				});
 				await session.save();
+
 				try {
 					res.write(
 						`data: ${JSON.stringify({
@@ -210,55 +232,55 @@ chat.sendMessage = async (req, res) => {
 						})}\n\n`
 					);
 					res.end();
-					return;
-				} catch (writeError) {
-					console.log("🚫 Failed to write visualization response - user aborted:", writeError.message);
-					return;
+				} catch (writeErr) {
+					console.log("Error writing visualization response:", writeErr.message);
 				}
 			}
+			return;
 		}
 
 		if (intentResult.type === "same intent") {
-			if (!isAborted) {
+			if (!clientDisconnected) {
 				session.history.push({
 					sender: "bot",
 					message: intentResult?.formattedReply,
 					timestamp: new Date(),
 				});
 				await session.save();
+
 				try {
 					res.write(`data: ${JSON.stringify({ type: "final", response: intentResult.formattedReply })}\n\n`);
 					res.end();
-					return;
-				} catch (writeError) {
-					console.log("🚫 Failed to write same intent response - user aborted:", writeError.message);
-					return;
+				} catch (writeErr) {
+					console.log("Error writing same intent response:", writeErr.message);
 				}
 			}
+			return;
 		}
+
 		if (intentResult.type === "multi_intent") {
-			if (!isAborted) {
+			if (!clientDisconnected) {
 				session.history.push({
 					sender: "bot",
 					message: intentResult?.combinedReply,
 					timestamp: new Date(),
 				});
 				await session.save();
+
 				try {
 					res.write(`data: ${JSON.stringify({ type: "final", response: intentResult.combinedReply })}\n\n`);
 					res.end();
-					return;
-				} catch (writeError) {
-					console.log("🚫 Failed to write multi intent response - user aborted:", writeError.message);
-					return;
+				} catch (writeErr) {
+					console.log("Error writing multi intent response:", writeErr.message);
 				}
 			}
+			return;
 		}
 
-		// ✅ Send final successful response
-		if (!isAborted) {
+		// ✅ Send final successful response only if client still connected
+		if (!clientDisconnected) {
 			try {
-				res.write(`data: ${JSON.stringify({ type: "final", response: intentResult.formattedReply })}\n\n`);
+				res.write(`data: ${JSON.stringify({ type: "final", response: intentResult?.formattedReply })}\n\n`);
 				res.end();
 
 				// Save bot message
@@ -272,64 +294,23 @@ chat.sendMessage = async (req, res) => {
 					timestamp: new Date(),
 				});
 				await session.save();
-			} catch (writeError) {
-				console.log("🚫 Failed to write final response - user aborted:", writeError.message);
-				return;
+			} catch (writeErr) {
+				console.log("Error writing final response:", writeErr.message);
 			}
+		} else {
+			console.log("Client disconnected, skipping final response and save");
 		}
-
-		// // ✅ Send final successful response
-		// res.write(`data: ${JSON.stringify({ type: "final", response: intentResult.formattedReply })}\n\n`);
-		// res.end();
-
-		// // Save bot message
-		// session.history.push({
-		// 	sender: "bot",
-		// 	message: intentResult.formattedReply,
-		// 	context: {
-		// 		lastIntent: intentResult?.api?.name,
-		// 		lastParams: intentResult?.params,
-		// 	},
-		// 	timestamp: new Date(),
-		// });
-		// await session.save();
 	} catch (err) {
 		console.error("sendMessage error:", err);
-		res.write(`data: ${JSON.stringify({ type: "error", error: "Internal server error" })}\n\n`);
-		res.end();
-	}
-};
 
-// 🆕 NEW: Add this to your routes - Stop endpoint
-chat.stopMessage = async (req, res) => {
-	try {
-		const { sessionId } = req.body;
-
-		console.log("🛑 STOP REQUEST RECEIVED for session:", sessionId);
-
-		if (!sessionId) {
-			return res.status(400).json({ error: "Missing sessionId" });
-		}
-
-		// Set stop flag in memory/cache for this session
-		global.stoppedSessions = global.stoppedSessions || new Set();
-		global.stoppedSessions.add(sessionId);
-
-		console.log("✅ Session marked as stopped:", sessionId);
-		console.log("📊 Currently stopped sessions:", Array.from(global.stoppedSessions));
-
-		// Clean up after 30 seconds to prevent memory leaks
-		setTimeout(() => {
-			if (global.stoppedSessions) {
-				global.stoppedSessions.delete(sessionId);
-				console.log("🧹 Cleaned up stopped session:", sessionId);
+		if (!clientDisconnected && !res.writableEnded && !res.destroyed) {
+			try {
+				res.write(`data: ${JSON.stringify({ type: "error", error: "Internal server error" })}\n\n`);
+				res.end();
+			} catch (writeErr) {
+				console.log("Error writing error response:", writeErr.message);
 			}
-		}, 30000);
-
-		res.json({ success: true, message: "Stop signal received" });
-	} catch (error) {
-		console.error("❌ Error in stop endpoint:", error);
-		res.status(500).json({ error: "Internal server error" });
+		}
 	}
 };
 
