@@ -131,42 +131,42 @@ async function handleParamsForApi(matchedApi, params, userMessage, session, { on
 	let missingFields = matchedApi.requiredFields.filter((f) => !params[f]);
 
 	// Pre-run handler
-	if (missingFields.length) {
-		try {
-			// 🔹 Abort check
-			if (abortSignal?.aborted) {
-				console.log("🚫 handleParamsForApi aborted before pre-run handler");
-				return { params, missingFields, formattedReply: null };
-			}
-			const tempParams = { ...params };
-			let tempResult;
-			if (type === "multi_intent") {
-				tempResult = await matchedApi.multiHandler(tempParams, userMessage, session, onStream);
-			} else {
-				tempResult = await matchedApi.handler(tempParams, userMessage, session, onStream);
-			}
+	// if (missingFields.length) {
+	// 	try {
+	// 		// 🔹 Abort check
+	// 		if (abortSignal?.aborted) {
+	// 			console.log("🚫 handleParamsForApi aborted before pre-run handler");
+	// 			return { params, missingFields, formattedReply: null };
+	// 		}
+	// 		const tempParams = { ...params };
+	// 		let tempResult;
+	// 		if (type === "multi_intent") {
+	// 			tempResult = await matchedApi.multiHandler(tempParams, userMessage, session, onStream);
+	// 		} else {
+	// 			tempResult = await matchedApi.handler(tempParams, userMessage, session, onStream);
+	// 		}
 
-			if (!tempResult?.missingFields) {
-				return {
-					params: tempParams,
-					formattedReply: tempResult?.userReply,
-					missingFields: [],
-				};
-			} else {
-				for (const f of matchedApi.requiredFields) {
-					if (!params[f] && tempParams[f]) params[f] = tempParams[f];
-				}
-			}
+	// 		if (!tempResult?.missingFields) {
+	// 			return {
+	// 				params: tempParams,
+	// 				formattedReply: tempResult?.userReply,
+	// 				missingFields: [],
+	// 			};
+	// 		} else {
+	// 			for (const f of matchedApi.requiredFields) {
+	// 				if (!params[f] && tempParams[f]) params[f] = tempParams[f];
+	// 			}
+	// 		}
 
-			missingFields = matchedApi.requiredFields.filter((f) => !params[f]);
-		} catch (err) {
-			if (abortSignal?.aborted) {
-				console.log("🚫 Pre-run handler aborted");
-				return { params, missingFields, formattedReply: null };
-			}
-			console.warn("Pre-run handler check failed:", err.message);
-		}
-	}
+	// 		missingFields = matchedApi.requiredFields.filter((f) => !params[f]);
+	// 	} catch (err) {
+	// 		if (abortSignal?.aborted) {
+	// 			console.log("🚫 Pre-run handler aborted");
+	// 			return { params, missingFields, formattedReply: null };
+	// 		}
+	// 		console.warn("Pre-run handler check failed:", err.message);
+	// 	}
+	// }
 
 	// OpenAI-based intelligent extraction
 	const dateFields = ["WeekStarting", "WeekEnding", "Year"];
