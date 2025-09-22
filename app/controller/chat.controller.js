@@ -24,7 +24,7 @@ chat.sendMessage = async (req, res) => {
 		if (!hasUserMessage) {
 			try {
 				const completion = await openai.chat.completions.create({
-					model: "gpt-3.5-turbo", //
+					model: "gpt-3.5-turbo",
 					messages: [
 						{
 							role: "system",
@@ -39,7 +39,6 @@ chat.sendMessage = async (req, res) => {
 				console.log(generatedName, "name of messeage");
 				if (generatedName) {
 					session.sessionName = generatedName;
-					await session.save();
 				}
 			} catch (nameErr) {
 				console.error("Session name generation failed:", nameErr);
@@ -68,8 +67,6 @@ chat.sendMessage = async (req, res) => {
 			if (!res.finished) {
 				isAborted = true;
 				console.log("🚫 USER ABORTED THE API CALL - Request was cancelled by client");
-				// You can add additional cleanup logic here
-				// For example: cancel any ongoing operations, log metrics, etc.
 				abortInternalOperations();
 			}
 		});
@@ -89,9 +86,8 @@ chat.sendMessage = async (req, res) => {
 			}
 		});
 
-		// Save user message
+		// 🔹 MODIFIED: Save user message to history immediately.
 		session.history.push({ sender: "user", message, timestamp: new Date() });
-		await session.save();
 
 		// 🔹 Check if aborted before proceeding
 		if (isAborted) {
@@ -102,17 +98,14 @@ chat.sendMessage = async (req, res) => {
 		// Detect intent & stream partials
 		const intentResult = await getIntentFromOpenAI(message, session, {
 			onStream: (chunk) => {
-				// 🔹 Check if aborted before streaming
 				if (isAborted || internalAbortController.signal.aborted) {
 					console.log("⚠️ Stream aborted, stopping chunk processing");
 					return;
 				}
-
 				if (chunk) {
 					try {
 						res.write(`data: ${JSON.stringify({ type: "partial", text: chunk })}\n\n`);
 					} catch (writeError) {
-						// This can happen if client disconnected
 						console.log("🚫 Failed to write chunk - likely user aborted:", writeError.message);
 						isAborted = true;
 						abortInternalOperations();
@@ -122,210 +115,106 @@ chat.sendMessage = async (req, res) => {
 			abortSignal: internalAbortController.signal,
 		});
 
-		// 🔹 Check if aborted after intent processing
 		if (isAborted) {
 			console.log("⚠️ Request aborted after intent processing");
 			return;
 		}
+        
+        // 🔹 NEW: Centralized Reply and State Management
+		let finalBotReply = null;
+		let finalDataType = "response";
 
-		// Handle fallbacks and errors
-		if (intentResult.error === "No API matched" && intentResult.fallbackMessage) {
-			if (!isAborted) {
-				session.history.push({
-					sender: "bot",
-					message: intentResult.fallbackMessage,
-					timestamp: new Date(),
-				});
-				await session.save();
-				try {
-					res.write(`data: ${JSON.stringify({ type: "final", response: intentResult.fallbackMessage })}\n\n`);
-					return res.end();
-				} catch (writeError) {
-					console.log("🚫 Failed to write fallback response - user aborted:", writeError.message);
-					return;
-				}
-			}
-		}
-		if (intentResult.error === "Missing required fields" && intentResult.fallbackMessage) {
-			if (!isAborted) {
-				// 🔹 Save missing field context
+		if (intentResult.error) {
+			finalBotReply = intentResult.fallbackMessage || intentResult.error;
+			if (intentResult.error === "Missing required fields") {
 				session.missingField = {
 					lastMissingFieldBotMessage: intentResult.fallbackMessage,
 					lastMissingApiIntent: intentResult?.api?.name,
 					lastParams: intentResult.params,
 					missingFields: intentResult?.requires || [],
 				};
-				session.history.push({
-					sender: "bot",
-					message: intentResult.fallbackMessage,
-					timestamp: new Date(),
-				});
-				await session.save();
-				try {
-					res.write(`data: ${JSON.stringify({ type: "final", response: intentResult.fallbackMessage })}\n\n`);
-					return res.end();
-				} catch (writeError) {
-					console.log("🚫 Failed to write missing fields response - user aborted:", writeError.message);
-					return;
-				}
 			}
+		} else if (intentResult.type === "visualization") {
+			finalBotReply = intentResult.data;
+			finalDataType = "visualization";
+			session.history.push({
+				sender: "bot",
+				data: intentResult?.data,
+				chatType: "visualization",
+				graphContents: intentResult?.graphContents,
+				timestamp: new Date(),
+			});
+		} else {
+			finalBotReply = intentResult.formattedReply || intentResult.combinedReply;
 		}
 
-		if (intentResult.error) {
-			if (!isAborted) {
+		if (!isAborted && finalBotReply) {
+			const finalPayload = {
+				type: finalDataType === "visualization" ? "visualization" : "final",
+				response: finalDataType !== "visualization" ? finalBotReply : null,
+				data: finalDataType === "visualization" ? finalBotReply : null,
+				graphContents: intentResult.graphContents,
+			};
+
+			res.write(`data: ${JSON.stringify(finalPayload)}\n\n`);
+
+			if (finalDataType !== "visualization") {
 				session.history.push({
 					sender: "bot",
-					message: intentResult.error,
+					message: finalBotReply,
 					timestamp: new Date(),
 				});
-				await session.save();
-				try {
-					res.write(`data: ${JSON.stringify({ type: "final", response: intentResult.error })}\n\n`);
-					return res.end();
-				} catch (writeError) {
-					console.log("🚫 Failed to write error response - user aborted:", writeError.message);
-					return;
-				}
 			}
+
+            if (!intentResult.error) {
+                session.lastResponseMessage = finalBotReply;
+                session.lastSuccessUserMessage = message;
+                session.lastSuccessIntent = intentResult?.api?.name || null;
+                // NOTE: To save `actualData`, your API handlers in `apiDetails.js`
+                // should return it alongside the `userReply`.
+                // For now, setting to null as the handlers don't provide it yet.
+                session.lastSuccessApiResponse = intentResult?.actualData || null; 
+                session.lastSuccessParams = intentResult?.params || null;
+                session.missingField = null;
+            }
 		}
 
-		if (intentResult.type === "visualization") {
-			if (!isAborted) {
-				console.log(intentResult);
-				session.history.push({
-					sender: "bot",
-					data: intentResult?.data,
-					chatType: "visualization",
-					graphContents: intentResult?.graphContents,
-					timestamp: new Date(),
-				});
-				await session.save();
-				try {
-					res.write(
-						`data: ${JSON.stringify({
-							type: "visualization",
-							data: intentResult.data,
-							chatType: "visualization",
-							graphContents: intentResult?.graphContents,
-						})}\n\n`
-					);
-					res.end();
-					return;
-				} catch (writeError) {
-					console.log("🚫 Failed to write visualization response - user aborted:", writeError.message);
-					return;
-				}
-			}
-		}
+		await session.save();
+		console.log("✅ Session state saved successfully.");
 
-		if (intentResult.type === "same intent") {
-			if (!isAborted) {
-				session.history.push({
-					sender: "bot",
-					message: intentResult?.formattedReply,
-					timestamp: new Date(),
-				});
-				await session.save();
-				try {
-					res.write(`data: ${JSON.stringify({ type: "final", response: intentResult.formattedReply })}\n\n`);
-					res.end();
-					return;
-				} catch (writeError) {
-					console.log("🚫 Failed to write same intent response - user aborted:", writeError.message);
-					return;
-				}
-			}
-		}
-		if (intentResult.type === "multi_intent") {
-			if (!isAborted) {
-				session.history.push({
-					sender: "bot",
-					message: intentResult?.combinedReply,
-					timestamp: new Date(),
-				});
-				await session.save();
-				try {
-					res.write(`data: ${JSON.stringify({ type: "final", response: intentResult.combinedReply })}\n\n`);
-					res.end();
-					return;
-				} catch (writeError) {
-					console.log("🚫 Failed to write multi intent response - user aborted:", writeError.message);
-					return;
-				}
-			}
-		}
-
-		// ✅ Send final successful response
-		if (!isAborted) {
-			try {
-				res.write(`data: ${JSON.stringify({ type: "final", response: intentResult.formattedReply })}\n\n`);
-				res.end();
-
-				// Save bot message
-				session.history.push({
-					sender: "bot",
-					message: intentResult.formattedReply,
-					context: {
-						lastIntent: intentResult?.api?.name,
-						lastParams: intentResult?.params,
-					},
-					timestamp: new Date(),
-				});
-				await session.save();
-			} catch (writeError) {
-				console.log("🚫 Failed to write final response - user aborted:", writeError.message);
-				return;
-			}
-		}
-
-		// // ✅ Send final successful response
-		// res.write(`data: ${JSON.stringify({ type: "final", response: intentResult.formattedReply })}\n\n`);
-		// res.end();
-
-		// // Save bot message
-		// session.history.push({
-		// 	sender: "bot",
-		// 	message: intentResult.formattedReply,
-		// 	context: {
-		// 		lastIntent: intentResult?.api?.name,
-		// 		lastParams: intentResult?.params,
-		// 	},
-		// 	timestamp: new Date(),
-		// });
-		// await session.save();
 	} catch (err) {
 		console.error("sendMessage error:", err);
+		if (!res.headersSent) {
+            res.writeHead(500, { "Content-Type": "application/json" });
+        }
 		res.write(`data: ${JSON.stringify({ type: "error", error: "Internal server error" })}\n\n`);
-		res.end();
-	}
+	} finally {
+        if (!res.finished) {
+            res.end();
+        }
+    }
 };
+
+// ... (Your other functions like stopMessage, createSession, etc., remain unchanged) ...
 
 // 🆕 NEW: Add this to your routes - Stop endpoint
 chat.stopMessage = async (req, res) => {
 	try {
 		const { sessionId } = req.body;
-
 		console.log("🛑 STOP REQUEST RECEIVED for session:", sessionId);
-
 		if (!sessionId) {
 			return res.status(400).json({ error: "Missing sessionId" });
 		}
-
-		// Set stop flag in memory/cache for this session
 		global.stoppedSessions = global.stoppedSessions || new Set();
 		global.stoppedSessions.add(sessionId);
-
 		console.log("✅ Session marked as stopped:", sessionId);
 		console.log("📊 Currently stopped sessions:", Array.from(global.stoppedSessions));
-
-		// Clean up after 30 seconds to prevent memory leaks
 		setTimeout(() => {
 			if (global.stoppedSessions) {
 				global.stoppedSessions.delete(sessionId);
 				console.log("🧹 Cleaned up stopped session:", sessionId);
 			}
 		}, 30000);
-
 		res.json({ success: true, message: "Stop signal received" });
 	} catch (error) {
 		console.error("❌ Error in stop endpoint:", error);
@@ -337,11 +226,9 @@ chat.stopMessage = async (req, res) => {
 chat.createSession = async (req, res) => {
 	try {
 		let { clientId, userId } = req.body;
-
 		if (!clientId || !userId) {
 			return res.status(400).json({ error: "clientId, and userId are required." });
 		}
-		// Greeting message
 		const greetingMessage = {
 			sender: "bot",
 			message: `Hi! 👋 I'm your SchedAI assistant. Ask me anything related to your tasks, drivers, or station work and I’ll help you out!`,
@@ -350,8 +237,6 @@ chat.createSession = async (req, res) => {
 			},
 			timestamp: new Date(),
 		};
-
-		// Create new session
 		const session = await Session.create({
 			ClientId: clientId,
 			StationId: clientId,
@@ -359,7 +244,6 @@ chat.createSession = async (req, res) => {
 			sessionName: "New Chat",
 			history: [greetingMessage],
 		});
-
 		res.json({ message: "Session created successfully", session });
 	} catch (err) {
 		console.error("Error creating chat session:", err);
@@ -374,12 +258,10 @@ chat.getSessionsByUserId = async (req, res) => {
 		if (!userId) {
 			return res.status(400).json({ error: "userId is required" });
 		}
-
 		const sessions = await Session.find({ userId }).sort({ createdAt: -1 });
 		if (!sessions.length) {
 			return res.status(200).json({ data: [], message: "No sessions found for this user" });
 		}
-
 		res.status(200).json({ data: sessions, message: "Sessions Fetched Successfully..." });
 	} catch (err) {
 		console.error("Error fetching chats:", err);
