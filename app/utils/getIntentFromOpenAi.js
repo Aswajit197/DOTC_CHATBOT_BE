@@ -16,7 +16,6 @@ async function getIntentFromOpenAI(userMessage, session, { onStream, abortSignal
 	}
 
 	const topApis = await searchAPIs(userMessage);
-	console.log(topApis)
 	const systemPrompt = `
 You are an assistant that maps user queries to API operations.
 

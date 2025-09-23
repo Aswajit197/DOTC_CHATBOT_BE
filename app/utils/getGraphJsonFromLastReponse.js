@@ -55,7 +55,7 @@ Match the key names and structure exactly as shown in the example above.
 		}
 		// console.log(parsedJson, "parsed json");
 
-		console.log(session)
+		console.log(session);
 		console.log(session.lastSuccessParams);
 
 		return {
@@ -65,6 +65,7 @@ Match the key names and structure exactly as shown in the example above.
 				lastGraphPrompt: session.lastSuccessIntent,
 				lastGraphResponse: session.lastResponseMessage,
 				lastGraphParams: session.lastSuccessParams,
+				lastIntentType: "multi",
 				widgetLastUserMessage: session.lastSuccessUserMessage,
 			},
 			userReply: "Here's the structured data ready for visualization.",

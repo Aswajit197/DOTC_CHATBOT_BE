@@ -13,9 +13,10 @@ const sessionSchema = new mongoose.Schema(
 				chatType: String, //used for type like visualization in frontend
 				data: { type: mongoose.Schema.Types.Mixed },
 				graphContents: {
-					lastGraphPrompt: { type: String },
-					lastGraphResponse: { type: String },
-					lastGraphParams: { type: mongoose.Schema.Types.Mixed },
+					lastGraphPrompt: { type: String }, //last success matched Api
+					lastGraphResponse: { type: String }, //last success bot response message
+					lastGraphParams: { type: mongoose.Schema.Types.Mixed }, // last params used
+					lastIntentType: { type: String, enum: ["single", "multi"], default: "single" }, // last params used
 				},
 				timestamp: Date,
 			},

@@ -11,6 +11,7 @@ async function handleMultiIntentApis(extracted, userMessage, session, { onStream
 		return { type: "multi_intent", error: "Request aborted early" };
 	}
 	const results = [];
+	let apiNames = [];
 
 	for (const apiInfo of extracted.apis) {
 		// 🔹 Stop loop if aborted mid-way
@@ -18,6 +19,7 @@ async function handleMultiIntentApis(extracted, userMessage, session, { onStream
 			console.log("🚫 handleMultiIntentApis: Aborted during API loop");
 			break;
 		}
+		apiNames.push(apiInfo.apiName);
 		const matchedApi = apiListData.find((api) => api.name === apiInfo.apiName);
 		if (!matchedApi) {
 			results.push({
@@ -186,7 +188,7 @@ Raw Data: ${JSON.stringify(r?.rawData?.data, null, 2)}
 				$set: {
 					lastResponseMessage: finalReply,
 					lastSuccessUserMessage: userMessage,
-					lastSuccessIntent: "multi_intent",
+					lastSuccessIntent: apiNames.join(","),
 					lastSuccessApiResponse: results.map((r) => r.rawData),
 				},
 			}
