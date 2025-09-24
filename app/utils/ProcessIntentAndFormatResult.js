@@ -1,4 +1,5 @@
 const { OpenAI } = require("openai");
+const { summarizeLongResponseSync } = require("./responseSummarizer");
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 /**
@@ -150,10 +151,34 @@ const processIntentAndFormatResponse = async ({
         if (isMathQuery) {
             preCalculatedResults = executeRelevantCalculations(userMessage, actualData);
         }
-        
-        // NOTE: The history for the prompt is now prepared in `getIntentFromOpenAI`.
-        // This function now only needs to format the final response for the *current* turn.
-        const currentTurnContext = `
+
+
+         const cleanHistory = (session.history || [])
+    .map(turn => {
+        if (turn.sender === 'user') {
+            return { role: 'user', content: turn.message.substring(0, 100) };
+        }
+        if (turn.sender === 'bot') {
+            if (turn.message) {
+                const summarized = summarizeLongResponseSync(turn.message);
+                return { role: 'assistant', content: summarized };
+            }
+            if (turn.chatType === 'visualization') {
+                return { role: 'assistant', content: '[Chart displayed]' };
+            }
+        }
+        return null;
+    })
+    .filter(Boolean)
+    .slice(-4);
+
+    console.log("=== PROCESS INTENT HISTORY DEBUG ===");
+console.log("Clean history turns:", cleanHistory.length);
+cleanHistory.forEach((turn, index) => {
+    console.log(`[${index}] ${turn.role}: ${turn.content.substring(0, 80)}...`);
+});
+console.log("=== END HISTORY DEBUG ===");
+        const currentTurnContext = `
 You're a smart assistant designed to process structured API data intelligently and answer the user's message.
 Your tasks:
 1. Understand the user's intent from their message.
@@ -187,13 +212,26 @@ ${api?.isSuitableForGraph ? `<p class="followup-message">Would you like me to tu
 - Output only valid HTML.
 - End with exactly: ###END###
 `;
-        const messages = [
-            {
-                role: "system",
-                content: "You are a data analysis assistant. You will receive a detailed instruction block to format a response based on provided data.",
-            },
-            { role: "user", content: currentTurnContext },
-        ];
+
+        const messages = [
+            {
+                role: "system",
+                content: "You are a data analysis assistant. You will receive a detailed instruction block to format a response based on provided data and conversation history.",
+            },
+            // Include full conversation history
+            ...cleanHistory,
+            { role: "user", content: currentTurnContext },
+        ];
+             
+        // 🔹 ADD THIS DEBUG LOG BEFORE OPENAI CALL:
+console.log("=== OPENAI MESSAGES DEBUG ===");
+console.log("Total messages sent to OpenAI:", messages.length);
+messages.forEach((msg, index) => {
+    console.log(`--- Message ${index} [${msg.role}] ---`);
+    console.log(msg.content.substring(0, 200) + (msg.content.length > 200 ? '...' : ''));
+    console.log(`Length: ${msg.content.length} chars`);
+});
+console.log("=== END OPENAI MESSAGES DEBUG ===");
 
         const completion = await openai.chat.completions.create({
             model: "gpt-4o-mini",
@@ -201,6 +239,7 @@ ${api?.isSuitableForGraph ? `<p class="followup-message">Would you like me to tu
             temperature: 0,
             stream: true,
         });
+
         for await (const chunk of completion) {
             const delta = chunk.choices?.[0]?.delta?.content || "";
             if (!delta) continue;

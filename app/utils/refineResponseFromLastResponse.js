@@ -32,7 +32,7 @@ Rules:
 			messages: [{ role: "user", content: prompt }],
 			temperature: 0,
 			max_tokens: 5,
-			signal: abortSignal, // 🔹 Pass abort signal
+		
 		});
 
 		if (abortSignal?.aborted) {
@@ -57,35 +57,33 @@ Rules:
  * e.g., filtering, removing/adding columns, sorting, reformatting last response.
  */
 async function refineResponseFromLastResponse(userMessage, session, { onStream, abortSignal } = {}) {
-	console.log("Entered in refinement");
+    console.log("Entered in refinement");
 
-	// 🔹 Check abort before anything heavy
-	if (abortSignal?.aborted) {
-		console.log("🚫 refineResponseFromLastResponse: Aborted before processing");
-		return { error: "Request aborted" };
-	}
+    if (abortSignal?.aborted) {
+        console.log("🚫 refineResponseFromLastResponse: Aborted before processing");
+        return { error: "Request aborted" };
+    }
 
-	try {
-		const api = apiListData.find((api) => api.name === session.lastSuccessIntent);
-		const isSuitableForGraph = api?.isSuitableForGraph || false;
+    try {
+        const api = apiListData.find((api) => api.name === session.lastSuccessIntent);
+        const isSuitableForGraph = api?.isSuitableForGraph || false;
 
-		// ✅ Early exit if same intent
-		if (session.lastSuccessUserMessage && (await isSameIntent(userMessage, session.lastSuccessUserMessage, abortSignal))) {
-			return {
-				formattedReply: session.lastResponseMessage,
-				type: "same intent",
-			};
-		}
+        if (session.lastSuccessUserMessage && (await isSameIntent(userMessage, session.lastSuccessUserMessage, abortSignal))) {
+            return {
+                formattedReply: session.lastResponseMessage,
+                type: "same intent",
+            };
+        }
 
-		if (abortSignal?.aborted) {
-			console.log("🚫 refineResponseFromLastResponse: Aborted before OpenAI refinement");
-			return { error: "Request aborted" };
-		}
+        if (abortSignal?.aborted) {
+            console.log("🚫 refineResponseFromLastResponse: Aborted before OpenAI refinement");
+            return { error: "Request aborted" };
+        }
 
-		let fullText = "";
-		let mergedMessage = null;
+        let fullText = "";
+        let mergedMessage = null;
 
-		const prompt = `
+        const prompt = `
 You are a smart assistant. The user has already received an API result.
 Now, they want to refine or modify that result.
 
@@ -95,7 +93,8 @@ Your job:
 3. Do not fetch or assume new data — only refine the given data.
 4. Always follow the refinement exactly (e.g., remove fields, filter rows, sort, reformat).
 5. Return user-friendly HTML with the refined result.
-6. Additionally, generate a **MergedUserMessage**:
+6. Additionally, generate a **MergedUserMessage** on a new line like this:
+   MERGED_USER_MESSAGE: <the merged message here>
    - Start with the original user request.
    - Add or remove refinements progressively.
    - If the user removes multiple fields, combine them like: "excluding start date and end date".
@@ -128,11 +127,11 @@ ${JSON.stringify(session.lastSuccessApiResponse, null, 2)}
   (Include meaningful stats, counts, averages, min/max, etc. Avoid trivial facts.)
 
 ${
-	isSuitableForGraph
-		? `- After the summary block (if it exists), evaluate if the refined data is suitable for visualization.
+    isSuitableForGraph
+        ? `- After the summary block (if it exists), evaluate if the refined data is suitable for visualization.
   - If yes, append:
     <p class="followup-message">Would you like me to turn this into a visualization, such as a graph or chart?</p>`
-		: `- Do NOT add any follow-up visualization message.`
+        : `- Do NOT add any follow-up visualization message.`
 }
 
 - Only output valid HTML, no markdown, no JSON.
@@ -140,71 +139,68 @@ ${
 ###END###
 `;
 
-		const completion = await openai.chat.completions.create({
-			model: "gpt-4o-mini",
-			messages: [{ role: "user", content: prompt }],
-			temperature: 0.3,
-			stream: true,
-			signal: abortSignal, // 🔹 Pass abort signal here too
-		});
+        const completion = await openai.chat.completions.create({
+            model: "gpt-4o-mini",
+            messages: [{ role: "user", content: prompt }],
+            temperature: 0.3,
+            stream: true,
+           
+        });
 
-		for await (const chunk of completion) {
-			if (abortSignal?.aborted) {
-				console.log("🚫 refineResponseFromLastResponse aborted mid-stream");
-				return { error: "Request aborted" };
-			}
+        for await (const chunk of completion) {
+            if (abortSignal?.aborted) {
+                console.log("🚫 refineResponseFromLastResponse aborted mid-stream");
+                return { error: "Request aborted" };
+            }
 
-			const delta = chunk.choices?.[0]?.delta?.content || "";
-			if (!delta) continue;
+            const delta = chunk.choices?.[0]?.delta?.content || "";
+            if (!delta) continue;
 
-			fullText += delta;
+            fullText += delta;
 
-			const mergedMatch = delta.match(/MERGED_USER_MESSAGE:\s*(.*)/);
-			if (mergedMatch) mergedMessage = mergedMatch[1].trim();
+            // Extract merged message if present
+            const mergedMatch = fullText.match(/MERGED_USER_MESSAGE:\s*([^\n]*)/);
+            if (mergedMatch && !mergedMessage) {
+                mergedMessage = mergedMatch[1].trim();
+            }
 
-			if (fullText.includes("###END###")) break;
+            if (fullText.includes("###END###")) break;
 
-			const cleaned = delta.replace(/###\s*END\s*###/gi, "");
-			if (cleaned && onStream) {
-				const formatted = cleaned
-					.replace(/([a-z])([A-Z])/g, "$1 $2")
-					.replace(/(\d)([A-Za-z])/g, "$1 $2")
-					.replace(/([a-zA-Z])(\d)/g, "$1 $2");
-				onStream(formatted);
-			}
-		}
+            const cleaned = delta.replace(/###\s*END\s*###/gi, "").replace(/MERGED_USER_MESSAGE:.*$/m, "");
+            if (cleaned && onStream) {
+                const formatted = cleaned
+                    .replace(/([a-z])([A-Z])/g, "$1 $2")
+                    .replace(/(\d)([A-Za-z])/g, "$1 $2")
+                    .replace(/([a-zA-Z])(\d)/g, "$1 $2");
+                onStream(formatted);
+            }
+        }
 
-		if (abortSignal?.aborted) {
-			console.log("🚫 refineResponseFromLastResponse aborted before final reply");
-			return { error: "Request aborted" };
-		}
+        if (abortSignal?.aborted) {
+            console.log("🚫 refineResponseFromLastResponse aborted before final reply");
+            return { error: "Request aborted" };
+        }
 
-		const finalReply = fullText
-			.replace(/MERGED_USER_MESSAGE:.*$/m, "")
-			.replace(/###END###/g, "")
-			.trim();
+        const finalReply = fullText
+            .replace(/MERGED_USER_MESSAGE:.*$/m, "")
+            .replace(/###END###/g, "")
+            .trim();
 
-		await Session.updateOne(
-			{ _id: session._id },
-			{
-				$set: {
-					lastResponseMessage: finalReply,
-					lastSuccessUserMessage: mergedMessage || userMessage,
-					lastSuccessIntent: session.lastSuccessIntent || null,
-					lastSuccessApiResponse: session.lastSuccessApiResponse,
-				},
-			}
-		);
+        return {
+            formattedReply: finalReply,
+            mergedUserMessage: mergedMessage,
+            actualData: session.lastSuccessApiResponse // Pass through the data
+        };
 
-		return { userReply: finalReply };
-	} catch (err) {
-		if (abortSignal?.aborted) {
-			console.log("🚫 refineResponseFromLastResponse caught abort in catch");
-			return { error: "Request aborted" };
-		}
-		console.error("refineResponseFromLastResponse error:", err);
-		return { error: "Failed to refine Response data..." };
-	}
+    } catch (err) {
+        if (abortSignal?.aborted) {
+            console.log("🚫 refineResponseFromLastResponse caught abort in catch");
+            return { error: "Request aborted" };
+        }
+        console.error("refineResponseFromLastResponse error:", err);
+        return { error: "Failed to refine Response data..." };
+    }
 }
+
 
 module.exports = refineResponseFromLastResponse;

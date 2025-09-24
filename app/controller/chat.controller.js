@@ -1,4 +1,5 @@
 const getIntentFromOpenAI = require("../utils/getIntentFromOpenAi");
+const { summarizeLongResponseSync, createDynamicDataSummary } = require("../utils/responseSummarizer");
 const Session = require("../model/session.model");
 const { OpenAI } = require("openai");
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -88,6 +89,8 @@ chat.sendMessage = async (req, res) => {
 
 		// 🔹 MODIFIED: Save user message to history immediately.
 		session.history.push({ sender: "user", message, timestamp: new Date() });
+		await session.save(); // 🔹 CRITICAL: Save immediately to preserve user message
+
 
 		// 🔹 Check if aborted before proceeding
 		if (isAborted) {
@@ -137,47 +140,67 @@ chat.sendMessage = async (req, res) => {
 		} else if (intentResult.type === "visualization") {
 			finalBotReply = intentResult.data;
 			finalDataType = "visualization";
-			session.history.push({
-				sender: "bot",
-				data: intentResult?.data,
-				chatType: "visualization",
-				graphContents: intentResult?.graphContents,
-				timestamp: new Date(),
-			});
+		
 		} else {
 			finalBotReply = intentResult.formattedReply || intentResult.combinedReply;
 		}
 
 		if (!isAborted && finalBotReply) {
-			const finalPayload = {
-				type: finalDataType === "visualization" ? "visualization" : "final",
-				response: finalDataType !== "visualization" ? finalBotReply : null,
-				data: finalDataType === "visualization" ? finalBotReply : null,
-				graphContents: intentResult.graphContents,
-			};
+    const finalPayload = {
+        type: finalDataType === "visualization" ? "visualization" : "final",
+        response: finalDataType !== "visualization" ? finalBotReply : null,
+        data: finalDataType === "visualization" ? finalBotReply : null,
+        graphContents: intentResult.graphContents,
+    };
 
-			res.write(`data: ${JSON.stringify(finalPayload)}\n\n`);
+    res.write(`data: ${JSON.stringify(finalPayload)}\n\n`);
 
-			if (finalDataType !== "visualization") {
-				session.history.push({
-					sender: "bot",
-					message: finalBotReply,
-					timestamp: new Date(),
-				});
-			}
+	  let messageToSave = finalBotReply;
+    if (Array.isArray(messageToSave)) {
+        messageToSave = JSON.stringify(messageToSave); // Convert array to string
+    } else if (typeof messageToSave !== 'string') {
+        messageToSave = String(messageToSave); // Convert any other type to string
+    }
 
-            if (!intentResult.error) {
-                session.lastResponseMessage = finalBotReply;
-                session.lastSuccessUserMessage = message;
-                session.lastSuccessIntent = intentResult?.api?.name || null;
-                // NOTE: To save `actualData`, your API handlers in `apiDetails.js`
-                // should return it alongside the `userReply`.
-                // For now, setting to null as the handlers don't provide it yet.
-                session.lastSuccessApiResponse = intentResult?.actualData || null; 
-                session.lastSuccessParams = intentResult?.params || null;
-                session.missingField = null;
-            }
-		}
+    if (finalDataType !== "visualization") {
+    // For regular responses, summarize to save tokens
+      const summarizedReply = intentResult.actualData 
+        ? createDynamicDataSummary(intentResult.actualData, intentResult.api?.name, message)
+        : summarizeLongResponseSync(messageToSave);
+    session.history.push({
+        sender: "bot",
+        message: summarizedReply,
+        timestamp: new Date(),
+    });
+} else {
+    session.history.push({
+        sender: "bot",
+        message: messageToSave,
+        chatType: "visualization", 
+        graphContents: intentResult?.graphContents,
+        timestamp: new Date(),
+    });
+}
+
+    if (!intentResult.error) {
+        // Handle merged user message for refinements
+        if (intentResult.mergedUserMessage) {
+            session.lastSuccessUserMessage = intentResult.mergedUserMessage;
+        } else {
+            session.lastSuccessUserMessage = message;
+        }
+        // Make sure this is a string, not an array
+		session.lastResponseMessage = messageToSave;
+
+// Also check history pushes - they must be strings
+
+        session.lastSuccessIntent = intentResult?.api?.name || session.lastSuccessIntent;
+        session.lastSuccessApiResponse = intentResult?.actualData || session.lastSuccessApiResponse;
+        session.lastSuccessParams = intentResult?.params || session.lastSuccessParams;
+        session.missingField = null;
+    }
+}
+		
 
 		await session.save();
 		console.log("✅ Session state saved successfully.");
