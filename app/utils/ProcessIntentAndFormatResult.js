@@ -2,402 +2,622 @@ const { OpenAI } = require("openai");
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const Session = require("../model/session.model");
 
-// Define calculation tools
-const calculationTools = [
+console.log("📋 API Processor module loaded with enhanced logging");
+
+// Enhanced dynamic tools with exclude_zeros parameter for all calculation functions
+const tools = [
 	{
 		type: "function",
 		function: {
 			name: "calculate_average",
-			description: "Calculate the average (mean) of a numeric array",
-			parameters: {
-				type: "object",
-				properties: {
-					values: {
-						type: "array",
-						items: { type: "number" },
-						description: "Array of numeric values to calculate average from",
-					},
-					fieldName: {
-						type: "string",
-						description: "Name of the field being averaged (for context)",
-					},
-				},
-				required: ["values"],
-			},
-		},
-	},
-	{
-		type: "function",
-		function: {
-			name: "calculate_statistics",
-			description: "Calculate comprehensive statistics including mean, median, mode, standard deviation, min, max",
-			parameters: {
-				type: "object",
-				properties: {
-					values: {
-						type: "array",
-						items: { type: "number" },
-						description: "Array of numeric values",
-					},
-					fieldName: {
-						type: "string",
-						description: "Name of the field being analyzed",
-					},
-				},
-				required: ["values"],
-			},
-		},
-	},
-	{
-		type: "function",
-		function: {
-			name: "filter_and_aggregate",
-			description: "Filter data based on conditions and perform aggregations",
+			description: "Calculate the arithmetic mean (average) of numbers from any JSON structure",
 			parameters: {
 				type: "object",
 				properties: {
 					data: {
-						type: "array",
-						items: {
-							type: "object",
-						},
-						description: "Array of data objects to filter and aggregate",
+						description: "The data source - can be array of numbers or JSON objects",
 					},
-					filterField: {
+					field_path: {
 						type: "string",
-						description: "Field to filter on",
+						description: "Dot notation path to extract numbers from JSON objects (e.g., 'score', 'sales.q1', 'grades.0')",
 					},
-					filterOperator: {
-						type: "string",
-						enum: [">=", "<=", ">", "<", "=", "!="],
-						description: "Comparison operator",
-					},
-					filterValue: {
-						type: "number",
-						description: "Value to compare against",
-					},
-					aggregateField: {
-						type: "string",
-						description: "Field to aggregate",
-					},
-					aggregateOperation: {
-						type: "string",
-						enum: ["sum", "average", "count", "min", "max"],
-						description: "Type of aggregation to perform",
-					},
-				},
-				required: ["data", "aggregateField", "aggregateOperation"],
-			},
-		},
-	},
-	{
-		type: "function",
-		function: {
-			name: "group_and_calculate",
-			description: "Group data by a field and calculate statistics for each group",
-			parameters: {
-				type: "object",
-				properties: {
-					data: {
-						type: "array",
-						items: {
-							type: "object",
-						},
-						description: "Array of data objects",
-					},
-					groupByField: {
-						type: "string",
-						description: "Field to group by",
-					},
-					calculateField: {
-						type: "string",
-						description: "Field to calculate statistics on",
-					},
-					operation: {
-						type: "string",
-						enum: ["sum", "average", "count", "min", "max", "statistics"],
-						description: "Type of calculation to perform",
-					},
-				},
-				required: ["data", "groupByField", "calculateField", "operation"],
-			},
-		},
-	},
-	{
-		type: "function",
-		function: {
-			name: "find_top_n",
-			description: "Find top N items based on a numeric field, optionally grouped by category",
-			parameters: {
-				type: "object",
-				properties: {
-					data: {
-						type: "array",
-						items: {
-							type: "object",
-						},
-						description: "Array of data objects",
-					},
-					sortField: {
-						type: "string",
-						description: "Field to sort by",
-					},
-					n: {
-						type: "number",
-						description: "Number of top items to return",
-					},
-					groupByField: {
-						type: "string",
-						description: "Optional field to group by before finding top N in each group",
-					},
-					ascending: {
+					exclude_zeros: {
 						type: "boolean",
+						description: "Whether to exclude zero values from the calculation",
 						default: false,
-						description: "Sort in ascending order (default: descending for top items)",
 					},
 				},
-				required: ["data", "sortField", "n"],
+				required: ["data"],
+			},
+		},
+	},
+	{
+		type: "function",
+		function: {
+			name: "calculate_sum",
+			description: "Calculate the sum total of numbers from any JSON structure",
+			parameters: {
+				type: "object",
+				properties: {
+					data: {
+						description: "The data source - can be array of numbers or JSON objects",
+					},
+					field_path: {
+						type: "string",
+						description: "Dot notation path to extract numbers from JSON objects",
+					},
+					exclude_zeros: {
+						type: "boolean",
+						description: "Whether to exclude zero values from the calculation",
+						default: false,
+					},
+				},
+				required: ["data"],
+			},
+		},
+	},
+	{
+		type: "function",
+		function: {
+			name: "calculate_deviation",
+			description: "Calculate standard deviation and variance for numbers from any JSON structure",
+			parameters: {
+				type: "object",
+				properties: {
+					data: {
+						description: "The data source - can be array of numbers or JSON objects",
+					},
+					field_path: {
+						type: "string",
+						description: "Dot notation path to extract numbers from JSON objects",
+					},
+					population: {
+						type: "boolean",
+						description: "True for population standard deviation, false for sample standard deviation",
+						default: false,
+					},
+					exclude_zeros: {
+						type: "boolean",
+						description: "Whether to exclude zero values from the calculation",
+						default: false,
+					},
+				},
+				required: ["data"],
+			},
+		},
+	},
+	{
+		type: "function",
+		function: {
+			name: "get_all_numbers",
+			description: "Extract all numbers from a JSON structure for analysis",
+			parameters: {
+				type: "object",
+				properties: {
+					data: {
+						description: "The JSON data to extract numbers from - can be array, object, or primitive",
+					},
+					field_path: {
+						type: "string",
+						description: "Optional dot notation path to extract only a specific field",
+					},
+					exclude_zeros: {
+						type: "boolean",
+						description: "Whether to exclude zero values from the results",
+						default: false,
+					},
+				},
+				required: ["data"],
+			},
+		},
+	},
+	{
+		type: "function",
+		function: {
+			name: "calculate_percentage_deviation",
+			description: "Calculate percentage deviation from average for total working hours across all shift types",
+			parameters: {
+				type: "object",
+				properties: {
+					data: {
+						description: "Array of driver objects with shifts data",
+					},
+					exclude_zeros: {
+						type: "boolean",
+						description: "Whether to exclude zero values when calculating totals",
+						default: true,
+					},
+				},
+				required: ["data"],
+			},
+		},
+	},
+	{
+		type: "function",
+		function: {
+			name: "calculate_custom_percentage_deviation",
+			description: "Calculate percentage deviation from average for any numeric field in the data",
+			parameters: {
+				type: "object",
+				properties: {
+					data: {
+						description: "The data source - can be array of numbers or JSON objects",
+					},
+					field_path: {
+						type: "string",
+						description: "Dot notation path to extract numbers from JSON objects for deviation calculation",
+					},
+					group_by: {
+						type: "string",
+						description: "Field to group results by (e.g., 'day', 'category', 'type')",
+					},
+					exclude_zeros: {
+						type: "boolean",
+						description: "Whether to exclude zero values when calculating",
+						default: false,
+					},
+				},
+				required: ["data"],
 			},
 		},
 	},
 ];
 
-// Tool execution functions
-const executeCalculationTool = (toolCall, toolArgs) => {
-	const { name } = toolCall.function;
-	console.log(`🔧 Executing tool: ${name}`);
-	console.log(`📋 Tool args:`, JSON.stringify(toolArgs, null, 2));
+/**
+ * Utility function to get value from object using dot notation
+ */
+function getNestedValue(obj, path) {
+	console.log("🔍 Getting nested value:", { path, objType: typeof obj });
+	if (!path) return obj;
+	const result = path.split(".").reduce((current, key) => {
+		if (current === null || current === undefined) return undefined;
+		return current[key];
+	}, obj);
+	console.log("🔍 Nested value result:", { path, result });
+	return result;
+}
 
-	switch (name) {
-		case "calculate_average":
-			console.log("📊 Calculating average...");
-			const avg = toolArgs.values.reduce((sum, val) => sum + val, 0) / toolArgs.values.length;
-			const avgResult = {
-				average: parseFloat(avg.toFixed(2)),
-				count: toolArgs.values.length,
-				fieldName: toolArgs.fieldName,
-			};
-			console.log("✅ Average calculation result:", avgResult);
-			return avgResult;
+/**
+ * Check if a field name should be excluded as metadata
+ */
+function isMetadataField(fieldName) {
+	if (!fieldName) return false;
 
-		case "calculate_statistics":
-			console.log("📊 Calculating comprehensive statistics...");
-			const values = [...toolArgs.values].sort((a, b) => a - b);
-			const sum = values.reduce((s, v) => s + v, 0);
-			const mean = sum / values.length;
-			const median =
-				values.length % 2 === 0
-					? (values[values.length / 2 - 1] + values[values.length / 2]) / 2
-					: values[Math.floor(values.length / 2)];
+	const metadataPatterns = [
+		/^id$/i,
+		/.*_id$/i,
+		/.*Id$/,
+		/^uid$/i,
+		/^uuid$/i,
+		/^guid$/i,
+		/timestamp/i,
+		/created/i,
+		/updated/i,
+		/modified/i,
+		/version/i,
+		/revision/i,
+		/build/i,
+		/index/i,
+		/position/i,
+		/order/i,
+		/status/i,
+		/state/i,
+		/type/i,
+		/kind/i,
+		/.*_key$/i,
+		/.*Key$/,
+		/.*_code$/i,
+		/.*Code$/,
+	];
 
-			// Calculate standard deviation
-			const variance = values.reduce((acc, val) => acc + Math.pow(val - mean, 2), 0) / values.length;
-			const stdDev = Math.sqrt(variance);
+	const isMetadata = metadataPatterns.some((pattern) => pattern.test(fieldName));
+	console.log("🏷️ Metadata field check:", { fieldName, isMetadata });
+	return isMetadata;
+}
 
-			// Find mode
-			const frequency = {};
-			values.forEach((val) => (frequency[val] = (frequency[val] || 0) + 1));
-			const mode = Object.keys(frequency).reduce((a, b) => (frequency[a] > frequency[b] ? a : b));
+/**
+ * Extract numbers from any data structure, including nested objects
+ */
+function extractNumbers(data, fieldPath = null, excludeZeros = false) {
+	console.log("🔢 Starting number extraction:", {
+		dataType: typeof data,
+		isArray: Array.isArray(data),
+		fieldPath,
+		excludeZeros,
+	});
 
-			const statsResult = {
-				count: values.length,
-				sum: parseFloat(sum.toFixed(2)),
-				mean: parseFloat(mean.toFixed(2)),
-				median: parseFloat(median.toFixed(2)),
-				mode: parseFloat(mode),
-				min: values[0],
-				max: values[values.length - 1],
-				standardDeviation: parseFloat(stdDev.toFixed(2)),
-				variance: parseFloat(variance.toFixed(2)),
-				fieldName: toolArgs.fieldName,
-			};
-			console.log("✅ Statistics calculation result:", statsResult);
-			return statsResult;
+	const numbers = [];
 
-		case "filter_and_aggregate":
-			console.log("🔍 Filtering and aggregating data...");
-			let filteredData = toolArgs.data;
+	const shouldInclude = (value) => {
+		if (typeof value !== "number" || isNaN(value)) return false;
+		if (excludeZeros && value === 0) return false;
+		return true;
+	};
 
-			// Apply filter if specified
-			if (toolArgs.filterField && toolArgs.filterOperator && toolArgs.filterValue !== undefined) {
-				console.log(`🔍 Applying filter: ${toolArgs.filterField} ${toolArgs.filterOperator} ${toolArgs.filterValue}`);
-				filteredData = toolArgs.data.filter((item) => {
-					const fieldValue = item[toolArgs.filterField];
-					switch (toolArgs.filterOperator) {
-						case ">=":
-							return fieldValue >= toolArgs.filterValue;
-						case "<=":
-							return fieldValue <= toolArgs.filterValue;
-						case ">":
-							return fieldValue > toolArgs.filterValue;
-						case "<":
-							return fieldValue < toolArgs.filterValue;
-						case "=":
-							return fieldValue === toolArgs.filterValue;
-						case "!=":
-							return fieldValue !== toolArgs.filterValue;
-						default:
-							return true;
+	if (fieldPath) {
+		console.log("🎯 Using field path extraction");
+		if (Array.isArray(data)) {
+			console.log(`📊 Processing array with ${data.length} items for field path: ${fieldPath}`);
+			data.forEach((item, index) => {
+				const value = getNestedValue(item, fieldPath);
+				console.log(`📝 Item ${index} field value:`, value);
+				if (typeof value === "object" && value !== null) {
+					Object.values(value).forEach((val) => {
+						if (shouldInclude(val)) {
+							console.log("✅ Adding nested object value:", val);
+							numbers.push(val);
+						}
+					});
+				} else if (shouldInclude(value)) {
+					console.log("✅ Adding direct value:", value);
+					numbers.push(value);
+				}
+			});
+		} else {
+			console.log("📊 Processing single object for field path");
+			const value = getNestedValue(data, fieldPath);
+			if (typeof value === "object" && value !== null) {
+				Object.values(value).forEach((val) => {
+					if (shouldInclude(val)) {
+						console.log("✅ Adding nested object value:", val);
+						numbers.push(val);
 					}
 				});
-				console.log(`🔍 Filtered data count: ${filteredData.length}/${toolArgs.data.length}`);
+			} else if (shouldInclude(value)) {
+				console.log("✅ Adding direct value:", value);
+				numbers.push(value);
 			}
-
-			// Perform aggregation
-			const aggregateValues = filteredData
-				.map((item) => item[toolArgs.aggregateField])
-				.filter((val) => val !== undefined && val !== null);
-			console.log(`📊 Aggregating ${aggregateValues.length} values for field: ${toolArgs.aggregateField}`);
-
-			let result = { filteredCount: filteredData.length, totalCount: toolArgs.data.length };
-
-			switch (toolArgs.aggregateOperation) {
-				case "sum":
-					result.sum = aggregateValues.reduce((sum, val) => sum + val, 0);
-					break;
-				case "average":
-					result.average =
-						aggregateValues.length > 0
-							? parseFloat((aggregateValues.reduce((sum, val) => sum + val, 0) / aggregateValues.length).toFixed(2))
-							: 0;
-					break;
-				case "count":
-					result.count = aggregateValues.length;
-					break;
-				case "min":
-					result.min = aggregateValues.length > 0 ? Math.min(...aggregateValues) : null;
-					break;
-				case "max":
-					result.max = aggregateValues.length > 0 ? Math.max(...aggregateValues) : null;
-					break;
-			}
-
-			console.log("✅ Filter and aggregate result:", result);
-			return result;
-
-		case "group_and_calculate":
-			console.log("👥 Grouping and calculating data...");
-			const groups = {};
-
-			// Group data
-			toolArgs.data.forEach((item) => {
-				const groupKey = item[toolArgs.groupByField];
-				if (!groups[groupKey]) groups[groupKey] = [];
-				groups[groupKey].push(item);
-			});
-
-			console.log(`👥 Created ${Object.keys(groups).length} groups`);
-
-			// Calculate for each group
-			const results = {};
-			Object.keys(groups).forEach((groupKey) => {
-				console.log(`📊 Processing group: ${groupKey} (${groups[groupKey].length} items)`);
-				const groupData = groups[groupKey];
-				const values = groupData.map((item) => item[toolArgs.calculateField]).filter((val) => val !== undefined && val !== null);
-
-				if (values.length === 0) {
-					results[groupKey] = { count: 0, value: null };
-					return;
-				}
-
-				switch (toolArgs.operation) {
-					case "sum":
-						results[groupKey] = { count: values.length, sum: values.reduce((sum, val) => sum + val, 0) };
-						break;
-					case "average":
-						results[groupKey] = {
-							count: values.length,
-							average: parseFloat((values.reduce((sum, val) => sum + val, 0) / values.length).toFixed(2)),
-						};
-						break;
-					case "count":
-						results[groupKey] = { count: values.length };
-						break;
-					case "min":
-						results[groupKey] = { count: values.length, min: Math.min(...values) };
-						break;
-					case "max":
-						results[groupKey] = { count: values.length, max: Math.max(...values) };
-						break;
-					case "statistics":
-						const sortedValues = [...values].sort((a, b) => a - b);
-						const groupSum = values.reduce((s, v) => s + v, 0);
-						const groupMean = groupSum / values.length;
-						const groupMedian =
-							sortedValues.length % 2 === 0
-								? (sortedValues[sortedValues.length / 2 - 1] + sortedValues[sortedValues.length / 2]) / 2
-								: sortedValues[Math.floor(sortedValues.length / 2)];
-
-						results[groupKey] = {
-							count: values.length,
-							sum: parseFloat(groupSum.toFixed(2)),
-							average: parseFloat(groupMean.toFixed(2)),
-							median: parseFloat(groupMedian.toFixed(2)),
-							min: sortedValues[0],
-							max: sortedValues[sortedValues.length - 1],
-						};
-						break;
-				}
-			});
-
-			console.log("✅ Group and calculate result:", results);
-			return results;
-
-		case "find_top_n":
-			console.log(`🔝 Finding top ${toolArgs.n} items...`);
-			let processedData = [...toolArgs.data];
-
-			if (toolArgs.groupByField) {
-				console.log(`👥 Grouping by field: ${toolArgs.groupByField}`);
-				// Group and find top N in each group
-				const groups = {};
-				processedData.forEach((item) => {
-					const groupKey = item[toolArgs.groupByField];
-					if (!groups[groupKey]) groups[groupKey] = [];
-					groups[groupKey].push(item);
-				});
-
-				console.log(`👥 Created ${Object.keys(groups).length} groups`);
-
-				const results = {};
-				Object.keys(groups).forEach((groupKey) => {
-					console.log(`🔝 Finding top ${toolArgs.n} in group: ${groupKey}`);
-					const sortedGroup = groups[groupKey].sort((a, b) => {
-						const aVal = a[toolArgs.sortField];
-						const bVal = b[toolArgs.sortField];
-						return toolArgs.ascending ? aVal - bVal : bVal - aVal;
-					});
-					results[groupKey] = sortedGroup.slice(0, toolArgs.n);
-				});
-
-				console.log(
-					"✅ Top N by group result:",
-					Object.keys(results).map((k) => `${k}: ${results[k].length} items`)
-				);
-				return results;
-			} else {
-				console.log(`🔝 Finding top ${toolArgs.n} overall`);
-				// Find top N overall
-				const sorted = processedData.sort((a, b) => {
-					const aVal = a[toolArgs.sortField];
-					const bVal = b[toolArgs.sortField];
-					return toolArgs.ascending ? aVal - bVal : bVal - aVal;
-				});
-
-				const result = sorted.slice(0, toolArgs.n);
-				console.log(`✅ Top N overall result: ${result.length} items`);
-				return result;
-			}
-
-		default:
-			console.error(`❌ Unknown tool function: ${name}`);
-			return { error: "Unknown tool function" };
+		}
+		console.log("🔢 Field path extraction complete. Numbers found:", numbers.length);
+		return numbers;
 	}
-};
+
+	console.log("🔄 Using recursive traversal");
+	function traverse(current, currentKey = null) {
+		if (shouldInclude(current, currentKey)) {
+			console.log("✅ Adding number:", current, "from key:", currentKey);
+			numbers.push(current);
+			return;
+		}
+
+		if (Array.isArray(current)) {
+			console.log("📋 Traversing array with", current.length, "items");
+			current.forEach((item, index) => {
+				console.log(`🔄 Processing array item ${index}`);
+				traverse(item);
+			});
+		} else if (typeof current === "object" && current !== null) {
+			const entries = Object.entries(current);
+			console.log("🏗️ Traversing object with", entries.length, "properties");
+			entries.forEach(([key, value]) => {
+				if (!isMetadataField(key)) {
+					console.log(`🔄 Processing object property: ${key}`);
+					traverse(value, key);
+				} else {
+					console.log(`⏭️ Skipping metadata field: ${key}`);
+				}
+			});
+		}
+	}
+
+	traverse(data);
+	console.log("🔢 Recursive extraction complete. Numbers found:", numbers.length);
+	console.log("🔢 Sample numbers:", numbers.slice(0, 5));
+	return numbers;
+}
+
+// Calculation functions
+function calculateAverage({ data, field_path, exclude_zeros = false }) {
+	console.log("📊 Starting average calculation:", { field_path, exclude_zeros });
+	try {
+		const numbers = extractNumbers(data, field_path, exclude_zeros);
+
+		if (numbers.length === 0) {
+			console.log("❌ No valid numbers found for average calculation");
+			return {
+				error: "No valid numbers found",
+				data_sample: JSON.stringify(data).substring(0, 200) + "...",
+			};
+		}
+
+		const sum = numbers.reduce((acc, num) => acc + num, 0);
+		const average = sum / numbers.length;
+
+		const result = {
+			average: parseFloat(average.toFixed(2)),
+			count: numbers.length,
+			total_sum: parseFloat(sum.toFixed(2)),
+			field_path: field_path || "auto-detected (excluding metadata)",
+			exclude_zeros: exclude_zeros,
+			sample_values: numbers.slice(0, 5),
+		};
+
+		console.log("✅ Average calculation complete:", result);
+		return result;
+	} catch (error) {
+		console.error("❌ Average calculation error:", error.message);
+		return { error: `Calculation error: ${error.message}` };
+	}
+}
+
+function calculateSum({ data, field_path, exclude_zeros = false }) {
+	console.log("📊 Starting sum calculation:", { field_path, exclude_zeros });
+	try {
+		const numbers = extractNumbers(data, field_path, exclude_zeros);
+
+		if (numbers.length === 0) {
+			console.log("❌ No valid numbers found for sum calculation");
+			return {
+				error: "No valid numbers found",
+				data_sample: JSON.stringify(data).substring(0, 200) + "...",
+			};
+		}
+
+		const sum = numbers.reduce((acc, num) => acc + num, 0);
+
+		const result = {
+			sum: parseFloat(sum.toFixed(2)),
+			count: numbers.length,
+			field_path: field_path || "auto-detected (excluding metadata)",
+			exclude_zeros: exclude_zeros,
+			sample_values: numbers.slice(0, 5),
+		};
+
+		console.log("✅ Sum calculation complete:", result);
+		return result;
+	} catch (error) {
+		console.error("❌ Sum calculation error:", error.message);
+		return { error: `Calculation error: ${error.message}` };
+	}
+}
+
+function calculateDeviation({ data, field_path, population = false, exclude_zeros = false }) {
+	console.log("📊 Starting deviation calculation:", { field_path, population, exclude_zeros });
+	try {
+		const numbers = extractNumbers(data, field_path, exclude_zeros);
+
+		if (numbers.length === 0) {
+			console.log("❌ No valid numbers found for deviation calculation");
+			return {
+				error: "No valid numbers found",
+				data_sample: JSON.stringify(data).substring(0, 200) + "...",
+			};
+		}
+
+		if (numbers.length === 1) {
+			console.log("ℹ️ Only one number found, deviation is 0");
+			return {
+				standard_deviation: 0,
+				variance: 0,
+				mean: numbers[0],
+				count: 1,
+				field_path: field_path || "auto-detected (excluding metadata)",
+				exclude_zeros: exclude_zeros,
+			};
+		}
+
+		const mean = numbers.reduce((acc, num) => acc + num, 0) / numbers.length;
+		const squaredDifferences = numbers.map((num) => Math.pow(num - mean, 2));
+		const variance = squaredDifferences.reduce((acc, diff) => acc + diff, 0) / (population ? numbers.length : numbers.length - 1);
+		const standardDeviation = Math.sqrt(variance);
+
+		const result = {
+			standard_deviation: parseFloat(standardDeviation.toFixed(2)),
+			variance: parseFloat(variance.toFixed(2)),
+			mean: parseFloat(mean.toFixed(2)),
+			count: numbers.length,
+			field_path: field_path || "auto-detected (excluding metadata)",
+			exclude_zeros: exclude_zeros,
+			type: population ? "population" : "sample",
+			sample_values: numbers.slice(0, 5),
+		};
+
+		console.log("✅ Deviation calculation complete:", result);
+		return result;
+	} catch (error) {
+		console.error("❌ Deviation calculation error:", error.message);
+		return { error: `Calculation error: ${error.message}` };
+	}
+}
+
+function calculatePercentageDeviation({ data, exclude_zeros = true }) {
+	console.log("📊 Starting percentage deviation calculation (driver-specific):", { exclude_zeros });
+	try {
+		const driverTotals = data.map((driver, index) => {
+			console.log(`👤 Processing driver ${index}:`, driver.driverName || driver.driverId);
+			const shifts = driver.shifts || {};
+			let totalHours = 0;
+
+			Object.entries(shifts).forEach(([shiftType, hours]) => {
+				console.log(`   ⏰ Shift ${shiftType}: ${hours} hours`);
+				if (typeof hours === "number" && !isNaN(hours)) {
+					if (!exclude_zeros || hours !== 0) {
+						totalHours += hours;
+					}
+				}
+			});
+
+			console.log(`📈 Driver total hours: ${totalHours}`);
+			return {
+				driverId: driver.driverId,
+				driverName: driver.driverName,
+				totalHours: totalHours,
+				shifts: shifts,
+			};
+		});
+
+		const totalHours = driverTotals.map((driver) => driver.totalHours);
+		console.log("📊 All driver total hours:", totalHours);
+
+		if (totalHours.length === 0) {
+			console.log("❌ No valid working hours found");
+			return { error: "No valid working hours found" };
+		}
+
+		const average = totalHours.reduce((sum, hours) => sum + hours, 0) / totalHours.length;
+		console.log("📊 Average total hours:", average);
+
+		const results = driverTotals.map((driver) => {
+			const deviation = driver.totalHours - average;
+			const percentageDeviation = (deviation / average) * 100;
+
+			console.log(`👤 ${driver.driverName}: ${driver.totalHours}h (${percentageDeviation.toFixed(2)}% deviation)`);
+
+			return {
+				driverId: driver.driverId,
+				driverName: driver.driverName,
+				totalHours: driver.totalHours,
+				deviation: parseFloat(deviation.toFixed(2)),
+				percentageDeviation: parseFloat(percentageDeviation.toFixed(2)),
+				shifts: driver.shifts,
+			};
+		});
+
+		results.sort((a, b) => b.percentageDeviation - a.percentageDeviation);
+
+		const finalResult = {
+			averageTotalHours: parseFloat(average.toFixed(2)),
+			totalDrivers: results.length,
+			results: results,
+			summary: {
+				highestDeviation: results[0].percentageDeviation,
+				lowestDeviation: results[results.length - 1].percentageDeviation,
+				averageDeviation: parseFloat((results.reduce((sum, r) => sum + r.percentageDeviation, 0) / results.length).toFixed(2)),
+			},
+		};
+
+		console.log("✅ Percentage deviation calculation complete:", finalResult.summary);
+		return finalResult;
+	} catch (error) {
+		console.error("❌ Percentage deviation calculation error:", error.message);
+		return { error: `Calculation error: ${error.message}` };
+	}
+}
+
+function calculateCustomPercentageDeviation({ data, field_path, group_by, exclude_zeros = false }) {
+	console.log("📊 Starting custom percentage deviation calculation:", { field_path, group_by, exclude_zeros });
+	try {
+		if (!Array.isArray(data)) {
+			console.log("❌ Data is not an array");
+			return { error: "Data must be an array for custom percentage deviation calculation" };
+		}
+
+		// Extract values and group by specified field
+		const groups = {};
+
+		data.forEach((item, index) => {
+			console.log(`📝 Processing item ${index}`);
+			const value = field_path ? getNestedValue(item, field_path) : typeof item === "number" ? item : null;
+			const groupKey = group_by ? getNestedValue(item, group_by) || `item_${index}` : `item_${index}`;
+
+			console.log(`   🎯 Value: ${value}, Group: ${groupKey}`);
+
+			if (typeof value === "number" && !isNaN(value)) {
+				if (!exclude_zeros || value !== 0) {
+					if (!groups[groupKey]) {
+						groups[groupKey] = [];
+						console.log(`   🆕 Created new group: ${groupKey}`);
+					}
+					groups[groupKey].push({ ...item, value });
+					console.log(`   ✅ Added to group ${groupKey}: ${value}`);
+				} else {
+					console.log(`   ⏭️ Excluded zero value for group ${groupKey}`);
+				}
+			} else {
+				console.log(`   ❌ Invalid value for item ${index}: ${value}`);
+			}
+		});
+
+		console.log("📊 Groups created:", Object.keys(groups));
+
+		// Calculate overall average
+		const allValues = Object.values(groups)
+			.flat()
+			.map((item) => item.value);
+
+		console.log("📊 All values for average calculation:", allValues);
+
+		if (allValues.length === 0) {
+			console.log("❌ No valid numbers found for calculation");
+			return { error: "No valid numbers found for calculation" };
+		}
+
+		const overallAverage = allValues.reduce((sum, val) => sum + val, 0) / allValues.length;
+		console.log("📊 Overall average:", overallAverage);
+
+		// Calculate percentage deviation for each group
+		const results = Object.entries(groups).map(([groupKey, items]) => {
+			const groupValues = items.map((item) => item.value);
+			const groupAverage = groupValues.reduce((sum, val) => sum + val, 0) / groupValues.length;
+			const deviation = groupAverage - overallAverage;
+			const percentageDeviation = (deviation / overallAverage) * 100;
+
+			console.log(`📊 Group ${groupKey}: avg=${groupAverage}, dev=${percentageDeviation.toFixed(2)}%`);
+
+			return {
+				group: groupKey,
+				average: parseFloat(groupAverage.toFixed(2)),
+				count: groupValues.length,
+				deviation: parseFloat(deviation.toFixed(2)),
+				percentageDeviation: parseFloat(percentageDeviation.toFixed(2)),
+				items: items,
+			};
+		});
+
+		// Sort by percentage deviation
+		results.sort((a, b) => b.percentageDeviation - a.percentageDeviation);
+
+		const finalResult = {
+			overallAverage: parseFloat(overallAverage.toFixed(2)),
+			totalItems: allValues.length,
+			totalGroups: results.length,
+			results: results,
+			summary: {
+				highestDeviation: results[0]?.percentageDeviation || 0,
+				lowestDeviation: results[results.length - 1]?.percentageDeviation || 0,
+			},
+		};
+
+		console.log("✅ Custom percentage deviation calculation complete:", finalResult.summary);
+		return finalResult;
+	} catch (error) {
+		console.error("❌ Custom percentage deviation calculation error:", error.message);
+		return { error: `Calculation error: ${error.message}` };
+	}
+}
+
+function getAllNumbersFromData({ data, field_path, exclude_zeros = false }) {
+	console.log("📊 Starting get all numbers extraction:", { field_path, exclude_zeros });
+	try {
+		const numbers = extractNumbers(data, field_path, exclude_zeros);
+
+		const result = {
+			numbers: numbers,
+			count: numbers.length,
+			field_path: field_path || "auto-detected",
+			exclude_zeros: exclude_zeros,
+			sample_values: numbers.slice(0, 10),
+			min: numbers.length > 0 ? Math.min(...numbers) : null,
+			max: numbers.length > 0 ? Math.max(...numbers) : null,
+			total: numbers.length > 0 ? numbers.reduce((sum, num) => sum + num, 0) : null,
+		};
+
+		console.log("✅ Get all numbers extraction complete:", {
+			count: result.count,
+			min: result.min,
+			max: result.max,
+			total: result.total,
+		});
+		return result;
+	} catch (error) {
+		console.error("❌ Get all numbers extraction error:", error.message);
+		return { error: `Extraction error: ${error.message}` };
+	}
+}
 
 /**
  * Streams GPT's partial plain text response until "###END###",
- * and returns the full HTML reply at the end.
+ * with integrated function calling capabilities for calculations
  */
 const processIntentAndFormatResponse = async ({
 	userMessage,
@@ -408,30 +628,47 @@ const processIntentAndFormatResponse = async ({
 	session,
 	onStream,
 }) => {
-	let fullText = "";
-	console.log("🔄 Starting processIntentAndFormatResponse");
+	console.log("🚀 Starting processIntentAndFormatResponse");
 	console.log("📝 User message:", userMessage);
-	console.log("🔧 API:", api?.name);
-	console.log("📊 Data length:", Array.isArray(actualData) ? actualData.length : typeof actualData);
+	console.log("🔧 API info:", api?.name);
+	console.log("📊 Data type:", typeof actualData, "Is array:", Array.isArray(actualData));
+	console.log("⚙️ Params:", params);
+
+	let fullText = "";
 
 	try {
-		const prompt = `
-You're a smart assistant designed to process structured API data intelligently and answer the user's message.
+		// Enhanced system prompt with calculation capabilities
+		const systemPrompt = `You are a smart assistant specialized in processing structured API data and performing statistical calculations.
+
+KEY CAPABILITIES:
+1. calculate_average: Calculate average of numbers from any data structure
+2. calculate_sum: Calculate sum of numbers from any data structure  
+3. calculate_deviation: Calculate standard deviation and variance
+4. get_all_numbers: Extract all numbers from data structure
+5. calculate_percentage_deviation: Calculate percentage deviation for driver working hours
+6. calculate_custom_percentage_deviation: Calculate percentage deviation for any field with grouping
+
+CRITICAL FUNCTION SELECTION:
+- For queries about "deviation in percentage", "percentage difference", "compare items": USE calculate_custom_percentage_deviation or calculate_percentage_deviation
+- For general "standard deviation" or "variance": USE calculate_deviation
+- For averages: USE calculate_average
+- For totals/sums: USE calculate_sum
+- For data exploration: USE get_all_numbers
+
+ANALYSIS WORKFLOW:
+1. If user asks for calculations, use appropriate function tools first
+2. Present results in clear HTML format with proper tables
+3. Always calculate averages before showing deviation percentages
+4. Stream the response naturally while incorporating calculation results
 
 Your tasks:
 1. Understand the user's intent from their message.
-2. Use the available calculation tools when the user asks for mathematical operations like:
-   - Averages, means, medians
-   - Standard deviations, statistics
-   - Top N items per category
-   - Filtering with numeric conditions
-   - Grouping and aggregating data
-3. Filter, transform, or aggregate the provided API data as needed to directly answer the user's request.
-4. If the user asks for "top N items per category", use the find_top_n tool with groupByField.
-5. If the user provides numeric thresholds, use the filter_and_aggregate tool.
-6. For statistical analysis, use the calculate_statistics tool.
-7. Always display results in a user-friendly format.
-8. Properly format any date strings into user-friendly readable formats.
+2. Use function tools for any calculations requested (averages, deviations, sums, etc.)
+3. Filter, transform, or aggregate the provided API data as needed.
+4. If user asks for "top N items per category", group and display accordingly.
+5. Apply numeric thresholds strictly when specified.
+6. Format responses in appropriate HTML (tables, lists, or paragraphs).
+7. Always provide summary insights with exact numbers.
 
 ---
 
@@ -454,210 +691,179 @@ ${JSON.stringify(actualData, null, 2)}
 ---
 
 ### Output Instructions
-Use calculation tools when appropriate, then format the response as HTML:
-
-- Use tools for any mathematical calculations rather than doing them manually
-- Format results as HTML tables, lists, or paragraphs as appropriate
-- Always start with a <p> introduction sentence
-- Include a <div class="summary"> block with exact counts and insights
-- Format dates into readable forms
-- Use valid HTML only (no Markdown or JSON)
+- Use function tools for any mathematical calculations
+- Format output as HTML based on data type and user intent
+- Start with <p> introduction before tables/lists
+- Include <div class="summary"> with exact counts and insights
+- Format dates in readable format
+- For calculations, show both the process and results clearly
+- End response with exactly: ###END###
 
 ${
 	api?.isSuitableForGraph
 		? `<p class="followup-message">Would you like me to turn this into a graph or chart for easier analysis?</p>`
 		: ``
 }
-
-After the HTML reply, output exactly:
-###END###
 `;
 
-		const messages = [{ role: "user", content: prompt }];
+		console.log("💭 System prompt created, length:", systemPrompt.length);
 
-		console.log("🤖 Creating OpenAI completion with tools");
-		console.log("🛠️ Number of tools available:", calculationTools.length);
+		let messages = [
+			{ role: "system", content: systemPrompt },
+			{ role: "user", content: `${userMessage}\n\nData: ${JSON.stringify(actualData)}` },
+		];
+
+		console.log("📨 Initial messages prepared, count:", messages.length);
+
+		// Handle function calling workflow
+		let iterationCount = 0;
+		while (true) {
+			iterationCount++;
+			console.log(`🔄 Function calling iteration ${iterationCount}`);
+
+			const response = await openai.chat.completions.create({
+				model: "gpt-4o-mini",
+				messages,
+				tools,
+				tool_choice: "auto",
+				temperature: 0,
+			});
+
+			console.log("🤖 OpenAI response received");
+			const message = response.choices[0].message;
+			console.log("📝 Message content length:", message.content?.length || 0);
+			console.log("🔧 Tool calls count:", message.tool_calls?.length || 0);
+
+			messages.push(message);
+
+			// If no tool calls, proceed to streaming response
+			if (!message.tool_calls || message.tool_calls.length === 0) {
+				console.log("✅ No more tool calls needed, proceeding to final response");
+				break;
+			}
+
+			// Execute function calls
+			for (const toolCall of message.tool_calls) {
+				console.log("🔧 Executing tool call:", toolCall.function.name);
+				console.log("📋 Tool arguments:", toolCall.function.arguments);
+
+				let result;
+				const args = JSON.parse(toolCall.function.arguments);
+
+				switch (toolCall.function.name) {
+					case "calculate_average":
+						console.log("📊 Executing calculate_average");
+						result = calculateAverage({
+							data: args.data,
+							field_path: args.field_path,
+							exclude_zeros: args.exclude_zeros,
+						});
+						break;
+					case "calculate_sum":
+						console.log("📊 Executing calculate_sum");
+						result = calculateSum({
+							data: args.data,
+							field_path: args.field_path,
+							exclude_zeros: args.exclude_zeros,
+						});
+						break;
+					case "calculate_deviation":
+						console.log("📊 Executing calculate_deviation");
+						result = calculateDeviation({
+							data: args.data,
+							field_path: args.field_path,
+							population: args.population !== undefined ? args.population : false,
+							exclude_zeros: args.exclude_zeros,
+						});
+						break;
+					case "calculate_percentage_deviation":
+						console.log("📊 Executing calculate_percentage_deviation");
+						result = calculatePercentageDeviation({
+							data: args.data,
+							exclude_zeros: args.exclude_zeros !== undefined ? args.exclude_zeros : true,
+						});
+						break;
+					case "calculate_custom_percentage_deviation":
+						console.log("📊 Executing calculate_custom_percentage_deviation");
+						result = calculateCustomPercentageDeviation({
+							data: args.data,
+							field_path: args.field_path,
+							group_by: args.group_by,
+							exclude_zeros: args.exclude_zeros,
+						});
+						break;
+					case "get_all_numbers":
+						console.log("📊 Executing get_all_numbers");
+						result = getAllNumbersFromData(args);
+						break;
+					default:
+						console.log("❌ Unknown function:", toolCall.function.name);
+						result = { error: `Unknown function: ${toolCall.function.name}` };
+				}
+
+				console.log("✅ Tool call result:", result.error ? "ERROR" : "SUCCESS");
+				if (result.error) {
+					console.log("❌ Tool call error:", result.error);
+				}
+
+				messages.push({
+					role: "tool",
+					tool_call_id: toolCall.id,
+					content: JSON.stringify(result),
+				});
+			}
+
+			console.log("📨 Messages count after tool calls:", messages.length);
+		}
+
+		// Now stream the final response
+		console.log("🌊 Starting final response streaming");
+		const finalPrompt = `Based on the function call results above, provide a comprehensive HTML response that addresses the user's question: "${userMessage}"
+
+Include:
+- Clear introduction paragraph
+- Properly formatted HTML tables/lists based on the data
+- Summary section with key insights
+- End with ###END###`;
+
+		messages.push({ role: "user", content: finalPrompt });
+		console.log("📨 Final messages count:", messages.length);
 
 		const completion = await openai.chat.completions.create({
 			model: "gpt-4o-mini",
 			messages,
 			temperature: 0,
 			stream: true,
-			tools: calculationTools,
 		});
 
-		console.log("✅ OpenAI completion created, starting to process chunks");
-
-		let toolCalls = [];
-		let currentToolCall = null;
+		console.log("🌊 Streaming response started");
 		let chunkCount = 0;
-
-		console.log("🔄 Starting to process streaming chunks...");
-
 		for await (const chunk of completion) {
 			chunkCount++;
-			if (chunkCount % 10 === 0) {
-				console.log(`📦 Processed ${chunkCount} chunks so far`);
-			}
+			const delta = chunk.choices?.[0]?.delta?.content || "";
+			if (!delta) continue;
 
-			const choice = chunk.choices?.[0];
-			if (!choice) {
-				console.log("⚠️ No choice in chunk, continuing...");
-				continue;
-			}
+			fullText += delta;
 
-			// Handle tool calls
-			if (choice.delta?.tool_calls) {
-				console.log("🛠️ Tool calls detected in chunk");
-				console.log("🔧 Tool calls delta:", JSON.stringify(choice.delta.tool_calls, null, 2));
-
-				for (const toolCallDelta of choice.delta.tool_calls) {
-					if (toolCallDelta.index !== undefined) {
-						// Initialize or update tool call
-						if (!toolCalls[toolCallDelta.index]) {
-							toolCalls[toolCallDelta.index] = {
-								id: toolCallDelta.id || "",
-								type: "function",
-								function: { name: "", arguments: "" },
-							};
-							console.log(`🆕 Initialized new tool call at index ${toolCallDelta.index}`);
-						}
-
-						const toolCall = toolCalls[toolCallDelta.index];
-
-						if (toolCallDelta.function?.name) {
-							toolCall.function.name += toolCallDelta.function.name;
-							console.log(`📝 Updated tool name: ${toolCall.function.name}`);
-						}
-						if (toolCallDelta.function?.arguments) {
-							toolCall.function.arguments += toolCallDelta.function.arguments;
-							console.log(`📝 Updated tool arguments length: ${toolCall.function.arguments.length}`);
-						}
-						if (toolCallDelta.id) {
-							toolCall.id += toolCallDelta.id;
-						}
-					}
-				}
-			}
-
-			// Handle regular content
-			const delta = choice.delta?.content || "";
-			if (delta) {
-				console.log(`📝 Content delta received: "${delta.substring(0, 50)}${delta.length > 50 ? "..." : ""}"`);
-				fullText += delta;
-
-				// Stop when END marker appears
-				if (fullText.includes("###END###")) {
-					console.log("🏁 END marker detected, stopping stream");
-					break;
-				}
-
-				const cleaned = delta.replace(/###\s*END\s*###/gi, "");
-				if (cleaned) {
-					const formatted = cleaned
-						.replace(/([a-z])([A-Z])/g, "$1 $2")
-						.replace(/(\d)([A-Za-z])/g, "$1 $2")
-						.replace(/([a-zA-Z])(\d)/g, "$1 $2");
-					if (onStream) onStream(formatted);
-				}
-			}
-
-			// Check if we need to execute tools
-			if (choice.finish_reason === "tool_calls" && toolCalls.length > 0) {
-				console.log("🛠️ Tool calls finished, executing tools");
-				console.log("📋 Tool calls to execute:", toolCalls.length);
-				console.log("🔧 Tool calls details:", JSON.stringify(toolCalls, null, 2));
-
-				// Execute all tool calls
-				const toolResults = [];
-
-				for (let i = 0; i < toolCalls.length; i++) {
-					const toolCall = toolCalls[i];
-					console.log(`🔧 Executing tool ${i + 1}/${toolCalls.length}: ${toolCall.function.name}`);
-
-					try {
-						console.log(`📋 Tool arguments: ${toolCall.function.arguments}`);
-						const toolArgs = JSON.parse(toolCall.function.arguments);
-						console.log(`✅ Parsed tool arguments successfully`);
-
-						const result = executeCalculationTool(toolCall, toolArgs);
-						console.log(`✅ Tool execution result:`, JSON.stringify(result, null, 2));
-
-						toolResults.push({
-							tool_call_id: toolCall.id,
-							role: "tool",
-							content: JSON.stringify(result),
-						});
-					} catch (error) {
-						console.error(`❌ Tool execution error for ${toolCall.function.name}:`, error);
-						toolResults.push({
-							tool_call_id: toolCall.id,
-							role: "tool",
-							content: JSON.stringify({ error: "Tool execution failed: " + error.message }),
-						});
-					}
-				}
-
-				console.log("📤 Adding tool results to conversation");
-				// Add tool results to conversation and continue
-				messages.push({
-					role: "assistant",
-					tool_calls: toolCalls,
-				});
-				messages.push(...toolResults);
-
-				console.log("🔄 Starting followup completion with tool results");
-				// Continue the conversation with tool results
-				const followupCompletion = await openai.chat.completions.create({
-					model: "gpt-4o-mini",
-					messages,
-					temperature: 0,
-					stream: true,
-				});
-
-				console.log("✅ Followup completion created, processing chunks...");
-				let followupChunkCount = 0;
-
-				for await (const followupChunk of followupCompletion) {
-					followupChunkCount++;
-					if (followupChunkCount % 10 === 0) {
-						console.log(`📦 Processed ${followupChunkCount} followup chunks`);
-					}
-
-					const followupDelta = followupChunk.choices?.[0]?.delta?.content || "";
-					if (!followupDelta) continue;
-
-					console.log(`📝 Followup content: "${followupDelta.substring(0, 50)}${followupDelta.length > 50 ? "..." : ""}"`);
-					fullText += followupDelta;
-
-					if (fullText.includes("###END###")) {
-						console.log("🏁 END marker detected in followup, stopping");
-						break;
-					}
-
-					const cleaned = followupDelta.replace(/###\s*END\s*###/gi, "");
-					if (cleaned) {
-						const formatted = cleaned
-							.replace(/([a-z])([A-Z])/g, "$1 $2")
-							.replace(/(\d)([A-Za-z])/g, "$1 $2")
-							.replace(/([a-zA-Z])(\d)/g, "$1 $2");
-						if (onStream) onStream(formatted);
-					}
-				}
-				console.log("✅ Followup completion finished");
+			// Stop when END marker appears
+			if (fullText.includes("###END###")) {
+				console.log("🛑 END marker found, stopping stream");
 				break;
+			}
+
+			const cleaned = delta.replace(/###\s*END\s*###/gi, "");
+			if (cleaned) {
+				const formatted = cleaned
+					.replace(/([a-z])([A-Z])/g, "$1 $2")
+					.replace(/(\d)([A-Za-z])/g, "$1 $2")
+					.replace(/([a-zA-Z])(\d)/g, "$1 $2");
+				if (onStream) onStream(formatted);
 			}
 		}
 
-		console.log("📊 Stream processing completed");
-		console.log(`📝 Total chunks processed: ${chunkCount}`);
-		console.log(`📏 Full text length: ${fullText.length}`);
-		console.log(`🛠️ Tool calls executed: ${toolCalls.length}`);
-
 		const finalReply = fullText.replace(/###END###/g, "").trim();
-		console.log("✨ Final reply prepared, saving to session");
 
-		// Save the last reply in session
+		// Save the session
 		await Session.updateOne(
 			{ _id: session._id },
 			{
@@ -672,19 +878,15 @@ After the HTML reply, output exactly:
 			}
 		);
 
-		console.log("✅ Session updated successfully");
-		console.log("🎯 Returning response");
-
 		return {
 			userReply: finalReply,
 			params,
 			api,
 		};
 	} catch (err) {
-		console.error("❌ processIntentAndFormatResponse error:", err.message);
-		console.error("❌ Error stack:", err.stack);
+		console.error("processIntentAndFormatResponse error:", err.message);
 		return {
-			userReply: "Here's the available data. (Intent-based personalization failed.)",
+			userReply: "Here's the available data. (Intent-based processing failed.)",
 			params,
 			api,
 		};

@@ -12,6 +12,7 @@ async function handleMultiIntentApis(extracted, userMessage, session, { onStream
 	}
 	const results = [];
 	let apiNames = [];
+	let apiParams = [];
 
 	for (const apiInfo of extracted.apis) {
 		// 🔹 Stop loop if aborted mid-way
@@ -20,6 +21,7 @@ async function handleMultiIntentApis(extracted, userMessage, session, { onStream
 			break;
 		}
 		apiNames.push(apiInfo.apiName);
+
 		const matchedApi = apiListData.find((api) => api.name === apiInfo.apiName);
 		if (!matchedApi) {
 			results.push({
@@ -64,21 +66,16 @@ async function handleMultiIntentApis(extracted, userMessage, session, { onStream
 					rawData: apiResponse,
 					exampleResponse: matchedApi.exampleResponse,
 				});
+				// push the params object itself (e.g., { ClientId: 2 })
+				apiParams.push(finalParams);
 			} catch (err) {
 				console.error(`API multiHandler error for ${matchedApi.name}:`, err);
-				results.push({
-					api: matchedApi,
-					error: "API multiHandler failed",
-				});
 			}
-		} else {
-			results.push({
-				api: matchedApi,
-				error: "multiHandler not implemented",
-			});
 		}
 	}
 
+	console.log(results, "results");
+	console.log(apiParams, "apiParams");
 	// 🔹 Before OpenAI call, check again
 	if (abortSignal?.aborted) {
 		console.log("🚫 handleMultiIntentApis: Aborted before OpenAI call");
@@ -189,6 +186,7 @@ Raw Data: ${JSON.stringify(r?.rawData?.data, null, 2)}
 					lastResponseMessage: finalReply,
 					lastSuccessUserMessage: userMessage,
 					lastSuccessIntent: apiNames.join(","),
+					lastSuccessParams: apiParams,
 					lastSuccessApiResponse: results.map((r) => r.rawData),
 				},
 			}
