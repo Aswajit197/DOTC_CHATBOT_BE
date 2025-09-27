@@ -9,7 +9,7 @@ const sessionSchema = new mongoose.Schema(
 			{
 				sender: String,
 				message: String,
-				context: {},
+				context: {type: mongoose.Schema.Types.Mixed},
 				chatType: String, //used for type like visualization in frontend
 				data: { type: mongoose.Schema.Types.Mixed },
 				graphContents: {
