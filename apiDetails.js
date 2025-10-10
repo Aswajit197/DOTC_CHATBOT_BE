@@ -11,7 +11,7 @@ module.exports = [
 		name: "GetDriverWeeklyWorkingHrList",
 		description:
 			"This API should be triggered whenever the user asks about a driver’s preferred weekly working hours. It provides the number of hours each driver wishes to work in a week along with their name. This is useful for managers to align schedules with driver availability and preferences. Use this API when the user asks questions such as: “How many hours does Alejandro Reyes want to work per week?”, “Show me all drivers with their weekly working hour preferences”, “Who prefers 40 hours per week?”, “List drivers with less than 35 weekly hours preference”, or “What is Anthony Semidey’s weekly working hour preference?”",
-		requiredFields: ["StationId"],
+		requiredFields: ["ClientId"],
 		exampleResponse: [
 			{ driverName: "Alejandro Reyes", hours: 30 },
 			{ driverName: "Hele Reyes", hours: 40 },
@@ -24,7 +24,7 @@ module.exports = [
 				return { error: "Request aborted" };
 			}
 
-			if (!params?.StationId) params.StationId = 2;
+			if (!params?.ClientId) params.ClientId = 2;
 
 			try {
 				if (abortSignal?.aborted) {
@@ -32,7 +32,8 @@ module.exports = [
 					return { error: "Request aborted" };
 				}
 
-				const { data } = await axios.get(`${API_BASE}/GetDriverWeeklyWorkingHrList?StationId=${params.StationId}`);
+				const { data } = await axios.get(`${API_BASE}/GetDriverWeeklyWorkingHrList?ClientId=${params.ClientId}`);
+				console.log(data);
 
 				if (abortSignal?.aborted) {
 					console.log("🚫 GetDriverWeeklyWorkingHrList handler: Aborted after axios call");
@@ -44,6 +45,8 @@ module.exports = [
 						driverName: item?.driverName,
 						hours: item?.hours,
 					})) || [];
+
+				console.log(driversWeeklyWorkingHrList);
 
 				return await processIntentAndFormatResponse({
 					userMessage,
@@ -82,7 +85,7 @@ module.exports = [
 				return { error: "Request aborted" };
 			}
 
-			if (!params?.StationId) params.StationId = 2;
+			if (!params?.ClientId) params.ClientId = 2;
 
 			try {
 				if (abortSignal?.aborted) {
@@ -90,7 +93,7 @@ module.exports = [
 					return { error: "Request aborted" };
 				}
 
-				const { data } = await axios.get(`${API_BASE}/GetDriverWeeklyWorkingHrList?StationId=${params.StationId}`);
+				const { data } = await axios.get(`${API_BASE}/GetDriverWeeklyWorkingHrList?ClientId=${params.ClientId}`);
 
 				if (abortSignal?.aborted) {
 					console.log("🚫 GetDriverWeeklyWorkingHrList multiHandler: Aborted after axios call");
@@ -456,7 +459,7 @@ module.exports = [
 		name: "GetDriverOTPreferenceList",
 		description:
 			"Retrieves each driver's OT (Overtime Preference) settings for a given StationId. This does NOT include qualifications or weekly date ranges — only the preference values.",
-		requiredFields: ["StationId"],
+		requiredFields: ["ClientId"],
 		exampleResponse: [{ driverName: "JORGE VALENCIA", preference: 2 }],
 
 		handler: async (params, userMessage, session, onStream, abortSignal) => {
@@ -466,7 +469,7 @@ module.exports = [
 				return { error: "Request aborted" };
 			}
 
-			if (!params?.StationId) params.StationId = 2;
+			if (!params?.ClientId) params.ClientId = 2;
 
 			try {
 				if (abortSignal?.aborted) {
@@ -474,9 +477,10 @@ module.exports = [
 					return { error: "Request aborted" };
 				}
 
-				const { data } = await axios.get(
-					`https://dotc-delivery.azurewebsites.net/GetDriverOTPreferenceList?StationId=${params.StationId}`
-				);
+				console.log(`${API_BASE}/GetDriverOTPreferenceList?ClientId=${params.ClientId}`);
+				const { data } = await axios.get(`${API_BASE}/GetDriverOTPreferenceList?ClientId=${params.ClientId}`);
+
+				console.log(data);
 
 				if (abortSignal?.aborted) {
 					console.log("🚫 GetDriverOTPreferenceList handler: Aborted after axios call");
@@ -528,7 +532,7 @@ module.exports = [
 				return { error: "Request aborted" };
 			}
 
-			if (!params?.StationId) params.StationId = 2;
+			if (!params?.ClientId) params.ClientId = 2;
 
 			try {
 				if (abortSignal?.aborted) {
@@ -536,9 +540,7 @@ module.exports = [
 					return { error: "Request aborted" };
 				}
 
-				const { data } = await axios.get(
-					`https://dotc-delivery.azurewebsites.net/GetDriverOTPreferenceList?StationId=${params.StationId}`
-				);
+				const { data } = await axios.get(`${API_BASE}/GetDriverOTPreferenceList?ClientId=${params.ClientId}`);
 
 				if (abortSignal?.aborted) {
 					console.log("🚫 GetDriverOTPreferenceList multiHandler: Aborted after axios call");
@@ -680,7 +682,7 @@ Respond in JSON only:
 				}
 
 				const { data } = await axios.get(
-					`https://dotc-delivery.azurewebsites.net/GetLMDPMaxQualificationsList?ClientId=${params.ClientId}&FromDate=${params.FromDate}&ToDate=${params.ToDate}`
+					`${API_BASE}/GetLMDPMaxQualificationsList?ClientId=${params.ClientId}&FromDate=${params.FromDate}&ToDate=${params.ToDate}`
 				);
 
 				if (abortSignal?.aborted) {
@@ -826,7 +828,7 @@ Respond in JSON only:
 				}
 
 				const { data } = await axios.get(
-					`https://dotc-delivery.azurewebsites.net/GetLMDPMaxQualificationsList?ClientId=${params.ClientId}&FromDate=${params.FromDate}&ToDate=${params.ToDate}`
+					`${API_BASE}/GetLMDPMaxQualificationsList?ClientId=${params.ClientId}&FromDate=${params.FromDate}&ToDate=${params.ToDate}`
 				);
 
 				if (abortSignal?.aborted) {
