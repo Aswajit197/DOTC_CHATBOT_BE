@@ -10,12 +10,20 @@ async function getGraphJsonFromLastResponse(userMessage, session, { onStream } =
 
 		// 🔹 Step 1: Find example response from apiListData based on lastSuccessIntent
 		let exampleResponse = null;
+		let graphType = "bar";
 		if (session.lastSuccessIntent) {
 			const matchedApi = apiListData.find((api) => api.name === session.lastSuccessIntent);
+
+			console.log(matchedApi);
 			if (matchedApi?.exampleResponse) {
 				exampleResponse = matchedApi.exampleResponse;
 			}
+			if (matchedApi?.graphType) {
+				graphType = matchedApi?.graphType;
+			}
+			console.log(matchedApi.graphType, "matchedApi.graphType");
 		}
+		console.log(graphType, "graphType");
 
 		// 🔹 Step 2: Create system prompt
 		let systemPrompt = `
@@ -55,9 +63,6 @@ Match the key names and structure exactly as shown in the example above.
 		}
 		// console.log(parsedJson, "parsed json");
 
-		console.log(session);
-		console.log(session.lastSuccessParams);
-
 		return {
 			type: "visualization",
 			data: parsedJson,
@@ -67,6 +72,7 @@ Match the key names and structure exactly as shown in the example above.
 				lastGraphParams: session.lastSuccessParams,
 				lastIntentType: "multi",
 				widgetLastUserMessage: session.lastSuccessUserMessage,
+				graphType,
 			},
 			userReply: "Here's the structured data ready for visualization.",
 		};

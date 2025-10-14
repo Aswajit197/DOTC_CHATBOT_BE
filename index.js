@@ -21,7 +21,7 @@ routeFiles.forEach((routeFile) => {
 });
 app.use(bodyParser.json());
 app.use(cors());
-app.use("/api", router);
+app.use("/chatapi", router);
 
 mongoose
 	.connect(process.env.MONGO_URL)
@@ -29,6 +29,9 @@ mongoose
 	.catch((err) => console.error("MongoDB error:", err));
 
 app.get("/", async (req, res) => {
+	res.send(`Server Running on ${PORT}....`);
+});
+app.get("/health", async (req, res) => {
 	res.send(`Server Running on ${PORT}....`);
 });
 

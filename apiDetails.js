@@ -127,6 +127,7 @@ module.exports = [
 			"Returns priority factors for each day of the week including saturday and sunday .If a day is provided, returns only that day's data. Supports filtering by given asked day or multiple day",
 		requiredFields: ["ClientId"],
 		exampleResponse: [{ dayName: "Monday", factor: 2 }],
+		graphType: "pie",
 		handler: async (params, userMessage, session, onStream, abortSignal) => {
 			console.log(onStream, "onStream in get day factor handler");
 			// 🔹 Check abort at start

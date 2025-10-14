@@ -17,6 +17,7 @@ const sessionSchema = new mongoose.Schema(
 					lastGraphResponse: { type: String }, //last success bot response message
 					lastGraphParams: { type: mongoose.Schema.Types.Mixed }, // last params used
 					lastIntentType: { type: String, enum: ["single", "multi"], default: "single" }, // last params used
+					graphType: { type: String, default: "bar" },
 				},
 				timestamp: Date,
 			},
