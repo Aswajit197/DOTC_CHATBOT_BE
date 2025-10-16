@@ -33,6 +33,18 @@ module.exports = [
 				}
 
 				const { data } = await axios.get(`${API_BASE}/GetDriverWeeklyWorkingHrList?StationId=${params.StationId}`);
+				
+        console.log("✅ API Response received:", {
+            status: 'success',
+            fullResponse: JSON.stringify(data, null, 2),
+            topLevelKeys: Object.keys(data || {}),
+            dataType: typeof data,
+            isArray: Array.isArray(data),
+            dataDataType: typeof data?.data,
+            dataDataIsArray: Array.isArray(data?.data),
+            dataLength: data?.data?.length || 0,
+            sample: data?.data?.[0]
+        });
 
 				if (abortSignal?.aborted) {
 					console.log("🚫 GetDriverWeeklyWorkingHrList handler: Aborted after axios call");
@@ -40,7 +52,7 @@ module.exports = [
 				}
 
 				const driversWeeklyWorkingHrList =
-					data?.data?.map((item) => ({
+				data?.data?.map((item) => ({
 						driverName: item?.driverName,
 						hours: item?.hours,
 					})) || [];
@@ -67,6 +79,18 @@ module.exports = [
 					console.log("🚫 GetDriverWeeklyWorkingHrList handler: Aborted during execution");
 					return { error: "Request aborted" };
 				}
+
+				// 🔴 DETAILED ERROR LOGGING
+        console.error("❌ GetDriverWeeklyWorkingHrList API Error:", {
+            errorMessage: err.message,
+            errorCode: err.code,
+            httpStatus: err.response?.status,
+            httpStatusText: err.response?.statusText,
+            responseData: err.response?.data,
+            requestUrl: err.config?.url,
+            requestParams: err.config?.params,
+            fullError: err.toString()
+        });
 
 				return {
 					error: true,

@@ -2,8 +2,6 @@ const { OpenAI } = require("openai");
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const Session = require("../model/session.model");
 
-
-
 /**
  * Uses AI to detect how many items were actually displayed in the HTML response
  * and returns only those items from the original dataset
@@ -133,10 +131,62 @@ function extractNumbers(data, fieldPath = null, excludeZeros = false) {
 	return numbers;
 }
 
-// ===== CALCULATION FUNCTIONS =====
+// ===== FILTERING UTILITIES =====
 
-function calculateAverage({ data, field_path, exclude_zeros = false }) {
-	const numbers = extractNumbers(data, field_path, exclude_zeros);
+/**
+ * Filter data based on lastDriversData from context
+ */
+function filterDataByLastDrivers(actualData, context = {}) {
+    if (!context || !context.lastDriversData || !Array.isArray(context.lastDriversData) || context.lastDriversData.length === 0) {
+        console.log("ℹ️ No lastDriversData available for filtering");
+        return actualData;
+    }
+
+    if (!Array.isArray(actualData) || actualData.length === 0) {
+        console.log("ℹ️ No actual data to filter");
+        return actualData;
+    }
+
+    console.log(`🔍 Filtering ${actualData.length} items using ${context.lastDriversData.length} driver names`);
+    console.log(`📋 Driver names to filter by:`, context.lastDriversData.slice(0, 5));
+
+    // Find the matching key in current data
+    const sampleItem = actualData[0];
+    const nameFields = ['name', 'driverName', 'userName', 'title', 'label', 'driver'];
+    const matchingKey = nameFields.find(key => sampleItem && sampleItem[key]) || 
+                       Object.keys(sampleItem).find(key => 
+                           typeof sampleItem[key] === 'string' && 
+                           context.lastDriversData.includes(sampleItem[key])
+                       );
+
+    if (!matchingKey) {
+        console.log("⚠️ No matching key found for lastDriversData filtering");
+        return actualData;
+    }
+
+    console.log(`✅ Using key '${matchingKey}' for filtering`);
+
+    // Filter the data
+    const filteredData = actualData.filter(item => {
+        const itemValue = item[matchingKey];
+        return itemValue && context.lastDriversData.includes(itemValue);
+    });
+
+    console.log(`✅ Filtered to ${filteredData.length} items matching lastDriversData`);
+    
+    if (filteredData.length > 0) {
+        console.log(`📋 Filtered items:`, filteredData.map(item => item[matchingKey]).slice(0, 5));
+    }
+
+    return filteredData;
+}
+
+/**
+ * Enhanced calculation utilities that work with filtered data
+ */
+function calculateAverage({ data, field_path, exclude_zeros = false, context = {} }) {
+    const filteredData = filterDataByLastDrivers(data, context);
+	const numbers = extractNumbers(filteredData, field_path, exclude_zeros);
 	if (numbers.length === 0) return { error: "No valid numbers found" };
 
 	const sum = numbers.reduce((acc, num) => acc + num, 0);
@@ -147,11 +197,14 @@ function calculateAverage({ data, field_path, exclude_zeros = false }) {
 		count: numbers.length,
 		total_sum: parseFloat(sum.toFixed(2)),
 		exclude_zeros,
+        filtered_count: filteredData.length,
+        original_count: Array.isArray(data) ? data.length : 1,
 	};
 }
 
-function calculateSum({ data, field_path, exclude_zeros = false }) {
-	const numbers = extractNumbers(data, field_path, exclude_zeros);
+function calculateSum({ data, field_path, exclude_zeros = false, context = {} }) {
+    const filteredData = filterDataByLastDrivers(data, context);
+	const numbers = extractNumbers(filteredData, field_path, exclude_zeros);
 	if (numbers.length === 0) return { error: "No valid numbers found" };
 
 	const sum = numbers.reduce((acc, num) => acc + num, 0);
@@ -159,11 +212,14 @@ function calculateSum({ data, field_path, exclude_zeros = false }) {
 		sum: parseFloat(sum.toFixed(2)),
 		count: numbers.length,
 		exclude_zeros,
+        filtered_count: filteredData.length,
+        original_count: Array.isArray(data) ? data.length : 1,
 	};
 }
 
-function calculateDeviation({ data, field_path, population = false, exclude_zeros = false }) {
-	const numbers = extractNumbers(data, field_path, exclude_zeros);
+function calculateDeviation({ data, field_path, population = false, exclude_zeros = false, context = {} }) {
+    const filteredData = filterDataByLastDrivers(data, context);
+	const numbers = extractNumbers(filteredData, field_path, exclude_zeros);
 	if (numbers.length === 0) return { error: "No valid numbers found" };
 	if (numbers.length === 1) return { standard_deviation: 0, variance: 0, mean: numbers[0], count: 1 };
 
@@ -178,15 +234,18 @@ function calculateDeviation({ data, field_path, population = false, exclude_zero
 		mean: parseFloat(mean.toFixed(2)),
 		count: numbers.length,
 		type: population ? "population" : "sample",
+        filtered_count: filteredData.length,
+        original_count: Array.isArray(data) ? data.length : 1,
 	};
 }
 
-function calculatePercentageDeviation({ data, field_path = null, exclude_zeros = true }) {
+function calculatePercentageDeviation({ data, field_path = null, exclude_zeros = true, context = {} }) {
+    const filteredData = filterDataByLastDrivers(data, context);
 	let itemsWithValues = [];
 
 	// Handle driver-specific structure (shifts object)
-	if (Array.isArray(data) && data.length > 0 && data[0]?.shifts) {
-		itemsWithValues = data.map((driver) => {
+	if (Array.isArray(filteredData) && filteredData.length > 0 && filteredData[0]?.shifts) {
+		itemsWithValues = filteredData.map((driver) => {
 			const shifts = driver.shifts || {};
 			let totalValue = 0;
 
@@ -208,8 +267,8 @@ function calculatePercentageDeviation({ data, field_path = null, exclude_zeros =
 		});
 	}
 	// Handle generic array with field_path
-	else if (Array.isArray(data)) {
-		itemsWithValues = data
+	else if (Array.isArray(filteredData)) {
+		itemsWithValues = filteredData
 			.map((item, index) => {
 				const value = field_path ? getNestedValue(item, field_path) : typeof item === "number" ? item : null;
 
@@ -253,6 +312,8 @@ function calculatePercentageDeviation({ data, field_path = null, exclude_zeros =
 		average: parseFloat(average.toFixed(2)),
 		totalItems: results.length,
 		results,
+        filtered_count: filteredData.length,
+        original_count: Array.isArray(data) ? data.length : 1,
 		summary: {
 			highestDeviation: results[0]?.percentageDeviation || 0,
 			highestDeviationItem: results[0]?.name || "N/A",
@@ -265,8 +326,9 @@ function calculatePercentageDeviation({ data, field_path = null, exclude_zeros =
 	};
 }
 
-function calculateMinMax({ data, field_path, exclude_zeros = false }) {
-	const numbers = extractNumbers(data, field_path, exclude_zeros);
+function calculateMinMax({ data, field_path, exclude_zeros = false, context = {} }) {
+    const filteredData = filterDataByLastDrivers(data, context);
+	const numbers = extractNumbers(filteredData, field_path, exclude_zeros);
 	if (numbers.length === 0) return { error: "No valid numbers found" };
 
 	return {
@@ -274,12 +336,14 @@ function calculateMinMax({ data, field_path, exclude_zeros = false }) {
 		max: Math.max(...numbers),
 		range: Math.max(...numbers) - Math.min(...numbers),
 		count: numbers.length,
+        filtered_count: filteredData.length,
+        original_count: Array.isArray(data) ? data.length : 1,
 	};
 }
 
 // ===== AI-POWERED INTENT DETECTION =====
 
-async function detectCalculationIntent(userMessage, apiData, apiDescription) {
+async function detectCalculationIntent(userMessage, apiData, apiDescription, context = {}) {
 	try {
 		const dataSample = Array.isArray(apiData) ? apiData.slice(0, 3) : apiData;
 
@@ -296,7 +360,8 @@ async function detectCalculationIntent(userMessage, apiData, apiDescription) {
   "calculationType": "average" | "sum" | "deviation" | "percentageDeviation" | "minMax" | "none",
   "fieldPath": "field.name" or null,
   "excludeZeros": boolean,
-  "reasoning": "brief explanation of your choice"
+  "reasoning": "brief explanation of your choice",
+  "shouldUseContextFilter": boolean
 }
 
 **Calculation Types Explained:**
@@ -338,6 +403,13 @@ async function detectCalculationIntent(userMessage, apiData, apiDescription) {
    - User just wants to see/list/display data
    - No mathematical operations mentioned
 
+**Context Filtering Rules:**
+- Set "shouldUseContextFilter" to TRUE when:
+  * User refers to "these drivers", "the previous list", "those drivers"
+  * User says "for these" or "for the ones we saw"
+  * The query clearly builds on previous results
+- Set to FALSE for general queries like "all drivers", "everyone", without specific reference
+
 **CRITICAL DECISION RULES:**
 
 Rule 1: If user mentions "deviation", "variance", "differ", "compare to average" → Choose "percentageDeviation"
@@ -364,6 +436,7 @@ Rule 5: When in doubt between "sum" and "percentageDeviation", ask yourself: "Do
 **API Context:**
 - API Name: ${apiDescription || "Unknown"}
 - Data Type: ${Array.isArray(apiData) ? `Array with ${apiData.length} items` : "Object"}
+${context.lastDriversData ? `- Available previous driver names: ${context.lastDriversData.slice(0, 10).join(', ')}${context.lastDriversData.length > 10 ? '...' : ''}` : ''}
 
 **Data Sample (first 3 items):**
 ${JSON.stringify(dataSample, null, 2)}
@@ -384,6 +457,7 @@ Provide your analysis in JSON format.`,
 			reasoning: result.reasoning,
 			fieldPath: result.fieldPath,
 			excludeZeros: result.excludeZeros,
+			shouldUseContextFilter: result.shouldUseContextFilter,
 		});
 
 		return result;
@@ -395,6 +469,7 @@ Provide your analysis in JSON format.`,
 			calculationType: "none",
 			fieldPath: null,
 			excludeZeros: false,
+			shouldUseContextFilter: false,
 			reasoning: "Error in detection, falling back to display mode",
 		};
 	}
@@ -402,45 +477,48 @@ Provide your analysis in JSON format.`,
 
 // ===== PRE-CALCULATION ENGINE =====
 
-function performCalculations(data, intent) {
-	const { calculationType, fieldPath, excludeZeros } = intent;
+function performCalculations(data, intent, context = {}) {
+	const { calculationType, fieldPath, excludeZeros, shouldUseContextFilter } = intent;
 
 	console.log(`📊 Performing calculation: ${calculationType}`);
 	console.log(`   Field path: ${fieldPath || "auto-detect"}`);
 	console.log(`   Exclude zeros: ${excludeZeros}`);
+	console.log(`   Use context filter: ${shouldUseContextFilter}`);
 
 	try {
+        const calculationContext = shouldUseContextFilter ? context : {};
+
 		switch (calculationType) {
 			case "average":
 			case "mean":
 				return {
 					type: "average",
-					result: calculateAverage({ data, field_path: fieldPath, exclude_zeros: excludeZeros }),
+					result: calculateAverage({ data, field_path: fieldPath, exclude_zeros: excludeZeros, context: calculationContext }),
 				};
 
 			case "sum":
 			case "total":
 				return {
 					type: "sum",
-					result: calculateSum({ data, field_path: fieldPath, exclude_zeros: excludeZeros }),
+					result: calculateSum({ data, field_path: fieldPath, exclude_zeros: excludeZeros, context: calculationContext }),
 				};
 
 			case "deviation":
 				return {
 					type: "standardDeviation",
-					result: calculateDeviation({ data, field_path: fieldPath, exclude_zeros: excludeZeros }),
+					result: calculateDeviation({ data, field_path: fieldPath, exclude_zeros: excludeZeros, context: calculationContext }),
 				};
 
 			case "percentageDeviation":
 				return {
 					type: "percentageDeviation",
-					result: calculatePercentageDeviation({ data, field_path: fieldPath, exclude_zeros: excludeZeros }),
+					result: calculatePercentageDeviation({ data, field_path: fieldPath, exclude_zeros: excludeZeros, context: calculationContext }),
 				};
 
 			case "minMax":
 				return {
 					type: "minMax",
-					result: calculateMinMax({ data, field_path: fieldPath, exclude_zeros: excludeZeros }),
+					result: calculateMinMax({ data, field_path: fieldPath, exclude_zeros: excludeZeros, context: calculationContext }),
 				};
 
 			default:
@@ -463,6 +541,7 @@ const processIntentAndFormatResponse = async ({
 	session,
 	onStream,
 	abortSignal,
+    context = {}, // ✅ NEW: Accept context parameter with lastDriversData
 }) => {
 	let fullText = "";
 
@@ -473,9 +552,17 @@ const processIntentAndFormatResponse = async ({
 			return { error: "Request aborted" };
 		}
 
+        // ✅ Apply context filtering if lastDriversData is available
+        let dataToProcess = actualData;
+        if (context && context.lastDriversData && Array.isArray(context.lastDriversData) && context.lastDriversData.length > 0) {
+            console.log("🎯 Applying context filtering with lastDriversData");
+            dataToProcess = filterDataByLastDrivers(actualData, context);
+            console.log(`✅ Filtered from ${Array.isArray(actualData) ? actualData.length : 'single'} to ${Array.isArray(dataToProcess) ? dataToProcess.length : 'single'} items`);
+        }
+
 		// 🚀 STEP 1: AI-powered intent detection
 		console.log("🤖 Starting AI intent detection...");
-		const calculationIntent = await detectCalculationIntent(userMessage, actualData, api?.description);
+		const calculationIntent = await detectCalculationIntent(userMessage, dataToProcess, api?.description, context);
 
 		// 🔹 Check abort after intent detection
 		if (abortSignal?.aborted) {
@@ -487,7 +574,7 @@ const processIntentAndFormatResponse = async ({
 		let preCalculatedResults = null;
 		if (calculationIntent.needsCalculation && calculationIntent.calculationType !== "none") {
 			console.log("📊 Pre-calculation triggered...");
-			preCalculatedResults = performCalculations(actualData, calculationIntent);
+			preCalculatedResults = performCalculations(dataToProcess, calculationIntent, context);
 
 			if (preCalculatedResults) {
 				console.log("✅ Pre-calculation complete:", preCalculatedResults.type);
@@ -506,9 +593,10 @@ API Name: ${api.name}
 API Description: ${api.description}
 User Message: "${userMessage}"
 Query Parameters: ${JSON.stringify(params, null, 2)}
+${context.lastDriversData ? `Filtered by previous driver list: ${context.lastDriversData.length} drivers` : 'Showing all available data'}
 
 ### Available Data
-${JSON.stringify(actualData, null, 2)}
+${JSON.stringify(dataToProcess, null, 2)}
 
 ${
 	preCalculatedResults
@@ -538,6 +626,7 @@ ${
    - Average hours: ${preCalculatedResults.result.average}
    - Highest deviation: ${preCalculatedResults.result.summary.highestDeviationItem} at ${preCalculatedResults.result.summary.highestDeviation}%
    - Lowest deviation: ${preCalculatedResults.result.summary.lowestDeviationItem} at ${preCalculatedResults.result.summary.lowestDeviation}%
+   ${preCalculatedResults.result.filtered_count ? `- Note: Filtered from ${preCalculatedResults.result.original_count} total drivers` : ''}
 
 Do NOT recalculate - use these exact values.
 `
@@ -549,6 +638,7 @@ ${
 		? `
 **Instructions for Average:**
 Display the average (${preCalculatedResults.result.average}), count (${preCalculatedResults.result.count}), and total sum (${preCalculatedResults.result.total_sum}).
+${preCalculatedResults.result.filtered_count ? `- Note: Calculated from ${preCalculatedResults.result.filtered_count} filtered items out of ${preCalculatedResults.result.original_count} total` : ''}
 `
 		: ""
 }
@@ -558,6 +648,7 @@ ${
 		? `
 **Instructions for Sum:**
 Display the total sum (${preCalculatedResults.result.sum}) and count (${preCalculatedResults.result.count}).
+${preCalculatedResults.result.filtered_count ? `- Note: Calculated from ${preCalculatedResults.result.filtered_count} filtered items out of ${preCalculatedResults.result.original_count} total` : ''}
 `
 		: ""
 }
@@ -567,6 +658,7 @@ ${
 		? `
 **Instructions for Standard Deviation:**
 Display standard deviation (${preCalculatedResults.result.standard_deviation}), mean (${preCalculatedResults.result.mean}), and variance (${preCalculatedResults.result.variance}).
+${preCalculatedResults.result.filtered_count ? `- Note: Calculated from ${preCalculatedResults.result.filtered_count} filtered items out of ${preCalculatedResults.result.original_count} total` : ''}
 `
 		: ""
 }
@@ -576,6 +668,7 @@ ${
 		? `
 **Instructions for Min/Max:**
 Display minimum (${preCalculatedResults.result.min}), maximum (${preCalculatedResults.result.max}), and range (${preCalculatedResults.result.range}).
+${preCalculatedResults.result.filtered_count ? `- Note: Calculated from ${preCalculatedResults.result.filtered_count} filtered items out of ${preCalculatedResults.result.original_count} total` : ''}
 `
 		: ""
 }
@@ -668,8 +761,8 @@ if (abortSignal?.aborted) {
 }
 
 // ✅ Filter data to only what was displayed
-console.log("📦 Original data size:", Array.isArray(actualData) ? actualData.length : "single object");
-const dataToSave = await filterToDisplayedItems(userMessage, finalReply, actualData);
+console.log("📦 Original data size:", Array.isArray(dataToProcess) ? dataToProcess.length : "single object");
+const dataToSave = await filterToDisplayedItems(userMessage, finalReply, dataToProcess);
 console.log("💾 Data to save:", Array.isArray(dataToSave) ? dataToSave.length : "single object");
 
 // ✅ Save the session

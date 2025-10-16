@@ -65,6 +65,12 @@ Respond with a single JSON object containing the key name, like this:
     }
 }
 
+// Helper function to filter out metadata fields
+function isMetadataField(key) {
+    const metadataFields = ['id', '_id', 'createdAt', 'updatedAt', 'timestamp', '__v', '_v'];
+    return metadataFields.includes(key);
+}
+
 // ===== MAIN FUNCTION =====
 
 async function getIntentFromOpenAI(userMessage, session, { onStream, abortSignal } = {}) {
@@ -289,95 +295,375 @@ Important:
 
     console.log("🎯 Extracted intent:", extracted);
 
-    // ===== HANDLE DEPENDENT API CALL (UNIVERSAL FOLLOW-UP) =====
-    if (extracted.type === 'dependent_api_call') {
-        console.log("🧠 Handling a UNIVERSAL Dependent API Call...");
+    // ✅ ADD DRIVER NAMES TO EXTRACTED OBJECT
+    if (session.lastSuccessApiResponse && Array.isArray(session.lastSuccessApiResponse)) {
+        console.log("📝 Adding lastDriversData to extracted object...");
+        
         const cachedData = session.lastSuccessApiResponse;
-
-        if (!cachedData || !Array.isArray(cachedData) || cachedData.length === 0) {
-            return { error: "I'm sorry, I don't have a previous list to work with." };
+        
+        // Try to find the name/key field dynamically
+        const nameFields = ['name', 'driverName', 'userName', 'title', 'label', 'driver'];
+        const sampleItem = cachedData[0];
+        const nameKey = nameFields.find(key => sampleItem && sampleItem[key]) || 
+                       (sampleItem && Object.keys(sampleItem).find(key => 
+                           typeof sampleItem[key] === 'string' && 
+                           !isMetadataField(key) &&
+                           sampleItem[key].length > 0
+                       ));
+        
+        if (nameKey) {
+            // Extract driver names
+            const driverNames = cachedData
+                .map(item => item[nameKey])
+                .filter(name => name && typeof name === 'string')
+                .slice(0, 20); // Limit to first 20 names
+            
+            console.log(`✅ Found ${driverNames.length} driver names using key '${nameKey}':`, driverNames);
+            
+            // Add to extracted object
+            extracted.lastDriversData = driverNames;
+        } else {
+            console.log("⚠️ Could not find name field in cached data");
+            extracted.lastDriversData = [];
         }
+    } else {
+        console.log("ℹ️ No cached data available for lastDriversData");
+        extracted.lastDriversData = [];
+    }
 
-        // 1. Dynamically find the lookup key from a sample of the cached data.
-        const lookupKey = await getLookupKeyFromData(cachedData[0]);
+    console.log("🎯 Enhanced extracted intent:", extracted);
 
-        if (!lookupKey) {
-            return { error: "I couldn't figure out how to identify the items from the last response." };
-        }
-        console.log(`🤖 AI discovered the lookupKey is: '${lookupKey}'`);
+    // ===== HANDLE DEPENDENT API CALL (UNIVERSAL FOLLOW-UP) =====
+    // ===== HANDLE DEPENDENT API CALL (UNIVERSAL FOLLOW-UP) =====
+if (extracted.type === 'dependent_api_call') {
+    console.log("🧠 Handling a UNIVERSAL Dependent API Call...");
+    
+    // ✅ USE THE PRE-EXTRACTED DRIVER NAMES
+    if (extracted.lastDriversData && extracted.lastDriversData.length > 0) {
+        console.log("✅ Using pre-extracted driver names from extracted object");
+        const lookupValues = extracted.lastDriversData;
+        const lookupKey = 'driverName'; // Use driverName since that's what we extracted
+        
+        console.log(`Found ${lookupValues.length} driver names to process:`, lookupValues);
 
-        // 2. Extract the lookup values (e.g., names) dynamically using the discovered key.
-        const lookupValues = cachedData.map(item => item[lookupKey]).filter(Boolean);
-        console.log(`Found ${lookupValues.length} items to process using key '${lookupKey}':`, lookupValues.slice(0, 5));
-
-        if (lookupValues.length === 0) {
-            return { error: `I found the previous data but couldn't extract any values for '${lookupKey}'.` };
-        }
-
-        // 3. Find the NEW API handler.
         const nextApi = apiListData.find(api => api.name === extracted.apiName);
         if (!nextApi) { 
             return { error: "I can't seem to find the right tool for that request." };
         }
 
         try {
-            // 4. Call the next API for each item with error handling
-            const promises = lookupValues.map(value => 
-                nextApi.handler(
-                    { [lookupKey]: value, ClientId: session.ClientId }, 
-                    userMessage, 
-                    session, 
-                    onStream, 
-                    abortSignal
-                ).catch(err => {
-                    console.error(`Failed to fetch data for ${lookupKey}=${value}:`, err);
-                    return null;
-                })
-            );
+            console.log(`🔄 Calling ${nextApi.name} API to get enrichment data...`);
             
-            const results = await Promise.allSettled(promises);
+            // ✅ FIXED: Build params based ONLY on what the API requires
+            const apiParams = {};
             
-            // Filter out failed promises
-            const successfulResults = results
-                .filter(r => r.status === 'fulfilled' && r.value !== null)
-                .map(r => r.value);
-            
-            if (successfulResults.length === 0) {
-                return { error: "Failed to fetch additional information for the items." };
+            // First, add required fields with defaults
+            if (nextApi.requiredFields) {
+                nextApi.requiredFields.forEach(field => {
+                    if (field === 'ClientId' || field === 'StationId') {
+                        apiParams[field] = Number(session.ClientId);
+                    } else if (field === 'WeekStarting' || field === 'WeekEnding') {
+                        // Set default week range if not provided
+                        const today = new Date();
+                        const startOfWeek = new Date(today.setDate(today.getDate() - today.getDay()));
+                        apiParams[field] = startOfWeek.toISOString().split('T')[0];
+                    } else if (field === 'Year') {
+                        apiParams.Year = new Date().getFullYear();
+                    }
+                });
             }
             
-            // 5. Combine the original data with the new data by matching the dynamic lookupKey.
-            const enrichedData = cachedData.map(originalItem => {
-                const matchingResult = successfulResults
-                    .map(res => res.actualData || res)
-                    .flat()
-                    .find(resItem => resItem && resItem[lookupKey] === originalItem[lookupKey]);
-                
+            // Then, merge extracted params (only if they're in requiredFields or optional)
+            if (extracted.params && typeof extracted.params === 'object') {
+                Object.keys(extracted.params).forEach(key => {
+                    // Override with explicitly provided values
+                    if (extracted.params[key] !== undefined && extracted.params[key] !== null) {
+                        apiParams[key] = extracted.params[key];
+                    }
+                });
+            }
+            
+            console.log(`📞 Calling ${nextApi.name} with verified params:`, apiParams);
+            
+            // Call the API directly
+            const apiResult = await nextApi.handler(
+                apiParams,
+                userMessage,
+                session,
+                null,
+                abortSignal
+            );
+            
+            if (abortSignal?.aborted) {
+                return { error: "Request aborted" };
+            }
+            
+            // Handle the response based on what the handler returned
+            console.log(`📦 API Result type:`, typeof apiResult);
+            console.log(`📦 Has error:`, !!apiResult?.error);
+            console.log(`📦 Has userReply:`, !!apiResult?.userReply);
+            console.log(`📦 Has actualData:`, !!apiResult?.actualData);
+            
+            if (apiResult?.error) {
+                console.error(`❌ API Error:`, apiResult);
                 return { 
-                    ...originalItem, 
-                    ...(matchingResult || {}),
-                    _enrichedWith: nextApi.name
+                    formattedReply: `<p>I encountered an error while fetching ${nextApi.name} data: ${apiResult.message || 'Unknown error'}</p>` 
                 };
+            }
+            
+            // Extract raw data intelligently
+            let allApiData;
+            
+            if (apiResult?.userReply && session.lastSuccessApiResponse) {
+                console.log(`✅ Handler already processed and saved to session`);
+                allApiData = session.lastSuccessApiResponse;
+                console.log(`✅ Using session data: ${Array.isArray(allApiData) ? allApiData.length : 'object'} items`);
+            }
+            else if (apiResult?.actualData) {
+                allApiData = apiResult.actualData;
+                console.log(`✅ Got actualData from handler: ${Array.isArray(allApiData) ? allApiData.length : 'object'} items`);
+            } 
+            else if (Array.isArray(apiResult)) {
+                allApiData = apiResult;
+                console.log(`✅ Got array response: ${allApiData.length} items`);
+            } 
+            else if (apiResult && typeof apiResult === 'object') {
+                // Handle various response structures
+                allApiData = apiResult.data || 
+                            apiResult.results || 
+                            apiResult.items || 
+                            apiResult.list ||
+                            apiResult.driverList ||
+                            apiResult.drivers ||
+                            [apiResult];
+                console.log(`✅ Extracted nested data: ${Array.isArray(allApiData) ? allApiData.length : 'object'} items`);
+            } 
+            else {
+                console.error(`❌ Unexpected response format:`, {
+                    type: typeof apiResult,
+                    keys: apiResult ? Object.keys(apiResult) : 'no response',
+                    hasActualData: !!apiResult?.actualData,
+                    hasUserReply: !!apiResult?.userReply
+                });
+                return { 
+                    formattedReply: `<p>Could not extract data from ${nextApi.name} response</p>` 
+                };
+            }
+            
+            // Ensure we have an array
+            if (!Array.isArray(allApiData)) {
+                if (allApiData && typeof allApiData === 'object') {
+                    allApiData = [allApiData];
+                } else {
+                    allApiData = [];
+                }
+            }
+            
+            if (allApiData.length === 0) {
+                return { 
+                    formattedReply: `<p>${nextApi.name} returned no data for the requested items.</p>` 
+                };
+            }
+
+            console.log(`📊 Processing ${allApiData.length} items from API`);
+            if (allApiData.length > 0) {
+                console.log(`📋 Sample API item:`, JSON.stringify(allApiData[0], null, 2));
+            }
+
+            // Find matching key in API data
+            const apiDataSample = allApiData[0];
+            let matchingKey = lookupKey;
+            
+            if (!apiDataSample || !apiDataSample[lookupKey]) {
+                console.log(`⚠️ Key '${lookupKey}' not found in API data, searching for match...`);
+                if (apiDataSample) {
+                    console.log(`📋 Available keys in API data:`, Object.keys(apiDataSample));
+                    
+                    const possibleKeys = [
+                        'driverName', 'name', 'driver', 
+                        'userName', 'fullName',
+                        'id', 'driverId', 'userId'
+                    ];
+                    
+                    matchingKey = possibleKeys.find(key => apiDataSample.hasOwnProperty(key));
+                    
+                    if (matchingKey) {
+                        console.log(`✅ Found matching key: '${matchingKey}'`);
+                    } else {
+                        console.log(`⚠️ No matching key found in:`, Object.keys(apiDataSample));
+                        // Use the first string field as fallback
+                        const stringKeys = Object.keys(apiDataSample).filter(key => 
+                            typeof apiDataSample[key] === 'string'
+                        );
+                        if (stringKeys.length > 0) {
+                            matchingKey = stringKeys[0];
+                            console.log(`🔄 Using fallback key: '${matchingKey}'`);
+                        }
+                    }
+                } else {
+                    console.log(`⚠️ No sample data available for key matching`);
+                }
+            }
+            
+            // Filter API data to matching items
+            console.log(`🔍 Filtering ${allApiData.length} items for ${lookupValues.length} specific values...`);
+            
+            const filteredApiData = [];
+            
+            for (const lookupValue of lookupValues) {
+                const matchingItem = allApiData.find(apiItem => {
+                    if (!apiItem) return false;
+                    
+                    if (matchingKey && apiItem[matchingKey]) {
+                        const apiValue = String(apiItem[matchingKey]).toLowerCase().trim();
+                        const searchValue = String(lookupValue).toLowerCase().trim();
+                        
+                        if (apiValue === searchValue) {
+                            console.log(`   ✅ Exact match: ${lookupValue}`);
+                            return true;
+                        }
+                        
+                        if (apiValue.includes(searchValue) || searchValue.includes(apiValue)) {
+                            console.log(`   ✅ Partial match: ${lookupValue}`);
+                            return true;
+                        }
+                    }
+                    
+                    // Fallback: search all string fields
+                    for (const [key, value] of Object.entries(apiItem)) {
+                        if (typeof value === 'string') {
+                            const apiValue = value.toLowerCase().trim();
+                            const searchValue = String(lookupValue).toLowerCase().trim();
+                            
+                            if (apiValue === searchValue) {
+                                console.log(`   ✅ Found match in field '${key}': ${lookupValue}`);
+                                return true;
+                            }
+                        }
+                    }
+                    
+                    return false;
+                });
+                
+                if (matchingItem) {
+                    filteredApiData.push(matchingItem);
+                } else {
+                    console.log(`   ⚠️ No match found for: ${lookupValue}`);
+                }
+            }
+            
+            console.log(`✂️ Filtered to ${filteredApiData.length} matching items out of ${allApiData.length} total`);
+            
+            if (filteredApiData.length === 0) {
+                return { 
+                    formattedReply: `<p>Could not find matching data for the ${lookupValues.length} requested drivers in ${nextApi.name}.</p>
+                    <div class="summary">
+                        <p><strong>Debug Info:</strong></p>
+                        <ul>
+                            <li>Looking for: ${lookupValues.slice(0, 3).join(', ')}${lookupValues.length > 3 ? '...' : ''}</li>
+                            <li>API returned ${allApiData.length} items</li>
+                            <li>Lookup key used: ${matchingKey || 'none'}</li>
+                        </ul>
+                    </div>` 
+                };
+            }
+            
+            // Enrich the cached data
+            console.log(`🔗 Enriching ${session.lastSuccessApiResponse.length} cached items with ${filteredApiData.length} API items...`);
+            
+            const enrichedData = session.lastSuccessApiResponse.map(originalItem => {
+                const originalValue = originalItem[lookupKey];
+                const matchingApiData = filteredApiData.find(apiItem => {
+                    if (matchingKey && apiItem[matchingKey]) {
+                        const apiValue = String(apiItem[matchingKey]).toLowerCase().trim();
+                        const searchValue = String(originalValue).toLowerCase().trim();
+                        
+                        return apiValue === searchValue || 
+                               apiValue.includes(searchValue) || 
+                               searchValue.includes(apiValue);
+                    }
+                    
+                    return Object.values(apiItem).some(apiValue =>
+                        typeof apiValue === 'string' && 
+                        String(apiValue).toLowerCase().trim() === 
+                        String(originalValue).toLowerCase().trim()
+                    );
+                });
+                
+                if (matchingApiData) {
+                    console.log(`   🔗 Enriching: ${originalValue}`);
+                    return { 
+                        ...originalItem, 
+                        ...matchingApiData,
+                        _enrichedWith: nextApi.name,
+                        _enrichedAt: new Date().toISOString()
+                    };
+                } else {
+                    console.log(`   ⚠️ No enrichment data for: ${originalValue}`);
+                    return {
+                        ...originalItem,
+                        _note: `No ${nextApi.name} data available`,
+                        _enrichedWith: nextApi.name
+                    };
+                }
             });
             
-            // 6. Call your original formatter, which will also save the session.
-            const apiResponse = await processIntentAndFormatResponse({
-                userMessage,
-                api: nextApi,
+            console.log(`✅ Created enriched dataset: ${enrichedData.length} items`);
+            if (enrichedData.length > 0) {
+                console.log(`📋 Sample enriched item:`, JSON.stringify(enrichedData[0], null, 2));
+            }
+            
+            // Format and display the enriched data
+            const formattedResponse = await processIntentAndFormatResponse({
+                userMessage: `${userMessage} (enriched with ${nextApi.name})`,
+                api: {
+                    ...nextApi,
+                    description: `${nextApi.description} (enriched with previous results)`
+                },
                 actualData: enrichedData,
-                params: { derivedFromContext: true },
+                params: apiParams,
                 session,
                 onStream,
-                abortSignal
+                abortSignal,
+                context: { lastDriversData: extracted.lastDriversData } // Pass context
             });
 
-            return { formattedReply: apiResponse.userReply };
+            if (formattedResponse.error) {
+                return { 
+                    formattedReply: `<p>Error formatting enriched data: ${formattedResponse.error}</p>` 
+                };
+            }
+
+            console.log(`✅ Successfully enriched and formatted ${enrichedData.length} items`);
+            
+            return { 
+                formattedReply: formattedResponse.userReply,
+                actualData: enrichedData,
+                params: apiParams,
+                api: nextApi
+            };
 
         } catch (error) {
-            console.error(`Error in universal dependent API call for ${nextApi.name}:`, error);
-            return { error: "I encountered an error while fetching the additional information." };
+            if (abortSignal?.aborted) {
+                console.log("🚫 Dependent call was aborted");
+                return { error: "Request aborted" };
+            }
+            
+            console.error(`❌ Error in dependent call:`, error);
+            console.error(`❌ Stack trace:`, error.stack);
+            
+            return { 
+                formattedReply: `<p>I encountered an error while processing ${nextApi?.name || 'the request'}: ${error.message}</p>
+                <div class="summary">
+                    <p>Please try rephrasing your request or ask for the data separately.</p>
+                </div>` 
+            };
         }
+        
+    } else {
+        return { error: "I'm sorry, I don't have a previous list to work with." };
     }
+}
 
     const matchedApi = apiListData.find((api) => api.name === extracted.apiName);
     let params = extracted.params || {};
@@ -409,7 +695,6 @@ Important:
         if (extracted.type === "refinement_request") {
             console.log("🔄 Handling refinement request...");
             
-            // ✅ Use cached data even if API name doesn't match exactly
             if (session.lastSuccessApiResponse && Array.isArray(session.lastSuccessApiResponse)) {
                 console.log("🔄 Using cached data for refinement...");
                 return await refineResponseFromLastResponse(
@@ -592,79 +877,77 @@ Example format:
     }
 
     // ===== EXECUTE API CALL (INDEPENDENT) =====
-   try {
-    console.log("🚀 Executing API:", matchedApi.name);
-    
-    // Step 1: Call the handler
-    const apiResponse = await matchedApi.handler(params, userMessage, session, onStream, abortSignal);
-
-    if (apiResponse.error) {
-        return { error: apiResponse.message };
-    }
-
-    // 🔍 Check if handler already formatted the response
-    if (apiResponse.userReply && typeof apiResponse.userReply === 'string') {
-        console.log("✅ Handler already formatted response, using it directly");
+    try {
+        console.log("🚀 Executing API:", matchedApi.name);
         
-        // Handler already called processIntentAndFormatResponse
-        // Just return the formatted reply
-        return {
-            formattedReply: apiResponse.userReply,
-            api: matchedApi,
-            params
-        };
-    }
+        // Step 1: Call the handler
+        const apiResponse = await matchedApi.handler(params, userMessage, session, onStream, abortSignal);
 
-    // 🔍 Handler returned raw data, needs formatting
-    if (apiResponse.actualData || Array.isArray(apiResponse) || typeof apiResponse === 'object') {
-        console.log("✅ Handler returned raw data, formatting now...");
-        
-        const dataToFormat = apiResponse.actualData || apiResponse;
-        
-        // Check if data is actually present
-        if (Array.isArray(dataToFormat) && dataToFormat.length === 0) {
-            console.log("⚠️ Handler returned empty array");
-            return { 
-                formattedReply: "<p>No results found for your query.</p>",
+        if (apiResponse.error) {
+            return { error: apiResponse.message };
+        }
+
+        // 🔍 Check if handler already formatted the response
+        if (apiResponse.userReply && typeof apiResponse.userReply === 'string') {
+            console.log("✅ Handler already formatted response, using it directly");
+            
+            return {
+                formattedReply: apiResponse.userReply,
                 api: matchedApi,
-                params 
+                params
             };
         }
-        
-        // Step 2: Call formatter which also saves the session
-        const finalResult = await processIntentAndFormatResponse({
-            userMessage,
-            api: matchedApi,
-            actualData: dataToFormat,
-            params,
-            session,
-            onStream,
-            abortSignal,
-        });
 
-        if (finalResult.error) {
-            return { error: finalResult.userReply };
+        // 🔍 Handler returned raw data, needs formatting
+        if (apiResponse.actualData || Array.isArray(apiResponse) || typeof apiResponse === 'object') {
+            console.log("✅ Handler returned raw data, formatting now...");
+            
+            const dataToFormat = apiResponse.actualData || apiResponse;
+            
+            if (Array.isArray(dataToFormat) && dataToFormat.length === 0) {
+                console.log("⚠️ Handler returned empty array");
+                return { 
+                    formattedReply: "<p>No results found for your query.</p>",
+                    api: matchedApi,
+                    params 
+                };
+            }
+            
+            // Step 2: Call formatter which also saves the session
+            const finalResult = await processIntentAndFormatResponse({
+                userMessage,
+                api: matchedApi,
+                actualData: dataToFormat,
+                params,
+                session,
+                onStream,
+                abortSignal,
+            });
+
+            if (finalResult.error) {
+                return { error: finalResult.userReply };
+            }
+
+            // Step 3: Return the final, formatted reply
+            return {
+                formattedReply: finalResult.userReply,
+                api: matchedApi,
+                params
+            };
         }
 
-        // Step 3: Return the final, formatted reply
-        return {
-            formattedReply: finalResult.userReply,
-            api: matchedApi,
-            params
-        };
+        // Fallback: unexpected response format
+        console.error("❌ Unexpected handler response format:", apiResponse);
+        return { error: "Unexpected response format from API handler" };
+        
+    } catch (err) {
+        if (err.name === "AbortError" || abortSignal?.aborted) {
+            console.log("🚫 API handler was aborted");
+            return { error: "Request aborted" };
+        }
+        console.error("❌ API handler error:", err);
+        return { error: "API execution failed" };
     }
-
-    // Fallback: unexpected response format
-    console.error("❌ Unexpected handler response format:", apiResponse);
-    return { error: "Unexpected response format from API handler" };
-    
-} catch (err) {
-    if (err.name === "AbortError" || abortSignal?.aborted) {
-        console.log("🚫 API handler was aborted");
-        return { error: "Request aborted" };
-    }
-    console.error("❌ API handler error:", err);
-    return { error: "API execution failed" };
- }}
+}
 
 module.exports = getIntentFromOpenAI;
