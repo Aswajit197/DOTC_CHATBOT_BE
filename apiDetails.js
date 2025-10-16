@@ -12,6 +12,7 @@ module.exports = [
 		description:
 			"This API should be triggered whenever the user asks about a driver’s preferred weekly working hours. It provides the number of hours each driver wishes to work in a week along with their name. This is useful for managers to align schedules with driver availability and preferences. Use this API when the user asks questions such as: “How many hours does Alejandro Reyes want to work per week?”, “Show me all drivers with their weekly working hour preferences”, “Who prefers 40 hours per week?”, “List drivers with less than 35 weekly hours preference”, or “What is Anthony Semidey’s weekly working hour preference?”",
 		requiredFields: ["ClientId"],
+		graphType: "bar",
 		exampleResponse: [
 			{ driverName: "Alejandro Reyes", hours: 30 },
 			{ driverName: "Hele Reyes", hours: 40 },
@@ -216,6 +217,7 @@ module.exports = [
 		description:
 			"Returns available shift types and their details for scheduling, including minimum qualification (minQualification) and hours per shift",
 		requiredFields: ["ClientId"],
+		graphType: "line",
 		exampleResponse: [
 			{
 				shiftTitle: "Step Van",
@@ -335,6 +337,7 @@ module.exports = [
 		description:
 			"This API is used to fetch a driver’s day-wise work preference, showing which days they prefer to work, avoid, or are neutral about. The preference field represents the main value to consider, while oldPreference can be ignored. Use this intent when the user wants to know a driver’s preferred working days or availability patterns. For example: “What is Anthony Semidey’s day preference?”, “Show me which days Alejandro Reyes prefers to work”, “List all drivers and their day preferences”, or “Which days does a driver not want to work?” This helps managers align schedules with driver availability and reduce conflicts.",
 		requiredFields: ["DriverId", "ClientId"],
+		graphType: "bar",
 		exampleResponse: [
 			{
 				driverName: "JORGE VALENCIA",
@@ -462,6 +465,7 @@ module.exports = [
 			"Retrieves each driver's OT (Overtime Preference) settings for a given StationId. This does NOT include qualifications or weekly date ranges — only the preference values.",
 		requiredFields: ["ClientId"],
 		exampleResponse: [{ driverName: "JORGE VALENCIA", preference: 2 }],
+		graphType: "area",
 
 		handler: async (params, userMessage, session, onStream, abortSignal) => {
 			// 🔹 Check abort at start
@@ -1440,6 +1444,7 @@ Respond in JSON only:
 		description:
 			"returns the default driver preferences that are applied when a new driver is added but has not yet submitted their own preferences. It also provides weighted values indicating which preferences (day, standby, overtime, etc.) are more significant in scheduling decisions. Use this when the user asks about default or system-assigned preferences, such as “What are the default preferences for new drivers?”, “Which preferences are prioritized by default?”, or “How are standby and overtime preferences set if a driver has not submitted them?”",
 		requiredFields: ["ClientId"],
+		graphType: "line",
 		exampleResponse: [
 			{
 				preferenceType: "StandBy",
@@ -1516,6 +1521,7 @@ Respond in JSON only:
 		description:
 			"provides the default weekly rules used by the scheduler when generating schedules, including maximum working hours, maximum consecutive days or hours allowed, standby shift limits, and tolerable or intolerable thresholds. Use this when the user asks about baseline scheduling rules, such as “What are the maximum weekly hours for drivers?”, “How many consecutive days can a driver work by default?”, or “What is the limit on standby shifts in a week?",
 		requiredFields: ["ClientId"],
+		graphType:"line",
 		exampleResponse: {
 			maxHrs: 40,
 			maxConsecutiveDaysWork: 5,
@@ -1529,15 +1535,16 @@ Respond in JSON only:
 
 			try {
 				const { data } = await axios.get(`${API_BASE}/GetSchedAlignEngineWeeklySetting?ClientId=${params.ClientId}`);
+				const rulesData = data?.data[0];
 
-				const defaultRules = data?.data
+				const defaultRules = rulesData
 					? {
 							maxHrs: data.data.maxHrs,
-							maxConsecutiveDaysWork: data.data.maxConsecutiveDaysWork,
-							maxConsecutiveHrsWork: data.data.maxConsecutiveHrsWork,
-							maxStandbyShifts: data.data.maxStandbyShifts,
-							tolerableThreshold: data.data.tolerableThreshold,
-							intolerableThreshold: data.data.intolerableThreshold,
+							maxConsecutiveDaysWork: rulesData.maxConsecutiveDaysWork,
+							maxConsecutiveHrsWork: rulesData.maxConsecutiveHrsWork,
+							maxStandbyShifts: rulesData.maxStandbyShifts,
+							tolerableThreshold: rulesData.tolerableThreshold,
+							intolerableThreshold: rulesData.intolerableThreshold,
 					  }
 					: null;
 
