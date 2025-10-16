@@ -21,10 +21,7 @@ async function getGraphJsonFromLastResponse(userMessage, session, { onStream } =
 			if (matchedApi?.graphType) {
 				graphType = matchedApi?.graphType;
 			}
-			console.log(matchedApi.graphType, "matchedApi.graphType");
 		}
-		console.log(graphType, "graphType");
-
 		// 🔹 Step 2: Create system prompt
 		let systemPrompt = `
 You are an assistant that converts HTML table or list content into JSON array format.
