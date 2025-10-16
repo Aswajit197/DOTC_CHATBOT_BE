@@ -543,6 +543,22 @@ const processIntentAndFormatResponse = async ({
 	abortSignal,
     context = {}, // ✅ NEW: Accept context parameter with lastDriversData
 }) => {
+
+	 console.log("🎯 processIntentAndFormatResponse CALLED WITH:");
+    console.log("  - userMessage:", userMessage);
+    console.log("  - api.name:", api?.name);
+    console.log("  - api.description:", api?.description);
+    console.log("  - actualData type:", typeof actualData);
+    console.log("  - actualData length:", Array.isArray(actualData) ? actualData.length : "not array");
+    if (Array.isArray(actualData) && actualData.length > 0) {
+        console.log("  - actualData sample keys:", Object.keys(actualData[0]));
+        console.log("  - actualData sample:", JSON.stringify(actualData[0], null, 2));
+    }
+    console.log("  - params:", params);
+    console.log("  - session._id:", session?._id);
+    console.log("  - context:", context);
+    console.log("  - has onStream:", !!onStream);
+    console.log("  - has abortSignal:", !!abortSignal);
 	let fullText = "";
 
 	try {

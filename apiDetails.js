@@ -11,136 +11,163 @@ module.exports = [
 		name: "GetDriverWeeklyWorkingHrList",
 		description:
 			"This API should be triggered whenever the user asks about a driver’s preferred weekly working hours. It provides the number of hours each driver wishes to work in a week along with their name. This is useful for managers to align schedules with driver availability and preferences. Use this API when the user asks questions such as: “How many hours does Alejandro Reyes want to work per week?”, “Show me all drivers with their weekly working hour preferences”, “Who prefers 40 hours per week?”, “List drivers with less than 35 weekly hours preference”, or “What is Anthony Semidey’s weekly working hour preference?”",
-		requiredFields: ["StationId"],
+		requiredFields: ["StationId","ClientId"],
 		exampleResponse: [
 			{ driverName: "Alejandro Reyes", hours: 30 },
 			{ driverName: "Hele Reyes", hours: 40 },
 		],
 
 		handler: async (params, userMessage, session, onStream, abortSignal) => {
-			// 🔹 Check abort at start
-			if (abortSignal?.aborted) {
-				console.log("🚫 GetDriverWeeklyWorkingHrList handler: Aborted before execution");
-				return { error: "Request aborted" };
-			}
+	// 🔹 Check abort at start
+	if (abortSignal?.aborted) {
+		console.log("🚫 GetDriverWeeklyWorkingHrList handler: Aborted before execution");
+		return { error: "Request aborted" };
+	}
 
-			if (!params?.StationId) params.StationId = 2;
+	// ✅ FIX: Set BOTH StationId AND ClientId
+	if (!params?.StationId) params.StationId = 2;
+	if (!params?.ClientId) params.ClientId = 2;
 
-			try {
-				if (abortSignal?.aborted) {
-					console.log("🚫 GetDriverWeeklyWorkingHrList handler: Aborted before axios call");
-					return { error: "Request aborted" };
-				}
+	try {
+		if (abortSignal?.aborted) {
+			console.log("🚫 GetDriverWeeklyWorkingHrList handler: Aborted before axios call");
+			return { error: "Request aborted" };
+		}
 
-				const { data } = await axios.get(`${API_BASE}/GetDriverWeeklyWorkingHrList?StationId=${params.StationId}`);
-				
-        console.log("✅ API Response received:", {
-            status: 'success',
-            fullResponse: JSON.stringify(data, null, 2),
-            topLevelKeys: Object.keys(data || {}),
-            dataType: typeof data,
-            isArray: Array.isArray(data),
-            dataDataType: typeof data?.data,
-            dataDataIsArray: Array.isArray(data?.data),
-            dataLength: data?.data?.length || 0,
-            sample: data?.data?.[0]
-        });
+		// ✅ FIX: Include BOTH parameters in the URL
+		const { data } = await axios.get(
+			`${API_BASE}/GetDriverWeeklyWorkingHrList?StationId=${params.StationId}&ClientId=${params.ClientId}`
+		);
+		
+		console.log("✅ API Response received:", {
+			status: 'success',
+			fullResponse: JSON.stringify(data, null, 2),
+			topLevelKeys: Object.keys(data || {}),
+			dataType: typeof data,
+			isArray: Array.isArray(data),
+			dataDataType: typeof data?.data,
+			dataDataIsArray: Array.isArray(data?.data),
+			dataLength: data?.data?.length || 0,
+			sample: data?.data?.[0]
+		});
 
-				if (abortSignal?.aborted) {
-					console.log("🚫 GetDriverWeeklyWorkingHrList handler: Aborted after axios call");
-					return { error: "Request aborted" };
-				}
+		if (abortSignal?.aborted) {
+			console.log("🚫 GetDriverWeeklyWorkingHrList handler: Aborted after axios call");
+			return { error: "Request aborted" };
+		}
 
-				const driversWeeklyWorkingHrList =
-				data?.data?.map((item) => ({
-						driverName: item?.driverName,
-						hours: item?.hours,
-					})) || [];
+		// ✅ FIX: Add validation before mapping
+		if (!data?.data || !Array.isArray(data.data)) {
+			console.error("❌ Invalid API response structure:", data);
+			return {
+				error: true,
+				message: data?.message || "API returned invalid data format"
+			};
+		}
 
-				return await processIntentAndFormatResponse({
-					userMessage,
-					api: {
-						name: "GetDriverWeeklyWorkingHrList",
-						description: "Returns a list of drivers with their total weekly working hours preference for the given station.",
-						isSuitableForGraph: true,
-					},
-					exampleResponse: [
-						{ driverName: "Alejandro Reyes", hours: 30 },
-						{ driverName: "Hele Reyes", hours: 40 },
-					],
-					actualData: driversWeeklyWorkingHrList,
-					params,
-					session,
-					onStream,
-					abortSignal,
-				});
-			} catch (err) {
-				if (abortSignal?.aborted) {
-					console.log("🚫 GetDriverWeeklyWorkingHrList handler: Aborted during execution");
-					return { error: "Request aborted" };
-				}
+		const driversWeeklyWorkingHrList = data.data.map((item) => ({
+			driverName: item?.driverName,
+			hours: item?.hours,
+		}));
 
-				// 🔴 DETAILED ERROR LOGGING
-        console.error("❌ GetDriverWeeklyWorkingHrList API Error:", {
-            errorMessage: err.message,
-            errorCode: err.code,
-            httpStatus: err.response?.status,
-            httpStatusText: err.response?.statusText,
-            responseData: err.response?.data,
-            requestUrl: err.config?.url,
-            requestParams: err.config?.params,
-            fullError: err.toString()
-        });
+		return await processIntentAndFormatResponse({
+			userMessage,
+			api: {
+				name: "GetDriverWeeklyWorkingHrList",
+				description: "Returns a list of drivers with their total weekly working hours preference for the given station.",
+				isSuitableForGraph: true,
+			},
+			exampleResponse: [
+				{ driverName: "Alejandro Reyes", hours: 30 },
+				{ driverName: "Hele Reyes", hours: 40 },
+			],
+			actualData: driversWeeklyWorkingHrList,
+			params,
+			session,
+			onStream,
+			abortSignal,
+		});
+	} catch (err) {
+		if (abortSignal?.aborted) {
+			console.log("🚫 GetDriverWeeklyWorkingHrList handler: Aborted during execution");
+			return { error: "Request aborted" };
+		}
 
-				return {
-					error: true,
-					message: err.response?.data?.message || "Failed to fetch drivers' working hours list.",
-				};
-			}
+		// 🔴 DETAILED ERROR LOGGING
+		console.error("❌ GetDriverWeeklyWorkingHrList API Error:", {
+			errorMessage: err.message,
+			errorCode: err.code,
+			httpStatus: err.response?.status,
+			httpStatusText: err.response?.statusText,
+			responseData: err.response?.data,
+			requestUrl: err.config?.url,
+			requestParams: err.config?.params,
+			fullError: err.toString()
+		});
+
+		return {
+			error: true,
+			message: err.response?.data?.message || "Failed to fetch drivers' working hours list.",
+		};
+	}
+},
+
+multiHandler: async (params, userMessage, session, onStream, abortSignal) => {
+	// 🔹 Check abort at start
+	if (abortSignal?.aborted) {
+		console.log("🚫 GetDriverWeeklyWorkingHrList multiHandler: Aborted before execution");
+		return { error: "Request aborted" };
+	}
+
+	// ✅ FIX: Set BOTH StationId AND ClientId
+	if (!params?.StationId) params.StationId = 2;
+	if (!params?.ClientId) params.ClientId = 2;
+
+	try {
+		if (abortSignal?.aborted) {
+			console.log("🚫 GetDriverWeeklyWorkingHrList multiHandler: Aborted before axios call");
+			return { error: "Request aborted" };
+		}
+
+		// ✅ FIX: Include BOTH parameters in the URL
+		const { data } = await axios.get(
+			`${API_BASE}/GetDriverWeeklyWorkingHrList?StationId=${params.StationId}&ClientId=${params.ClientId}`
+		);
+
+		if (abortSignal?.aborted) {
+			console.log("🚫 GetDriverWeeklyWorkingHrList multiHandler: Aborted after axios call");
+			return { error: "Request aborted" };
+		}
+
+		// ✅ FIX: Add validation before mapping
+		if (!data?.data || !Array.isArray(data.data)) {
+			console.error("❌ Invalid API response structure:", data);
+			return {
+				error: true,
+				message: data?.message || "API returned invalid data format"
+			};
+		}
+
+		const driversWeeklyWorkingHrList = data.data.map((item) => ({
+			driverName: item?.driverName,
+			hours: item?.hours,
+		}));
+
+		return { data: driversWeeklyWorkingHrList };
+	} catch (err) {
+		if (abortSignal?.aborted) {
+			console.log("🚫 GetDriverWeeklyWorkingHrList multiHandler: Aborted during execution");
+			return { error: "Request aborted" };
+		}
+
+		return {
+			error: true,
+			message: err.response?.data?.message || "Failed to fetch drivers' working hours list.",
+		};
+	}
+},
 		},
-
-		multiHandler: async (params, userMessage, session, onStream, abortSignal) => {
-			// 🔹 Check abort at start
-			if (abortSignal?.aborted) {
-				console.log("🚫 GetDriverWeeklyWorkingHrList multiHandler: Aborted before execution");
-				return { error: "Request aborted" };
-			}
-
-			if (!params?.StationId) params.StationId = 2;
-
-			try {
-				if (abortSignal?.aborted) {
-					console.log("🚫 GetDriverWeeklyWorkingHrList multiHandler: Aborted before axios call");
-					return { error: "Request aborted" };
-				}
-
-				const { data } = await axios.get(`${API_BASE}/GetDriverWeeklyWorkingHrList?StationId=${params.StationId}`);
-
-				if (abortSignal?.aborted) {
-					console.log("🚫 GetDriverWeeklyWorkingHrList multiHandler: Aborted after axios call");
-					return { error: "Request aborted" };
-				}
-
-				const driversWeeklyWorkingHrList =
-					data?.data?.map((item) => ({
-						driverName: item?.driverName,
-						hours: item?.hours,
-					})) || [];
-
-				return { data: driversWeeklyWorkingHrList };
-			} catch (err) {
-				if (abortSignal?.aborted) {
-					console.log("🚫 GetDriverWeeklyWorkingHrList multiHandler: Aborted during execution");
-					return { error: "Request aborted" };
-				}
-
-				return {
-					error: true,
-					message: err.response?.data?.message || "Failed to fetch drivers' working hours list.",
-				};
-			}
-		},
-	},
+	
 	// 2. GetDayFactor
 	{
 		name: "GetDayFactor",
