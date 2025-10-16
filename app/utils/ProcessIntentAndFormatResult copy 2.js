@@ -3,22 +3,68 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const Session = require("../model/session.model");
 
 /**
- * Utility function to get value from object using dot notation
+ * Uses AI to detect how many items were actually displayed in the HTML response
+ * and returns only those items from the original dataset
  */
-function getNestedValue(obj, path) {
-	if (!path) return obj;
-	return path.split(".").reduce((current, key) => {
-		if (current === null || current === undefined) return undefined;
-		return current[key];
-	}, obj);
+async function filterToDisplayedItems(userMessage, htmlResponse, originalData) {
+    // Skip filtering for non-array data or small datasets
+    if (!Array.isArray(originalData) || originalData.length <= 5) {
+        return originalData;
+    }
+
+    try {
+        // Count how many rows are in the HTML table or list items
+        const tableRowCount = (htmlResponse.match(/<tr>/g) || []).length - 1; // -1 for header
+        const listItemCount = (htmlResponse.match(/<li>/g) || []).length;
+        
+        const displayedCount = Math.max(tableRowCount, listItemCount);
+        
+        console.log(`🔍 HTML analysis: ${tableRowCount} table rows, ${listItemCount} list items`);
+
+        // If we detected a count and it's less than the original data length
+        if (displayedCount > 0 && displayedCount < originalData.length) {
+            console.log(`✂️ Filtering: ${displayedCount} displayed out of ${originalData.length} total`);
+            
+            // Extract the names/identifiers from the HTML
+            const nameFields = ['name', 'driverName', 'userName', 'title', 'label'];
+            const sampleItem = originalData[0];
+            const nameKey = nameFields.find(key => sampleItem[key]) || Object.keys(sampleItem)[0];
+            
+            // Find which items were actually displayed
+            const displayedItems = originalData.filter(item => {
+                const identifier = item[nameKey];
+                return identifier && htmlResponse.includes(identifier);
+            });
+            
+            if (displayedItems.length > 0) {
+                console.log(`✅ Successfully filtered to ${displayedItems.length} items`);
+                console.log(`   Items: ${displayedItems.map(i => i[nameKey]).join(', ')}`);
+                return displayedItems;
+            }
+        }
+
+        // Fallback: No filtering needed
+        console.log(`ℹ️ No filtering applied - returning all ${originalData.length} items`);
+        return originalData;
+
+    } catch (error) {
+        console.error("❌ Error filtering displayed items:", error.message);
+        return originalData; // Return full dataset on error
+    }
 }
 
-/**
- * Check if a field name should be excluded as metadata
- */
+
+
+
+// ===== CALCULATION UTILITIES =====
+
+function getNestedValue(obj, path) {
+	if (!path) return obj;
+	return path.split(".").reduce((current, key) => (current === null || current === undefined ? undefined : current[key]), obj);
+}
+
 function isMetadataField(fieldName) {
 	if (!fieldName) return false;
-
 	const metadataPatterns = [
 		/^id$/i,
 		/.*_id$/i,
@@ -31,30 +77,20 @@ function isMetadataField(fieldName) {
 		/updated/i,
 		/modified/i,
 		/version/i,
-		/revision/i,
-		/build/i,
 		/index/i,
 		/position/i,
 		/order/i,
 		/status/i,
 		/state/i,
 		/type/i,
-		/kind/i,
-		/.*_key$/i,
-		/.*Key$/,
-		/.*_code$/i,
-		/.*Code$/,
+		/^EDV$/i,
+		/^80f3dfsd$/i, // Exclude specific metadata fields
 	];
-
 	return metadataPatterns.some((pattern) => pattern.test(fieldName));
 }
 
-/**
- * Extract numbers from any data structure
- */
 function extractNumbers(data, fieldPath = null, excludeZeros = false) {
 	const numbers = [];
-
 	const shouldInclude = (value) => {
 		if (typeof value !== "number" || isNaN(value)) return false;
 		if (excludeZeros && value === 0) return false;
@@ -87,347 +123,299 @@ function extractNumbers(data, fieldPath = null, excludeZeros = false) {
 	}
 
 	function traverse(current, currentKey = null) {
-		if (shouldInclude(current)) {
+		if (shouldInclude(current) && !isMetadataField(currentKey)) {
 			numbers.push(current);
 			return;
 		}
-
 		if (Array.isArray(current)) {
 			current.forEach((item) => traverse(item));
 		} else if (typeof current === "object" && current !== null) {
 			Object.entries(current).forEach(([key, value]) => {
-				if (!isMetadataField(key)) {
-					traverse(value, key);
-				}
+				if (!isMetadataField(key)) traverse(value, key);
 			});
 		}
 	}
+
 	traverse(data);
 	return numbers;
 }
 
-/**
- * Calculate average with zero exclusion option
- */
-function calculateAverage({ data, field_path, exclude_zeros = false }) {
-	try {
-		const numbers = extractNumbers(data, field_path, exclude_zeros);
+// ===== PRE-CALCULATION ENGINE =====
 
-		if (numbers.length === 0) {
-			return {
-				error: "No valid numbers found",
-				data_sample: JSON.stringify(data).substring(0, 200) + "...",
-			};
-		}
+function detectCalculationIntent(userMessage) {
+	const msg = userMessage.toLowerCase();
 
-		const sum = numbers.reduce((acc, num) => acc + num, 0);
-		const average = sum / numbers.length;
+	const patterns = {
+		percentageDeviation: [
+			/deviation/i, // Catch any deviation mention
+			/percentage\s+(deviation|difference|variance)/i,
+			/compare.*percentage/i,
+			/how\s+much.*deviate/i,
+			/variance/i,
+		],
+		standardDeviation: [/standard\s+deviation/i, /statistical\s+deviation/i],
+		average: [/average/i, /mean(?!\s+deviation)/i, /avg\b/i],
+		sum: [/total(?!\s+hours)/i, /sum\b/i, /add\s+up/i, /how\s+much\s+in\s+total/i],
+	};
 
-		return {
-			average: parseFloat(average.toFixed(2)),
-			count: numbers.length,
-			total_sum: parseFloat(sum.toFixed(2)),
-			field_path: field_path || "auto-detected (excluding metadata)",
-			exclude_zeros: exclude_zeros,
-			sample_values: numbers.slice(0, 5),
-		};
-	} catch (error) {
-		return { error: `Calculation error: ${error.message}` };
+	// Check for percentage deviation first (higher priority)
+	if (patterns.percentageDeviation.some((regex) => regex.test(msg))) {
+		return "percentageDeviation";
 	}
+
+	for (const [type, regexList] of Object.entries(patterns)) {
+		if (regexList.some((regex) => regex.test(msg))) {
+			return type;
+		}
+	}
+
+	return null;
 }
 
-/**
- * Calculate sum with zero exclusion option
- */
-function calculateSum({ data, field_path, exclude_zeros = false }) {
+function performCalculations(data, intent, userMessage) {
+	const results = {};
+
 	try {
-		const numbers = extractNumbers(data, field_path, exclude_zeros);
+		// Extract field path from user message if mentioned
+		const fieldMatch = userMessage.match(/\b(shifts?|hours?|sales?|score|value)s?\b/i);
+		const fieldPath = fieldMatch ? fieldMatch[1].toLowerCase() : null;
 
-		if (numbers.length === 0) {
-			return {
-				error: "No valid numbers found",
-				data_sample: JSON.stringify(data).substring(0, 200) + "...",
-			};
-		}
+		console.log(`🎯 Detected intent: ${intent}, Field path: ${fieldPath}`);
 
-		const sum = numbers.reduce((acc, num) => acc + num, 0);
-
-		return {
-			sum: parseFloat(sum.toFixed(2)),
-			count: numbers.length,
-			field_path: field_path || "auto-detected (excluding metadata)",
-			exclude_zeros: exclude_zeros,
-			sample_values: numbers.slice(0, 5),
-		};
-	} catch (error) {
-		return { error: `Calculation error: ${error.message}` };
-	}
-}
-
-/**
- * Calculate standard deviation and variance
- */
-function calculateDeviation({ data, field_path, population = false, exclude_zeros = false }) {
-	try {
-		const numbers = extractNumbers(data, field_path, exclude_zeros);
-
-		if (numbers.length === 0) {
-			return {
-				error: "No valid numbers found",
-				data_sample: JSON.stringify(data).substring(0, 200) + "...",
-			};
-		}
-
-		if (numbers.length === 1) {
-			return {
-				standard_deviation: 0,
-				variance: 0,
-				mean: numbers[0],
-				count: 1,
-				field_path: field_path || "auto-detected (excluding metadata)",
-				exclude_zeros: exclude_zeros,
-			};
-		}
-
-		const mean = numbers.reduce((acc, num) => acc + num, 0) / numbers.length;
-		const squaredDifferences = numbers.map((num) => Math.pow(num - mean, 2));
-		const variance = squaredDifferences.reduce((acc, diff) => acc + diff, 0) / (population ? numbers.length : numbers.length - 1);
-		const standardDeviation = Math.sqrt(variance);
-
-		return {
-			standard_deviation: parseFloat(standardDeviation.toFixed(2)),
-			variance: parseFloat(variance.toFixed(2)),
-			mean: parseFloat(mean.toFixed(2)),
-			count: numbers.length,
-			field_path: field_path || "auto-detected (excluding metadata)",
-			exclude_zeros: exclude_zeros,
-			type: population ? "population" : "sample",
-			sample_values: numbers.slice(0, 5),
-		};
-	} catch (error) {
-		return { error: `Calculation error: ${error.message}` };
-	}
-}
-
-/**
- * Calculate percentage deviation for driver working hours
- */
-function calculatePercentageDeviation({ data, exclude_zeros = true }) {
-	try {
-		const driverTotals = data.map((driver) => {
-			const shifts = driver.shifts || {};
-			let totalHours = 0;
-
-			Object.values(shifts).forEach((hours) => {
-				if (typeof hours === "number" && !isNaN(hours)) {
-					if (!exclude_zeros || hours !== 0) {
-						totalHours += hours;
-					}
+		switch (intent) {
+			case "percentageDeviation":
+				// Check if it's driver-specific data structure
+				if (Array.isArray(data) && data.length > 0 && data[0]?.shifts) {
+					console.log("📊 Using driver percentage deviation calculation");
+					results.percentageDeviation = calculatePercentageDeviation({
+						data,
+						exclude_zeros: true,
+					});
+				} else {
+					console.log("📊 Using custom percentage deviation calculation");
+					results.customPercentageDeviation = calculateCustomPercentageDeviation({
+						data,
+						field_path: fieldPath,
+						exclude_zeros: false,
+					});
 				}
-			});
+				break;
 
-			return {
-				driverId: driver.driverId,
-				driverName: driver.driverName,
-				totalHours: totalHours,
-				shifts: shifts,
-			};
-		});
+			case "standardDeviation":
+				console.log("📊 Calculating standard deviation");
+				results.deviation = calculateDeviation({
+					data,
+					field_path: fieldPath,
+					exclude_zeros: false,
+				});
+				break;
 
-		const totalHours = driverTotals.map((driver) => driver.totalHours);
+			case "average":
+				console.log("📊 Calculating average");
+				results.average = calculateAverage({
+					data,
+					field_path: fieldPath,
+					exclude_zeros: false,
+				});
+				break;
 
-		if (totalHours.length === 0) {
-			return { error: "No valid working hours found" };
+			case "sum":
+				console.log("📊 Calculating sum");
+				results.sum = calculateSum({
+					data,
+					field_path: fieldPath,
+					exclude_zeros: false,
+				});
+				break;
 		}
 
-		const average = totalHours.reduce((sum, hours) => sum + hours, 0) / totalHours.length;
+		console.log("✅ Pre-calculation complete:", Object.keys(results));
+	} catch (error) {
+		console.error("❌ Pre-calculation error:", error.message);
+	}
 
-		const results = driverTotals.map((driver) => {
-			const deviation = driver.totalHours - average;
-			const percentageDeviation = (deviation / average) * 100;
+	return results;
+}
 
-			return {
-				driverId: driver.driverId,
-				driverName: driver.driverName,
-				totalHours: driver.totalHours,
-				deviation: parseFloat(deviation.toFixed(2)),
-				percentageDeviation: parseFloat(percentageDeviation.toFixed(2)),
-				shifts: driver.shifts,
-			};
+// ===== CALCULATION FUNCTIONS =====
+
+function calculateAverage({ data, field_path, exclude_zeros = false }) {
+	const numbers = extractNumbers(data, field_path, exclude_zeros);
+	if (numbers.length === 0) return { error: "No valid numbers found" };
+
+	const sum = numbers.reduce((acc, num) => acc + num, 0);
+	const average = sum / numbers.length;
+
+	return {
+		average: parseFloat(average.toFixed(2)),
+		count: numbers.length,
+		total_sum: parseFloat(sum.toFixed(2)),
+		exclude_zeros,
+	};
+}
+
+function calculateSum({ data, field_path, exclude_zeros = false }) {
+	const numbers = extractNumbers(data, field_path, exclude_zeros);
+	if (numbers.length === 0) return { error: "No valid numbers found" };
+
+	const sum = numbers.reduce((acc, num) => acc + num, 0);
+	return {
+		sum: parseFloat(sum.toFixed(2)),
+		count: numbers.length,
+		exclude_zeros,
+	};
+}
+
+function calculateDeviation({ data, field_path, population = false, exclude_zeros = false }) {
+	const numbers = extractNumbers(data, field_path, exclude_zeros);
+	if (numbers.length === 0) return { error: "No valid numbers found" };
+	if (numbers.length === 1) return { standard_deviation: 0, variance: 0, mean: numbers[0], count: 1 };
+
+	const mean = numbers.reduce((acc, num) => acc + num, 0) / numbers.length;
+	const squaredDifferences = numbers.map((num) => Math.pow(num - mean, 2));
+	const variance = squaredDifferences.reduce((acc, diff) => acc + diff, 0) / (population ? numbers.length : numbers.length - 1);
+	const standardDeviation = Math.sqrt(variance);
+
+	return {
+		standard_deviation: parseFloat(standardDeviation.toFixed(2)),
+		variance: parseFloat(variance.toFixed(2)),
+		mean: parseFloat(mean.toFixed(2)),
+		count: numbers.length,
+		type: population ? "population" : "sample",
+	};
+}
+
+function calculatePercentageDeviation({ data, exclude_zeros = true }) {
+	console.log("📊 Calculating percentage deviation for", data.length, "drivers");
+
+	const driverTotals = data.map((driver) => {
+		const shifts = driver.shifts || {};
+		let totalHours = 0;
+
+		// Sum all shift types, excluding metadata fields
+		Object.entries(shifts).forEach(([shiftType, hours]) => {
+			// Skip metadata fields like EDV, 80f3dfsd, etc.
+			if (isMetadataField(shiftType)) {
+				console.log(`   ⏭️ Skipping metadata field: ${shiftType}`);
+				return;
+			}
+
+			if (typeof hours === "number" && !isNaN(hours)) {
+				if (!exclude_zeros || hours !== 0) {
+					console.log(`   ✅ ${driver.driverName}: ${shiftType} = ${hours}h`);
+					totalHours += hours;
+				}
+			}
 		});
 
-		results.sort((a, b) => b.percentageDeviation - a.percentageDeviation);
+		console.log(`📈 ${driver.driverName} total: ${totalHours}h`);
+		return {
+			driverId: driver.driverId,
+			driverName: driver.driverName,
+			totalHours,
+			shifts,
+		};
+	});
+
+	const totalHours = driverTotals.map((d) => d.totalHours);
+	console.log("📊 All total hours:", totalHours.slice(0, 10));
+
+	if (totalHours.length === 0) return { error: "No valid working hours found" };
+
+	const average = totalHours.reduce((sum, h) => sum + h, 0) / totalHours.length;
+	console.log("📊 Average hours:", average);
+
+	const results = driverTotals.map((driver) => {
+		const deviation = driver.totalHours - average;
+		const percentageDeviation = average !== 0 ? (deviation / average) * 100 : 0;
 
 		return {
-			averageTotalHours: parseFloat(average.toFixed(2)),
-			totalDrivers: results.length,
-			results: results,
-			summary: {
-				highestDeviation: results[0].percentageDeviation,
-				lowestDeviation: results[results.length - 1].percentageDeviation,
-				averageDeviation: parseFloat((results.reduce((sum, r) => sum + r.percentageDeviation, 0) / results.length).toFixed(2)),
-			},
+			driverId: driver.driverId,
+			driverName: driver.driverName,
+			totalHours: driver.totalHours,
+			deviation: parseFloat(deviation.toFixed(2)),
+			percentageDeviation: parseFloat(percentageDeviation.toFixed(2)),
+			shifts: driver.shifts,
 		};
-	} catch (error) {
-		return { error: `Calculation error: ${error.message}` };
-	}
+	});
+
+	results.sort((a, b) => b.percentageDeviation - a.percentageDeviation);
+
+	console.log(
+		"✅ Top 3 deviations:",
+		results.slice(0, 3).map((r) => `${r.driverName}: ${r.percentageDeviation}%`)
+	);
+
+	return {
+		averageTotalHours: parseFloat(average.toFixed(2)),
+		totalDrivers: results.length,
+		results,
+		summary: {
+			highestDeviation: results[0]?.percentageDeviation || 0,
+			lowestDeviation: results[results.length - 1]?.percentageDeviation || 0,
+			averageDeviation: parseFloat(
+				(results.reduce((sum, r) => sum + Math.abs(r.percentageDeviation), 0) / results.length).toFixed(2)
+			),
+		},
+	};
 }
 
-/**
- * Get all numbers from data structure
- */
-function getAllNumbersFromData({ data, field_path, exclude_zeros = false }) {
-	try {
-		const numbers = extractNumbers(data, field_path, exclude_zeros);
+function calculateCustomPercentageDeviation({ data, field_path, group_by, exclude_zeros = false }) {
+	if (!Array.isArray(data)) return { error: "Data must be an array" };
+
+	const groups = {};
+
+	data.forEach((item, index) => {
+		const value = field_path ? getNestedValue(item, field_path) : typeof item === "number" ? item : null;
+		const groupKey = group_by ? getNestedValue(item, group_by) || `item_${index}` : `item_${index}`;
+
+		if (typeof value === "number" && !isNaN(value)) {
+			if (!exclude_zeros || value !== 0) {
+				if (!groups[groupKey]) groups[groupKey] = [];
+				groups[groupKey].push({ ...item, value });
+			}
+		}
+	});
+
+	const allValues = Object.values(groups)
+		.flat()
+		.map((item) => item.value);
+	if (allValues.length === 0) return { error: "No valid numbers found" };
+
+	const overallAverage = allValues.reduce((sum, val) => sum + val, 0) / allValues.length;
+
+	const results = Object.entries(groups).map(([groupKey, items]) => {
+		const groupValues = items.map((item) => item.value);
+		const groupAverage = groupValues.reduce((sum, val) => sum + val, 0) / groupValues.length;
+		const deviation = groupAverage - overallAverage;
+		const percentageDeviation = (deviation / overallAverage) * 100;
 
 		return {
-			numbers: numbers,
-			count: numbers.length,
-			field_path: field_path || "auto-detected",
-			exclude_zeros: exclude_zeros,
-			sample_values: numbers.slice(0, 10),
-			min: numbers.length > 0 ? Math.min(...numbers) : null,
-			max: numbers.length > 0 ? Math.max(...numbers) : null,
-			total: numbers.length > 0 ? numbers.reduce((sum, num) => sum + num, 0) : null,
+			group: groupKey,
+			average: parseFloat(groupAverage.toFixed(2)),
+			count: groupValues.length,
+			deviation: parseFloat(deviation.toFixed(2)),
+			percentageDeviation: parseFloat(percentageDeviation.toFixed(2)),
+			items,
 		};
-	} catch (error) {
-		return { error: `Extraction error: ${error.message}` };
-	}
+	});
+
+	results.sort((a, b) => b.percentageDeviation - a.percentageDeviation);
+
+	return {
+		overallAverage: parseFloat(overallAverage.toFixed(2)),
+		totalItems: allValues.length,
+		totalGroups: results.length,
+		results,
+		summary: {
+			highestDeviation: results[0]?.percentageDeviation || 0,
+			lowestDeviation: results[results.length - 1]?.percentageDeviation || 0,
+		},
+	};
 }
 
-// Define arithmetic tools for OpenAI function calling
-const arithmeticTools = [
-	{
-		type: "function",
-		function: {
-			name: "calculate_average",
-			description: "Calculate the arithmetic mean (average) of numbers from any JSON structure",
-			parameters: {
-				type: "object",
-				properties: {
-					data: {
-						description: "The data source - can be array of numbers or JSON objects",
-					},
-					field_path: {
-						type: "string",
-						description: "Dot notation path to extract numbers from JSON objects (e.g., 'score', 'sales.q1', 'grades.0')",
-					},
-					exclude_zeros: {
-						type: "boolean",
-						description: "Whether to exclude zero values from the calculation",
-						default: false,
-					},
-				},
-				required: ["data"],
-			},
-		},
-	},
-	{
-		type: "function",
-		function: {
-			name: "calculate_sum",
-			description: "Calculate the sum total of numbers from any JSON structure",
-			parameters: {
-				type: "object",
-				properties: {
-					data: {
-						description: "The data source - can be array of numbers or JSON objects",
-					},
-					field_path: {
-						type: "string",
-						description: "Dot notation path to extract numbers from JSON objects",
-					},
-					exclude_zeros: {
-						type: "boolean",
-						description: "Whether to exclude zero values from the calculation",
-						default: false,
-					},
-				},
-				required: ["data"],
-			},
-		},
-	},
-	{
-		type: "function",
-		function: {
-			name: "calculate_deviation",
-			description: "Calculate standard deviation and variance for numbers from any JSON structure",
-			parameters: {
-				type: "object",
-				properties: {
-					data: {
-						description: "The data source - can be array of numbers or JSON objects",
-					},
-					field_path: {
-						type: "string",
-						description: "Dot notation path to extract numbers from JSON objects",
-					},
-					population: {
-						type: "boolean",
-						description: "True for population standard deviation, false for sample standard deviation",
-						default: false,
-					},
-					exclude_zeros: {
-						type: "boolean",
-						description: "Whether to exclude zero values from the calculation",
-						default: false,
-					},
-				},
-				required: ["data"],
-			},
-		},
-	},
-	{
-		type: "function",
-		function: {
-			name: "calculate_percentage_deviation",
-			description: "Calculate percentage deviation from average for total working hours across all shift types",
-			parameters: {
-				type: "object",
-				properties: {
-					data: {
-						description: "Array of driver objects with shifts data",
-					},
-					exclude_zeros: {
-						type: "boolean",
-						description: "Whether to exclude zero values when calculating totals",
-						default: true,
-					},
-				},
-				required: ["data"],
-			},
-		},
-	},
-	{
-		type: "function",
-		function: {
-			name: "get_all_numbers",
-			description: "Extract all numbers from a JSON structure for analysis",
-			parameters: {
-				type: "object",
-				properties: {
-					data: {
-						description: "The JSON data to extract numbers from - can be array, object, or primitive",
-					},
-					field_path: {
-						type: "string",
-						description: "Optional dot notation path to extract only a specific field",
-					},
-					exclude_zeros: {
-						type: "boolean",
-						description: "Whether to exclude zero values from the results",
-						default: false,
-					},
-				},
-				required: ["data"],
-			},
-		},
-	},
-];
+// ===== MAIN FUNCTION =====
 
-/**
- * Enhanced processIntentAndFormatResponse with arithmetic operations support
- */
 const processIntentAndFormatResponse = async ({
 	userMessage,
 	api,
@@ -438,42 +426,25 @@ const processIntentAndFormatResponse = async ({
 	onStream,
 }) => {
 	let fullText = "";
-	console.log("🚀 Starting processIntentAndFormatResponse");
-	console.log("📝 User message:", userMessage);
-	console.log("📊 Data sample:", JSON.stringify(actualData).substring(0, 200) + "...");
-	console.log("🔧 onStream function exists:", typeof onStream === "function");
 
 	try {
-		// Enhanced prompt that includes arithmetic capabilities
-		console.log("📝 Building prompt...");
+		// 🚀 OPTIMIZATION 1: Pre-calculate if calculation intent detected
+		const calculationIntent = detectCalculationIntent(userMessage);
+		let preCalculatedResults = null;
+
+		if (calculationIntent) {
+			console.log(`📊 Pre-calculating: ${calculationIntent}`);
+			preCalculatedResults = performCalculations(actualData, calculationIntent, userMessage);
+		}
+
+		// 🚀 OPTIMIZATION 2: Build compact data summary instead of full data
+		const dataSummary = Array.isArray(actualData)
+			? `Array with ${actualData.length} items. Sample: ${JSON.stringify(actualData.slice(0, 2))}`
+			: `Object with ${Object.keys(actualData || {}).length} keys`;
+
+		// 🚀 OPTIMIZATION 3: Single-shot prompt with pre-calculated results
 		const prompt = `
-You're a smart assistant designed to process structured API data intelligently and answer the user's message with advanced arithmetic capabilities.
-
-Your tasks:
-1. Understand the user's intent from their message.
-2. If the user asks for calculations (average, sum, standard deviation, percentage deviation, etc.), use the provided function tools to perform accurate calculations on the data.
-3. Filter, transform, or aggregate the provided API data as needed to directly answer the user's request.
-4. If the user asks for "top N items per category" (e.g., "top 10 drivers per shift type"), do the following:
-   - Treat each category in the data (like "Parcel Van", "Step Van", etc.) as a separate group.
-   - For each category, select up to N items sorted by the highest relevant metric (e.g., total shift hours).
-   - Always display each category, even if no matching items are found. In that case, display a table with a row stating "No drivers found" or similar message.
-   - Display each category in its own HTML table, starting with a clear introductory sentence.
-5. If the user provides numeric thresholds (e.g., "at least 800 hours", "more than 50 deliveries"), strictly filter the data so that only items satisfying those thresholds remain.
-6. Never include items that partially match the condition.
-7. If no explicit top-N or filter is present, display all data in the most meaningful way (table, list, or paragraph).
-8. Check the response if its more likely a table format or list format or paragraph always try to give better format as per response
-9. Properly format any date strings into user-friendly readable formats.
-
-ARITHMETIC OPERATION GUIDELINES:
-- For queries involving "average", "mean": Use calculate_average function
-- For queries involving "sum", "total": Use calculate_sum function  
-- For queries involving "standard deviation", "variance": Use calculate_deviation function
-- For queries involving "percentage deviation", "performance comparison": Use calculate_percentage_deviation function
-- For extracting numeric data: Use get_all_numbers function
-- Always exclude zeros for shift/working hours data (exclude_zeros=true)
-- Present calculation results in clear, well-formatted HTML tables
-
----
+You're a smart assistant processing structured API data.
 
 ### API Info
 Name: ${api.name}
@@ -485,230 +456,87 @@ Description: ${api.description}
 ### Query Parameters
 ${JSON.stringify(params, null, 2)}
 
-### Example Response Format
-${JSON.stringify(exampleResponse, null, 2)}
+${
+	preCalculatedResults
+		? `
+### Pre-Calculated Results
+${JSON.stringify(preCalculatedResults, null, 2)}
 
-### Raw API Data
+IMPORTANT: These calculations have been pre-computed. You MUST:
+1. Display the average hours: ${
+				preCalculatedResults.percentageDeviation?.averageTotalHours || preCalculatedResults.average?.average || "N/A"
+		  } hours
+2. Show EVERY driver with their total hours and deviation percentage
+3. Create an HTML table with columns: Driver Name, Total Hours, Deviation from Average, Percentage Deviation
+4. Sort by percentage deviation (highest to lowest)
+5. Include summary statistics at the end
+`
+		: ""
+}
+
+### Data Summary
+${dataSummary}
+
+### Full Data (for reference)
 ${JSON.stringify(actualData, null, 2)}
 
 ---
 
-### Output Instructions
-Decide the HTML output format dynamically based on intent and API description:
-
-- If the **user message** explicitly asks for "table", "tabular" or if the **API description** indicates tabular data, then format the reply as an HTML <table> with <thead>, <tbody>, <tr>, <th>, <td>.
-- If the data is best represented as a **list**, use <ul><li>...</li></ul>.
-- If userMessage intent is for specific one driver id or LMDP ID try to send in list format.
-- Try to provide complete list/table always if user message don't contains any filter action.
-- If the data is descriptive or narrative, use <p>...</p>.
-- If the data contains date string send in proper user readable format.
-- Always start with a <p> introduction sentence before table or list.
-- For top-N per category requests, provide multiple separate HTML <table> sections—one for each category (e.g., shift type).
-   - If a category has no matching items, include a single-row table with the message "No drivers found for this shift type."
-- For arithmetic calculations, present results in well-formatted tables with clear headers and proper numerical formatting.
-- Always include a <div class="summary"> block summarizing:
-    - Exact total counts per category or in total.
-    - 1-2 additional meaningful computed insights (e.g., highest working hours and by whom).
-    - For calculations, include key statistical insights (min, max, range, etc.)
-    - Do not use vague terms like "several" or "some".
-- Format dates into readable forms (e.g., "September 12, 2025").
-- If the API is suitable for graphs, suggest a visualization follow-up only if applicable.
+### Instructions
+1. Understand user intent - they want total hours AND deviations from average
+2. **CRITICAL**: If pre-calculated results exist, use them to create a complete table
+3. Display ALL ${actualData?.length || 0} drivers in the table
+4. Format as HTML table with these exact columns:
+   - Driver Name
+   - Total Hours
+   - Deviation (hours from average)
+   - Percentage Deviation (%)
+5. Start with <p> stating: "Here are the total hours scheduled for each driver over the last three weeks, along with their deviations from the average hours scheduled."
+6. After the table, include <div class="summary"> with:
+   - Total number of drivers: ${actualData?.length || 0}
+   - Average hours scheduled: [exact number]
+   - Highest deviation: [driver name] at [X]%
+   - Lowest deviation: [driver name] at [X]%
+7. Format dates in readable format
+8. Use alternating row colors for better readability
 
 ${
 	api?.isSuitableForGraph
 		? `<p class="followup-message">Would you like me to turn this into a graph or chart for easier analysis?</p>`
-		: ``
+		: ""
 }
 
-- Do not include Markdown, JSON, or plain text—only valid HTML.
-- After the HTML reply, summary, and optional follow-up message, output exactly:
-###END###
+Output only valid HTML. End with exactly: ###END###
 `;
 
-		// Create messages array for function calling
-		console.log("🤖 Creating OpenAI messages array");
-		let messages = [
-			{
-				role: "system",
-				content: "You are a statistical analysis assistant specialized in working hours data with function calling capabilities.",
-			},
-			{ role: "user", content: prompt },
-		];
+		// 🚀 OPTIMIZATION 4: Single streaming call, no function calling overhead
+		const completion = await openai.chat.completions.create({
+			model: "gpt-4o-mini",
+			messages: [{ role: "user", content: prompt }],
+			temperature: 0,
+			stream: true,
+		});
 
-		let finalMessage = null;
-		console.log("🔄 Starting function calling loop...");
+		for await (const chunk of completion) {
+			const delta = chunk.choices?.[0]?.delta?.content || "";
+			if (!delta) continue;
 
-		// Function calling loop
-		while (true) {
-			console.log("🔄 Making OpenAI API call with tools...");
-			const completion = await openai.chat.completions.create({
-				model: "gpt-4o-mini",
-				messages,
-				tools: arithmeticTools,
-				tool_choice: "auto",
-				temperature: 0,
-				stream: false, // Disable streaming for function calls
-			});
+			fullText += delta;
+			if (fullText.includes("###END###")) break;
 
-			console.log("✅ Received OpenAI response");
-			const message = completion.choices[0].message;
-			messages.push(message);
-
-			console.log("🔍 Checking for function calls:", message.tool_calls ? message.tool_calls.length : 0);
-
-			if (!message.tool_calls || message.tool_calls.length === 0) {
-				console.log("✅ No more function calls needed, final message received");
-				finalMessage = message;
-				break;
-			}
-
-			// Handle function calls
-			console.log("⚡ Processing function calls...");
-			for (const toolCall of message.tool_calls) {
-				console.log(`🛠️ Executing function: ${toolCall.function.name}`);
-				let result;
-				const args = JSON.parse(toolCall.function.arguments);
-				console.log("📝 Function args:", JSON.stringify(args, null, 2));
-
-				switch (toolCall.function.name) {
-					case "calculate_average":
-						console.log("📊 Calculating average...");
-						result = calculateAverage({
-							data: args.data,
-							field_path: args.field_path,
-							exclude_zeros: args.exclude_zeros,
-						});
-						console.log("📊 Average result:", result);
-						break;
-					case "calculate_sum":
-						console.log("➕ Calculating sum...");
-						result = calculateSum({
-							data: args.data,
-							field_path: args.field_path,
-							exclude_zeros: args.exclude_zeros,
-						});
-						console.log("➕ Sum result:", result);
-						break;
-					case "calculate_deviation":
-						console.log("📈 Calculating deviation...");
-						result = calculateDeviation({
-							data: args.data,
-							field_path: args.field_path,
-							population: args.population !== undefined ? args.population : false,
-							exclude_zeros: args.exclude_zeros,
-						});
-						console.log("📈 Deviation result:", result);
-						break;
-					case "calculate_percentage_deviation":
-						console.log("📊 Calculating percentage deviation...");
-						result = calculatePercentageDeviation({
-							data: args.data,
-							exclude_zeros: args.exclude_zeros !== undefined ? args.exclude_zeros : true,
-						});
-						console.log("📊 Percentage deviation result:", result);
-						break;
-					case "get_all_numbers":
-						console.log("🔢 Getting all numbers...");
-						result = getAllNumbersFromData(args);
-						console.log("🔢 Numbers result:", result);
-						break;
-					default:
-						console.log(`❌ Unknown function: ${toolCall.function.name}`);
-						result = { error: `Unknown function: ${toolCall.function.name}` };
-				}
-
-				console.log(`🔄 Adding function result to messages for ${toolCall.function.name}`);
-				messages.push({
-					role: "tool",
-					tool_call_id: toolCall.id,
-					content: JSON.stringify(result),
-				});
-			}
-		}
-
-		// Get the final response and stream it
-		console.log("📤 Starting response streaming...");
-		const finalContent = finalMessage.content;
-		console.log("📝 Final content length:", finalContent.length);
-		console.log("📝 Final content preview:", finalContent.substring(0, 200) + "...");
-
-		// Check if we need to use streaming or regular OpenAI call
-		const needsStreaming = !finalContent || finalContent.includes("###END###");
-		console.log("🌊 Needs streaming?", needsStreaming);
-
-		if (needsStreaming || !finalContent) {
-			console.log("🌊 Using OpenAI streaming completion...");
-			const streamingCompletion = await openai.chat.completions.create({
-				model: "gpt-4o-mini",
-				messages,
-				temperature: 0,
-				stream: true,
-			});
-
-			for await (const chunk of streamingCompletion) {
-				const delta = chunk.choices?.[0]?.delta?.content || "";
-				if (!delta) continue;
-
-				fullText += delta;
-				console.log("🌊 Streaming chunk:", delta.length, "chars");
-
-				// Stop when END marker appears
-				if (fullText.includes("###END###")) {
-					console.log("🛑 Found END marker, stopping stream");
-					break;
-				}
-
-				const cleaned = delta.replace(/###\s*END\s*###/gi, "");
-				if (cleaned) {
-					const formatted = cleaned
-						.replace(/([a-z])([A-Z])/g, "$1 $2")
-						.replace(/(\d)([A-Za-z])/g, "$1 $2")
-						.replace(/([a-zA-Z])(\d)/g, "$1 $2");
-
-					console.log("🌊 Streaming formatted:", formatted.length, "chars");
-					if (onStream) {
-						console.log("📤 Calling onStream callback");
-						onStream(formatted);
-					} else {
-						console.log("❌ onStream callback not available");
-					}
-				}
-			}
-		} else {
-			// Stream the existing final content character by character
-			console.log("📤 Character-by-character streaming...");
-			for (let i = 0; i < finalContent.length; i++) {
-				const char = finalContent[i];
-				fullText += char;
-
-				// Stop when END marker appears
-				if (fullText.includes("###END###")) {
-					console.log("🛑 Found END marker at position", i);
-					break;
-				}
-
-				if (onStream && char !== "#") {
-					// Avoid streaming the END marker
-					const formatted = char
-						.replace(/([a-z])([A-Z])/g, "$1 $2")
-						.replace(/(\d)([A-Za-z])/g, "$1 $2")
-						.replace(/([a-zA-Z])(\d)/g, "$1 $2");
-
-					console.log("📤 Streaming char:", char, "->", formatted);
-					onStream(formatted);
-				}
-
-				// Add small delay to simulate streaming
-				await new Promise((resolve) => setTimeout(resolve, 10));
+			const cleaned = delta.replace(/###\s*END\s*###/gi, "");
+			if (cleaned) {
+				const formatted = cleaned
+					.replace(/([a-z])([A-Z])/g, "$1 $2")
+					.replace(/(\d)([A-Za-z])/g, "$1 $2")
+					.replace(/([a-zA-Z])(\d)/g, "$1 $2");
+				if (onStream) onStream(formatted);
 			}
 		}
 
 		const finalReply = fullText.replace(/###END###/g, "").trim();
-		console.log("✅ Final reply length:", finalReply.length);
-		console.log("📝 Final reply preview:", finalReply.substring(0, 200) + "...");
 
-		// Save the last reply in session
-		console.log("💾 Saving to session...");
+		// Save session
 		await Session.updateOne(
 			{ _id: session._id },
 			{
@@ -722,7 +550,6 @@ ${
 				},
 			}
 		);
-		console.log("✅ Session saved successfully");
 
 		return {
 			userReply: finalReply,
@@ -730,16 +557,9 @@ ${
 			api,
 		};
 	} catch (err) {
-		console.error("❌ processIntentAndFormatResponse error:", err);
-		console.error("❌ Error stack:", err.stack);
-		console.log("❌ Error details:", {
-			message: err.message,
-			name: err.name,
-			userMessage,
-			apiName: api?.name,
-		});
+		console.error("processIntentAndFormatResponse error:", err.message);
 		return {
-			userReply: "Here's the available data. (Intent-based personalization failed.)",
+			userReply: "Here's the available data. (Intent-based processing failed.)",
 			params,
 			api,
 		};
@@ -747,3 +567,4 @@ ${
 };
 
 module.exports = processIntentAndFormatResponse;
+

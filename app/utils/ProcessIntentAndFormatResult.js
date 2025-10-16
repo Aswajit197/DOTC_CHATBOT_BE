@@ -2,6 +2,59 @@ const { OpenAI } = require("openai");
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const Session = require("../model/session.model");
 
+
+
+/**
+ * Uses AI to detect how many items were actually displayed in the HTML response
+ * and returns only those items from the original dataset
+ */
+async function filterToDisplayedItems(userMessage, htmlResponse, originalData) {
+    // Skip filtering for non-array data or small datasets
+    if (!Array.isArray(originalData) || originalData.length <= 5) {
+        return originalData;
+    }
+
+    try {
+        // Count how many rows are in the HTML table or list items
+        const tableRowCount = (htmlResponse.match(/<tr>/g) || []).length - 1; // -1 for header
+        const listItemCount = (htmlResponse.match(/<li>/g) || []).length;
+        
+        const displayedCount = Math.max(tableRowCount, listItemCount);
+        
+        console.log(`🔍 HTML analysis: ${tableRowCount} table rows, ${listItemCount} list items`);
+
+        // If we detected a count and it's less than the original data length
+        if (displayedCount > 0 && displayedCount < originalData.length) {
+            console.log(`✂️ Filtering: ${displayedCount} displayed out of ${originalData.length} total`);
+            
+            // Extract the names/identifiers from the HTML
+            const nameFields = ['name', 'driverName', 'userName', 'title', 'label'];
+            const sampleItem = originalData[0];
+            const nameKey = nameFields.find(key => sampleItem[key]) || Object.keys(sampleItem)[0];
+            
+            // Find which items were actually displayed
+            const displayedItems = originalData.filter(item => {
+                const identifier = item[nameKey];
+                return identifier && htmlResponse.includes(identifier);
+            });
+            
+            if (displayedItems.length > 0) {
+                console.log(`✅ Successfully filtered to ${displayedItems.length} items`);
+                console.log(`   Items: ${displayedItems.map(i => i[nameKey]).join(', ')}`);
+                return displayedItems;
+            }
+        }
+
+        // Fallback: No filtering needed
+        console.log(`ℹ️ No filtering applied - returning all ${originalData.length} items`);
+        return originalData;
+
+    } catch (error) {
+        console.error("❌ Error filtering displayed items:", error.message);
+        return originalData; // Return full dataset on error
+    }
+}
+
 // ===== CALCULATION UTILITIES =====
 
 function getNestedValue(obj, path) {
@@ -30,7 +83,7 @@ function isMetadataField(fieldName) {
 		/state/i,
 		/type/i,
 		/^EDV$/i,
-		/^80f3dfsd$/i, // Exclude specific metadata fields
+		/^80f3dfsd$/i,
 	];
 	return metadataPatterns.some((pattern) => pattern.test(fieldName));
 }
@@ -57,13 +110,7 @@ function extractNumbers(data, fieldPath = null, excludeZeros = false) {
 			});
 		} else {
 			const value = getNestedValue(data, fieldPath);
-			if (typeof value === "object" && value !== null) {
-				Object.values(value).forEach((val) => {
-					if (shouldInclude(val)) numbers.push(val);
-				});
-			} else if (shouldInclude(value)) {
-				numbers.push(value);
-			}
+			if (shouldInclude(value)) numbers.push(value);
 		}
 		return numbers;
 	}
@@ -84,103 +131,6 @@ function extractNumbers(data, fieldPath = null, excludeZeros = false) {
 
 	traverse(data);
 	return numbers;
-}
-
-// ===== PRE-CALCULATION ENGINE =====
-
-function detectCalculationIntent(userMessage) {
-	const msg = userMessage.toLowerCase();
-
-	const patterns = {
-		percentageDeviation: [
-			/deviation/i, // Catch any deviation mention
-			/percentage\s+(deviation|difference|variance)/i,
-			/compare.*percentage/i,
-			/how\s+much.*deviate/i,
-			/variance/i,
-		],
-		standardDeviation: [/standard\s+deviation/i, /statistical\s+deviation/i],
-		average: [/average/i, /mean(?!\s+deviation)/i, /avg\b/i],
-		sum: [/total(?!\s+hours)/i, /sum\b/i, /add\s+up/i, /how\s+much\s+in\s+total/i],
-	};
-
-	// Check for percentage deviation first (higher priority)
-	if (patterns.percentageDeviation.some((regex) => regex.test(msg))) {
-		return "percentageDeviation";
-	}
-
-	for (const [type, regexList] of Object.entries(patterns)) {
-		if (regexList.some((regex) => regex.test(msg))) {
-			return type;
-		}
-	}
-
-	return null;
-}
-
-function performCalculations(data, intent, userMessage) {
-	const results = {};
-
-	try {
-		// Extract field path from user message if mentioned
-		const fieldMatch = userMessage.match(/\b(shifts?|hours?|sales?|score|value)s?\b/i);
-		const fieldPath = fieldMatch ? fieldMatch[1].toLowerCase() : null;
-
-		console.log(`🎯 Detected intent: ${intent}, Field path: ${fieldPath}`);
-
-		switch (intent) {
-			case "percentageDeviation":
-				// Check if it's driver-specific data structure
-				if (Array.isArray(data) && data.length > 0 && data[0]?.shifts) {
-					console.log("📊 Using driver percentage deviation calculation");
-					results.percentageDeviation = calculatePercentageDeviation({
-						data,
-						exclude_zeros: true,
-					});
-				} else {
-					console.log("📊 Using custom percentage deviation calculation");
-					results.customPercentageDeviation = calculateCustomPercentageDeviation({
-						data,
-						field_path: fieldPath,
-						exclude_zeros: false,
-					});
-				}
-				break;
-
-			case "standardDeviation":
-				console.log("📊 Calculating standard deviation");
-				results.deviation = calculateDeviation({
-					data,
-					field_path: fieldPath,
-					exclude_zeros: false,
-				});
-				break;
-
-			case "average":
-				console.log("📊 Calculating average");
-				results.average = calculateAverage({
-					data,
-					field_path: fieldPath,
-					exclude_zeros: false,
-				});
-				break;
-
-			case "sum":
-				console.log("📊 Calculating sum");
-				results.sum = calculateSum({
-					data,
-					field_path: fieldPath,
-					exclude_zeros: false,
-				});
-				break;
-		}
-
-		console.log("✅ Pre-calculation complete:", Object.keys(results));
-	} catch (error) {
-		console.error("❌ Pre-calculation error:", error.message);
-	}
-
-	return results;
 }
 
 // ===== CALCULATION FUNCTIONS =====
@@ -231,74 +181,83 @@ function calculateDeviation({ data, field_path, population = false, exclude_zero
 	};
 }
 
-function calculatePercentageDeviation({ data, exclude_zeros = true }) {
-	console.log("📊 Calculating percentage deviation for", data.length, "drivers");
+function calculatePercentageDeviation({ data, field_path = null, exclude_zeros = true }) {
+	let itemsWithValues = [];
 
-	const driverTotals = data.map((driver) => {
-		const shifts = driver.shifts || {};
-		let totalHours = 0;
+	// Handle driver-specific structure (shifts object)
+	if (Array.isArray(data) && data.length > 0 && data[0]?.shifts) {
+		itemsWithValues = data.map((driver) => {
+			const shifts = driver.shifts || {};
+			let totalValue = 0;
 
-		// Sum all shift types, excluding metadata fields
-		Object.entries(shifts).forEach(([shiftType, hours]) => {
-			// Skip metadata fields like EDV, 80f3dfsd, etc.
-			if (isMetadataField(shiftType)) {
-				console.log(`   ⏭️ Skipping metadata field: ${shiftType}`);
-				return;
-			}
-
-			if (typeof hours === "number" && !isNaN(hours)) {
-				if (!exclude_zeros || hours !== 0) {
-					console.log(`   ✅ ${driver.driverName}: ${shiftType} = ${hours}h`);
-					totalHours += hours;
+			Object.entries(shifts).forEach(([shiftType, hours]) => {
+				if (isMetadataField(shiftType)) return;
+				if (typeof hours === "number" && !isNaN(hours)) {
+					if (!exclude_zeros || hours !== 0) {
+						totalValue += hours;
+					}
 				}
-			}
+			});
+
+			return {
+				name: driver.driverName || driver.name || `Driver ${driver.driverId}`,
+				id: driver.driverId || driver.id,
+				value: totalValue,
+				rawData: driver,
+			};
 		});
+	}
+	// Handle generic array with field_path
+	else if (Array.isArray(data)) {
+		itemsWithValues = data
+			.map((item, index) => {
+				const value = field_path ? getNestedValue(item, field_path) : typeof item === "number" ? item : null;
 
-		console.log(`📈 ${driver.driverName} total: ${totalHours}h`);
-		return {
-			driverId: driver.driverId,
-			driverName: driver.driverName,
-			totalHours,
-			shifts,
-		};
-	});
+				if (typeof value === "number" && !isNaN(value)) {
+					if (!exclude_zeros || value !== 0) {
+						return {
+							name: item.name || item.driverName || item.dayName || `Item ${index + 1}`,
+							id: item.id || index,
+							value: value,
+							rawData: item,
+						};
+					}
+				}
+				return null;
+			})
+			.filter(Boolean);
+	}
 
-	const totalHours = driverTotals.map((d) => d.totalHours);
-	console.log("📊 All total hours:", totalHours.slice(0, 10));
+	if (itemsWithValues.length === 0) return { error: "No valid numbers found for deviation calculation" };
 
-	if (totalHours.length === 0) return { error: "No valid working hours found" };
+	const values = itemsWithValues.map((item) => item.value);
+	const average = values.reduce((sum, val) => sum + val, 0) / values.length;
 
-	const average = totalHours.reduce((sum, h) => sum + h, 0) / totalHours.length;
-	console.log("📊 Average hours:", average);
-
-	const results = driverTotals.map((driver) => {
-		const deviation = driver.totalHours - average;
+	const results = itemsWithValues.map((item) => {
+		const deviation = item.value - average;
 		const percentageDeviation = average !== 0 ? (deviation / average) * 100 : 0;
 
 		return {
-			driverId: driver.driverId,
-			driverName: driver.driverName,
-			totalHours: driver.totalHours,
+			name: item.name,
+			id: item.id,
+			value: item.value,
 			deviation: parseFloat(deviation.toFixed(2)),
 			percentageDeviation: parseFloat(percentageDeviation.toFixed(2)),
-			shifts: driver.shifts,
+			rawData: item.rawData,
 		};
 	});
 
 	results.sort((a, b) => b.percentageDeviation - a.percentageDeviation);
 
-	console.log(
-		"✅ Top 3 deviations:",
-		results.slice(0, 3).map((r) => `${r.driverName}: ${r.percentageDeviation}%`)
-	);
-
 	return {
-		averageTotalHours: parseFloat(average.toFixed(2)),
-		totalDrivers: results.length,
+		average: parseFloat(average.toFixed(2)),
+		totalItems: results.length,
 		results,
 		summary: {
 			highestDeviation: results[0]?.percentageDeviation || 0,
+			highestDeviationItem: results[0]?.name || "N/A",
 			lowestDeviation: results[results.length - 1]?.percentageDeviation || 0,
+			lowestDeviationItem: results[results.length - 1]?.name || "N/A",
 			averageDeviation: parseFloat(
 				(results.reduce((sum, r) => sum + Math.abs(r.percentageDeviation), 0) / results.length).toFixed(2)
 			),
@@ -306,61 +265,194 @@ function calculatePercentageDeviation({ data, exclude_zeros = true }) {
 	};
 }
 
-function calculateCustomPercentageDeviation({ data, field_path, group_by, exclude_zeros = false }) {
-	if (!Array.isArray(data)) return { error: "Data must be an array" };
-
-	const groups = {};
-
-	data.forEach((item, index) => {
-		const value = field_path ? getNestedValue(item, field_path) : typeof item === "number" ? item : null;
-		const groupKey = group_by ? getNestedValue(item, group_by) || `item_${index}` : `item_${index}`;
-
-		if (typeof value === "number" && !isNaN(value)) {
-			if (!exclude_zeros || value !== 0) {
-				if (!groups[groupKey]) groups[groupKey] = [];
-				groups[groupKey].push({ ...item, value });
-			}
-		}
-	});
-
-	const allValues = Object.values(groups)
-		.flat()
-		.map((item) => item.value);
-	if (allValues.length === 0) return { error: "No valid numbers found" };
-
-	const overallAverage = allValues.reduce((sum, val) => sum + val, 0) / allValues.length;
-
-	const results = Object.entries(groups).map(([groupKey, items]) => {
-		const groupValues = items.map((item) => item.value);
-		const groupAverage = groupValues.reduce((sum, val) => sum + val, 0) / groupValues.length;
-		const deviation = groupAverage - overallAverage;
-		const percentageDeviation = (deviation / overallAverage) * 100;
-
-		return {
-			group: groupKey,
-			average: parseFloat(groupAverage.toFixed(2)),
-			count: groupValues.length,
-			deviation: parseFloat(deviation.toFixed(2)),
-			percentageDeviation: parseFloat(percentageDeviation.toFixed(2)),
-			items,
-		};
-	});
-
-	results.sort((a, b) => b.percentageDeviation - a.percentageDeviation);
+function calculateMinMax({ data, field_path, exclude_zeros = false }) {
+	const numbers = extractNumbers(data, field_path, exclude_zeros);
+	if (numbers.length === 0) return { error: "No valid numbers found" };
 
 	return {
-		overallAverage: parseFloat(overallAverage.toFixed(2)),
-		totalItems: allValues.length,
-		totalGroups: results.length,
-		results,
-		summary: {
-			highestDeviation: results[0]?.percentageDeviation || 0,
-			lowestDeviation: results[results.length - 1]?.percentageDeviation || 0,
-		},
+		min: Math.min(...numbers),
+		max: Math.max(...numbers),
+		range: Math.max(...numbers) - Math.min(...numbers),
+		count: numbers.length,
 	};
 }
 
-// ===== MAIN FUNCTION =====
+// ===== AI-POWERED INTENT DETECTION =====
+
+async function detectCalculationIntent(userMessage, apiData, apiDescription) {
+	try {
+		const dataSample = Array.isArray(apiData) ? apiData.slice(0, 3) : apiData;
+
+		const response = await openai.chat.completions.create({
+			model: "gpt-4o-mini",
+			messages: [
+				{
+					role: "system",
+					content: `You are an intelligent calculation intent analyzer. Your job is to understand what mathematical operations the user wants performed on their data.
+
+**Response Format (JSON only):**
+{
+  "needsCalculation": boolean,
+  "calculationType": "average" | "sum" | "deviation" | "percentageDeviation" | "minMax" | "none",
+  "fieldPath": "field.name" or null,
+  "excludeZeros": boolean,
+  "reasoning": "brief explanation of your choice"
+}
+
+**Calculation Types Explained:**
+
+1. **"percentageDeviation"** - When user wants to see how items differ from the average:
+   - Keywords: "deviation", "variance", "differ from average", "above/below average"
+   - Common phrases: 
+     * "total hours with deviation percentage"
+     * "how much do drivers deviate from average"
+     * "show variance from mean"
+     * "percentage difference from average"
+   - Use when: User wants BOTH the values AND how they compare to average
+
+2. **"average"** - When user ONLY wants the mean value:
+   - Keywords: "average", "mean" (without deviation/variance)
+   - Common phrases:
+     * "what is the average hours"
+     * "calculate mean value"
+     * "show me average"
+   - Use when: User wants just the average, no comparison
+
+3. **"sum"** - When user ONLY wants the total:
+   - Keywords: "total", "sum", "add up" (without deviation/variance)
+   - Common phrases:
+     * "what is the total of all hours"
+     * "sum of all values"
+     * "add up all shifts"
+   - Use when: User wants just the sum, no per-item breakdown
+
+4. **"deviation"** - For standard deviation (statistical measure):
+   - Keywords: "standard deviation", "std dev", "statistical variance"
+   - Use when: User specifically asks for standard deviation
+
+5. **"minMax"** - For finding extremes:
+   - Keywords: "highest", "lowest", "maximum", "minimum", "top", "bottom"
+   - Use when: User wants to find min/max values
+
+6. **"none"** - No calculations needed:
+   - User just wants to see/list/display data
+   - No mathematical operations mentioned
+
+**CRITICAL DECISION RULES:**
+
+Rule 1: If user mentions "deviation", "variance", "differ", "compare to average" → Choose "percentageDeviation"
+Rule 2: If user wants BOTH values AND comparison → Choose "percentageDeviation"
+Rule 3: If user wants ONLY average (no comparison) → Choose "average"
+Rule 4: If user wants ONLY total (no per-item details) → Choose "sum"
+Rule 5: When in doubt between "sum" and "percentageDeviation", ask yourself: "Does the user want to see individual item comparisons?" If yes → "percentageDeviation"
+
+**Field Path Detection:**
+- If data has nested objects (like "shifts"), set fieldPath appropriately
+- For simple arrays with direct values, fieldPath can be the numeric field name
+- If unclear, leave as null (system will auto-detect)
+
+**Exclude Zeros:**
+- Set to true when dealing with working hours, attendance, or similar metrics where zeros are not meaningful
+- Set to false for financial data or when zeros are significant`,
+				},
+				{
+					role: "user",
+					content: `Analyze this query and determine the calculation intent.
+
+**User Message:** "${userMessage}"
+
+**API Context:**
+- API Name: ${apiDescription || "Unknown"}
+- Data Type: ${Array.isArray(apiData) ? `Array with ${apiData.length} items` : "Object"}
+
+**Data Sample (first 3 items):**
+${JSON.stringify(dataSample, null, 2)}
+
+**Data Structure Keys:**
+${Array.isArray(apiData) && apiData.length > 0 ? Object.keys(apiData[0] || {}).join(", ") : "N/A"}
+
+Provide your analysis in JSON format.`,
+				},
+			],
+			temperature: 0.1,
+			response_format: { type: "json_object" },
+		});
+
+		const result = JSON.parse(response.choices[0].message.content);
+		console.log("🎯 AI Intent Analysis:", {
+			calculationType: result.calculationType,
+			reasoning: result.reasoning,
+			fieldPath: result.fieldPath,
+			excludeZeros: result.excludeZeros,
+		});
+
+		return result;
+	} catch (error) {
+		console.error("❌ AI intent detection failed:", error.message);
+		// Fallback: return safe default
+		return {
+			needsCalculation: false,
+			calculationType: "none",
+			fieldPath: null,
+			excludeZeros: false,
+			reasoning: "Error in detection, falling back to display mode",
+		};
+	}
+}
+
+// ===== PRE-CALCULATION ENGINE =====
+
+function performCalculations(data, intent) {
+	const { calculationType, fieldPath, excludeZeros } = intent;
+
+	console.log(`📊 Performing calculation: ${calculationType}`);
+	console.log(`   Field path: ${fieldPath || "auto-detect"}`);
+	console.log(`   Exclude zeros: ${excludeZeros}`);
+
+	try {
+		switch (calculationType) {
+			case "average":
+			case "mean":
+				return {
+					type: "average",
+					result: calculateAverage({ data, field_path: fieldPath, exclude_zeros: excludeZeros }),
+				};
+
+			case "sum":
+			case "total":
+				return {
+					type: "sum",
+					result: calculateSum({ data, field_path: fieldPath, exclude_zeros: excludeZeros }),
+				};
+
+			case "deviation":
+				return {
+					type: "standardDeviation",
+					result: calculateDeviation({ data, field_path: fieldPath, exclude_zeros: excludeZeros }),
+				};
+
+			case "percentageDeviation":
+				return {
+					type: "percentageDeviation",
+					result: calculatePercentageDeviation({ data, field_path: fieldPath, exclude_zeros: excludeZeros }),
+				};
+
+			case "minMax":
+				return {
+					type: "minMax",
+					result: calculateMinMax({ data, field_path: fieldPath, exclude_zeros: excludeZeros }),
+				};
+
+			default:
+				return null;
+		}
+	} catch (error) {
+		console.error("❌ Calculation error:", error.message);
+		return null;
+	}
+}
+
+// ===== MAIN PROCESSING FUNCTION =====
 
 const processIntentAndFormatResponse = async ({
 	userMessage,
@@ -370,92 +462,172 @@ const processIntentAndFormatResponse = async ({
 	params = {},
 	session,
 	onStream,
+	abortSignal,
 }) => {
 	let fullText = "";
 
 	try {
-		// 🚀 OPTIMIZATION 1: Pre-calculate if calculation intent detected
-		const calculationIntent = detectCalculationIntent(userMessage);
-		let preCalculatedResults = null;
-
-		if (calculationIntent) {
-			console.log(`📊 Pre-calculating: ${calculationIntent}`);
-			preCalculatedResults = performCalculations(actualData, calculationIntent, userMessage);
+		// 🔹 Check abort at start
+		if (abortSignal?.aborted) {
+			console.log("🚫 processIntentAndFormatResponse: Aborted before execution");
+			return { error: "Request aborted" };
 		}
 
-		// 🚀 OPTIMIZATION 2: Build compact data summary instead of full data
-		const dataSummary = Array.isArray(actualData)
-			? `Array with ${actualData.length} items. Sample: ${JSON.stringify(actualData.slice(0, 2))}`
-			: `Object with ${Object.keys(actualData || {}).length} keys`;
+		// 🚀 STEP 1: AI-powered intent detection
+		console.log("🤖 Starting AI intent detection...");
+		const calculationIntent = await detectCalculationIntent(userMessage, actualData, api?.description);
 
-		// 🚀 OPTIMIZATION 3: Single-shot prompt with pre-calculated results
+		// 🔹 Check abort after intent detection
+		if (abortSignal?.aborted) {
+			console.log("🚫 processIntentAndFormatResponse: Aborted after intent detection");
+			return { error: "Request aborted" };
+		}
+
+		// 🚀 STEP 2: Pre-calculate if needed
+		let preCalculatedResults = null;
+		if (calculationIntent.needsCalculation && calculationIntent.calculationType !== "none") {
+			console.log("📊 Pre-calculation triggered...");
+			preCalculatedResults = performCalculations(actualData, calculationIntent);
+
+			if (preCalculatedResults) {
+				console.log("✅ Pre-calculation complete:", preCalculatedResults.type);
+				console.log("   Result summary:", Object.keys(preCalculatedResults.result).join(", "));
+			}
+		} else {
+			console.log("ℹ️ No calculation needed, proceeding with display-only mode");
+		}
+
+		// 🚀 STEP 3: Build the intelligent prompt
 		const prompt = `
-You're a smart assistant processing structured API data.
+You are a smart assistant processing structured API data and answering user questions.
 
-### API Info
-Name: ${api.name}
-Description: ${api.description}
+### Context
+API Name: ${api.name}
+API Description: ${api.description}
+User Message: "${userMessage}"
+Query Parameters: ${JSON.stringify(params, null, 2)}
 
-### User Message
-"${userMessage}"
-
-### Query Parameters
-${JSON.stringify(params, null, 2)}
+### Available Data
+${JSON.stringify(actualData, null, 2)}
 
 ${
 	preCalculatedResults
 		? `
 ### Pre-Calculated Results
-${JSON.stringify(preCalculatedResults, null, 2)}
+Calculation Type: ${preCalculatedResults.type}
+${JSON.stringify(preCalculatedResults.result, null, 2)}
 
-IMPORTANT: These calculations have been pre-computed. You MUST:
-1. Display the average hours: ${
-				preCalculatedResults.percentageDeviation?.averageTotalHours || preCalculatedResults.average?.average || "N/A"
-		  } hours
-2. Show EVERY driver with their total hours and deviation percentage
-3. Create an HTML table with columns: Driver Name, Total Hours, Deviation from Average, Percentage Deviation
-4. Sort by percentage deviation (highest to lowest)
-5. Include summary statistics at the end
+**CRITICAL: Pre-calculated results are provided. You MUST use them.**
+
+${
+	preCalculatedResults.type === "percentageDeviation"
+		? `
+**Instructions for Percentage Deviation:**
+1. Create an HTML table with these EXACT columns:
+   - Driver Name (or item name from results[].name)
+   - Total Hours/Value (from results[].value)
+   - Deviation (from results[].deviation)
+   - Percentage Deviation (from results[].percentageDeviation with %)
+
+2. Start with: "<p>The average working hours is ${preCalculatedResults.result.average} hours. Here's how each driver compares:</p>"
+
+3. Display ALL ${preCalculatedResults.result.totalItems} items from the results array
+
+4. In the summary, include:
+   - Total drivers: ${preCalculatedResults.result.totalItems}
+   - Average hours: ${preCalculatedResults.result.average}
+   - Highest deviation: ${preCalculatedResults.result.summary.highestDeviationItem} at ${preCalculatedResults.result.summary.highestDeviation}%
+   - Lowest deviation: ${preCalculatedResults.result.summary.lowestDeviationItem} at ${preCalculatedResults.result.summary.lowestDeviation}%
+
+Do NOT recalculate - use these exact values.
 `
 		: ""
 }
 
-### Data Summary
-${dataSummary}
-
-### Full Data (for reference)
-${JSON.stringify(actualData, null, 2)}
-
----
-
-### Instructions
-1. Understand user intent - they want total hours AND deviations from average
-2. **CRITICAL**: If pre-calculated results exist, use them to create a complete table
-3. Display ALL ${actualData?.length || 0} drivers in the table
-4. Format as HTML table with these exact columns:
-   - Driver Name
-   - Total Hours
-   - Deviation (hours from average)
-   - Percentage Deviation (%)
-5. Start with <p> stating: "Here are the total hours scheduled for each driver over the last three weeks, along with their deviations from the average hours scheduled."
-6. After the table, include <div class="summary"> with:
-   - Total number of drivers: ${actualData?.length || 0}
-   - Average hours scheduled: [exact number]
-   - Highest deviation: [driver name] at [X]%
-   - Lowest deviation: [driver name] at [X]%
-7. Format dates in readable format
-8. Use alternating row colors for better readability
-
 ${
-	api?.isSuitableForGraph
-		? `<p class="followup-message">Would you like me to turn this into a graph or chart for easier analysis?</p>`
+	preCalculatedResults.type === "average"
+		? `
+**Instructions for Average:**
+Display the average (${preCalculatedResults.result.average}), count (${preCalculatedResults.result.count}), and total sum (${preCalculatedResults.result.total_sum}).
+`
 		: ""
 }
 
-Output only valid HTML. End with exactly: ###END###
+${
+	preCalculatedResults.type === "sum"
+		? `
+**Instructions for Sum:**
+Display the total sum (${preCalculatedResults.result.sum}) and count (${preCalculatedResults.result.count}).
+`
+		: ""
+}
+
+${
+	preCalculatedResults.type === "standardDeviation"
+		? `
+**Instructions for Standard Deviation:**
+Display standard deviation (${preCalculatedResults.result.standard_deviation}), mean (${preCalculatedResults.result.mean}), and variance (${preCalculatedResults.result.variance}).
+`
+		: ""
+}
+
+${
+	preCalculatedResults.type === "minMax"
+		? `
+**Instructions for Min/Max:**
+Display minimum (${preCalculatedResults.result.min}), maximum (${preCalculatedResults.result.max}), and range (${preCalculatedResults.result.range}).
+`
+		: ""
+}
+
+`
+		: ""
+}
+
+### Your Task
+1. **Understand the user's intent** from their message
+2. ${
+			preCalculatedResults
+				? "**Use the pre-calculated results above** - they are accurate and complete"
+				: "**Process the raw data** to answer the question"
+		}
+3. **Apply any filters** mentioned in the user message:
+   - For "top N": show exactly N items
+   - For thresholds: only include items meeting criteria
+   - For categories: group appropriately
+4. **Choose the best format**:
+   - **Tables**: For comparisons, multiple attributes, calculated results
+     - Use <thead> with <th> and <tbody> with <tr><td>
+     - Make headers descriptive
+   - **Lists**: For simple enumerations
+   - **Paragraphs**: For descriptive content
+5. **Structure your response**:
+   - Introductory <p> sentence
+   - Main content (table/list/paragraph)
+   - <div class="summary"> with:
+     * Exact counts (no vague terms)
+     * 2-3 key insights
+     * Statistics from pre-calculated results if available
+6. **Format dates** in readable format
+
+${
+	api?.isSuitableForGraph
+		? `
+7. **After the summary**, add:
+<p class="followup-message">Would you like me to turn this into a graph or chart for easier analysis?</p>
+`
+		: ""
+}
+
+### Output Format
+- Output ONLY valid HTML
+- No markdown, JSON, or code blocks
+- End with: ###END###
+
+Generate the response now:
 `;
 
-		// 🚀 OPTIMIZATION 4: Single streaming call, no function calling overhead
+		// 🚀 STEP 4: Stream the response
 		const completion = await openai.chat.completions.create({
 			model: "gpt-4o-mini",
 			messages: [{ role: "user", content: prompt }],
@@ -464,46 +636,72 @@ Output only valid HTML. End with exactly: ###END###
 		});
 
 		for await (const chunk of completion) {
+			// 🔹 Check abort during streaming
+			if (abortSignal?.aborted) {
+				console.log("🚫 processIntentAndFormatResponse: Aborted during streaming");
+				return { error: "Request aborted" };
+			}
+
 			const delta = chunk.choices?.[0]?.delta?.content || "";
 			if (!delta) continue;
 
 			fullText += delta;
+
 			if (fullText.includes("###END###")) break;
 
 			const cleaned = delta.replace(/###\s*END\s*###/gi, "");
-			if (cleaned) {
+			if (cleaned && onStream) {
 				const formatted = cleaned
 					.replace(/([a-z])([A-Z])/g, "$1 $2")
 					.replace(/(\d)([A-Za-z])/g, "$1 $2")
 					.replace(/([a-zA-Z])(\d)/g, "$1 $2");
-				if (onStream) onStream(formatted);
+				onStream(formatted);
 			}
 		}
 
 		const finalReply = fullText.replace(/###END###/g, "").trim();
 
-		// Save session
-		await Session.updateOne(
-			{ _id: session._id },
-			{
-				$set: {
-					lastResponseMessage: finalReply,
-					lastSuccessUserMessage: userMessage,
-					lastSuccessIntent: api?.name || null,
-					lastSuccessApiResponse: actualData,
-					lastSuccessParams: params,
-					missingField: null,
-				},
-			}
-		);
+		// 🔹 Check abort before saving
+if (abortSignal?.aborted) {
+    console.log("🚫 processIntentAndFormatResponse: Aborted before session save");
+    return { error: "Request aborted" };
+}
 
-		return {
-			userReply: finalReply,
-			params,
-			api,
-		};
+// ✅ Filter data to only what was displayed
+console.log("📦 Original data size:", Array.isArray(actualData) ? actualData.length : "single object");
+const dataToSave = await filterToDisplayedItems(userMessage, finalReply, actualData);
+console.log("💾 Data to save:", Array.isArray(dataToSave) ? dataToSave.length : "single object");
+
+// ✅ Save the session
+await Session.updateOne(
+    { _id: session._id },
+    {
+        $set: {
+            lastResponseMessage: finalReply,
+            lastSuccessUserMessage: userMessage,
+            lastSuccessIntent: api?.name || null,
+            lastSuccessApiResponse: dataToSave,  // ← Save filtered data
+            lastSuccessParams: params,
+            missingField: null,
+        },
+    }
+);
+
+console.log("✅ Response generation complete");
+
+return {
+    userReply: finalReply,
+    actualData: dataToSave,  // ← Return filtered data
+    params,
+    api,
+};
 	} catch (err) {
-		console.error("processIntentAndFormatResponse error:", err.message);
+		if (abortSignal?.aborted) {
+			console.log("🚫 processIntentAndFormatResponse: Aborted during error handling");
+			return { error: "Request aborted" };
+		}
+
+		console.error("❌ processIntentAndFormatResponse error:", err.message);
 		return {
 			userReply: "Here's the available data. (Intent-based processing failed.)",
 			params,
@@ -513,900 +711,3 @@ Output only valid HTML. End with exactly: ###END###
 };
 
 module.exports = processIntentAndFormatResponse;
-
-// const { OpenAI } = require("openai");
-// const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-// const Session = require("../model/session.model");
-
-// console.log("📋 API Processor module loaded with enhanced logging");
-
-// // Enhanced dynamic tools with exclude_zeros parameter for all calculation functions
-// const tools = [
-// 	{
-// 		type: "function",
-// 		function: {
-// 			name: "calculate_average",
-// 			description: "Calculate the arithmetic mean (average) of numbers from any JSON structure",
-// 			parameters: {
-// 				type: "object",
-// 				properties: {
-// 					data: {
-// 						description: "The data source - can be array of numbers or JSON objects",
-// 					},
-// 					field_path: {
-// 						type: "string",
-// 						description: "Dot notation path to extract numbers from JSON objects (e.g., 'score', 'sales.q1', 'grades.0')",
-// 					},
-// 					exclude_zeros: {
-// 						type: "boolean",
-// 						description: "Whether to exclude zero values from the calculation",
-// 						default: false,
-// 					},
-// 				},
-// 				required: ["data"],
-// 			},
-// 		},
-// 	},
-// 	{
-// 		type: "function",
-// 		function: {
-// 			name: "calculate_sum",
-// 			description: "Calculate the sum total of numbers from any JSON structure",
-// 			parameters: {
-// 				type: "object",
-// 				properties: {
-// 					data: {
-// 						description: "The data source - can be array of numbers or JSON objects",
-// 					},
-// 					field_path: {
-// 						type: "string",
-// 						description: "Dot notation path to extract numbers from JSON objects",
-// 					},
-// 					exclude_zeros: {
-// 						type: "boolean",
-// 						description: "Whether to exclude zero values from the calculation",
-// 						default: false,
-// 					},
-// 				},
-// 				required: ["data"],
-// 			},
-// 		},
-// 	},
-// 	{
-// 		type: "function",
-// 		function: {
-// 			name: "calculate_deviation",
-// 			description: "Calculate standard deviation and variance for numbers from any JSON structure",
-// 			parameters: {
-// 				type: "object",
-// 				properties: {
-// 					data: {
-// 						description: "The data source - can be array of numbers or JSON objects",
-// 					},
-// 					field_path: {
-// 						type: "string",
-// 						description: "Dot notation path to extract numbers from JSON objects",
-// 					},
-// 					population: {
-// 						type: "boolean",
-// 						description: "True for population standard deviation, false for sample standard deviation",
-// 						default: false,
-// 					},
-// 					exclude_zeros: {
-// 						type: "boolean",
-// 						description: "Whether to exclude zero values from the calculation",
-// 						default: false,
-// 					},
-// 				},
-// 				required: ["data"],
-// 			},
-// 		},
-// 	},
-// 	{
-// 		type: "function",
-// 		function: {
-// 			name: "get_all_numbers",
-// 			description: "Extract all numbers from a JSON structure for analysis",
-// 			parameters: {
-// 				type: "object",
-// 				properties: {
-// 					data: {
-// 						description: "The JSON data to extract numbers from - can be array, object, or primitive",
-// 					},
-// 					field_path: {
-// 						type: "string",
-// 						description: "Optional dot notation path to extract only a specific field",
-// 					},
-// 					exclude_zeros: {
-// 						type: "boolean",
-// 						description: "Whether to exclude zero values from the results",
-// 						default: false,
-// 					},
-// 				},
-// 				required: ["data"],
-// 			},
-// 		},
-// 	},
-// 	{
-// 		type: "function",
-// 		function: {
-// 			name: "calculate_percentage_deviation",
-// 			description: "Calculate percentage deviation from average for total working hours across all shift types",
-// 			parameters: {
-// 				type: "object",
-// 				properties: {
-// 					data: {
-// 						description: "Array of driver objects with shifts data",
-// 					},
-// 					exclude_zeros: {
-// 						type: "boolean",
-// 						description: "Whether to exclude zero values when calculating totals",
-// 						default: true,
-// 					},
-// 				},
-// 				required: ["data"],
-// 			},
-// 		},
-// 	},
-// 	{
-// 		type: "function",
-// 		function: {
-// 			name: "calculate_custom_percentage_deviation",
-// 			description: "Calculate percentage deviation from average for any numeric field in the data",
-// 			parameters: {
-// 				type: "object",
-// 				properties: {
-// 					data: {
-// 						description: "The data source - can be array of numbers or JSON objects",
-// 					},
-// 					field_path: {
-// 						type: "string",
-// 						description: "Dot notation path to extract numbers from JSON objects for deviation calculation",
-// 					},
-// 					group_by: {
-// 						type: "string",
-// 						description: "Field to group results by (e.g., 'day', 'category', 'type')",
-// 					},
-// 					exclude_zeros: {
-// 						type: "boolean",
-// 						description: "Whether to exclude zero values when calculating",
-// 						default: false,
-// 					},
-// 				},
-// 				required: ["data"],
-// 			},
-// 		},
-// 	},
-// ];
-
-// /**
-//  * Utility function to get value from object using dot notation
-//  */
-// function getNestedValue(obj, path) {
-// 	console.log("🔍 Getting nested value:", { path, objType: typeof obj });
-// 	if (!path) return obj;
-// 	const result = path.split(".").reduce((current, key) => {
-// 		if (current === null || current === undefined) return undefined;
-// 		return current[key];
-// 	}, obj);
-// 	console.log("🔍 Nested value result:", { path, result });
-// 	return result;
-// }
-
-// /**
-//  * Check if a field name should be excluded as metadata
-//  */
-// function isMetadataField(fieldName) {
-// 	if (!fieldName) return false;
-
-// 	const metadataPatterns = [
-// 		/^id$/i,
-// 		/.*_id$/i,
-// 		/.*Id$/,
-// 		/^uid$/i,
-// 		/^uuid$/i,
-// 		/^guid$/i,
-// 		/timestamp/i,
-// 		/created/i,
-// 		/updated/i,
-// 		/modified/i,
-// 		/version/i,
-// 		/revision/i,
-// 		/build/i,
-// 		/index/i,
-// 		/position/i,
-// 		/order/i,
-// 		/status/i,
-// 		/state/i,
-// 		/type/i,
-// 		/kind/i,
-// 		/.*_key$/i,
-// 		/.*Key$/,
-// 		/.*_code$/i,
-// 		/.*Code$/,
-// 	];
-
-// 	const isMetadata = metadataPatterns.some((pattern) => pattern.test(fieldName));
-// 	console.log("🏷️ Metadata field check:", { fieldName, isMetadata });
-// 	return isMetadata;
-// }
-
-// /**
-//  * Extract numbers from any data structure, including nested objects
-//  */
-// function extractNumbers(data, fieldPath = null, excludeZeros = false) {
-// 	console.log("🔢 Starting number extraction:", {
-// 		dataType: typeof data,
-// 		isArray: Array.isArray(data),
-// 		fieldPath,
-// 		excludeZeros,
-// 	});
-
-// 	const numbers = [];
-
-// 	const shouldInclude = (value) => {
-// 		if (typeof value !== "number" || isNaN(value)) return false;
-// 		if (excludeZeros && value === 0) return false;
-// 		return true;
-// 	};
-
-// 	if (fieldPath) {
-// 		console.log("🎯 Using field path extraction");
-// 		if (Array.isArray(data)) {
-// 			console.log(`📊 Processing array with ${data.length} items for field path: ${fieldPath}`);
-// 			data.forEach((item, index) => {
-// 				const value = getNestedValue(item, fieldPath);
-// 				console.log(`📝 Item ${index} field value:`, value);
-// 				if (typeof value === "object" && value !== null) {
-// 					Object.values(value).forEach((val) => {
-// 						if (shouldInclude(val)) {
-// 							console.log("✅ Adding nested object value:", val);
-// 							numbers.push(val);
-// 						}
-// 					});
-// 				} else if (shouldInclude(value)) {
-// 					console.log("✅ Adding direct value:", value);
-// 					numbers.push(value);
-// 				}
-// 			});
-// 		} else {
-// 			console.log("📊 Processing single object for field path");
-// 			const value = getNestedValue(data, fieldPath);
-// 			if (typeof value === "object" && value !== null) {
-// 				Object.values(value).forEach((val) => {
-// 					if (shouldInclude(val)) {
-// 						console.log("✅ Adding nested object value:", val);
-// 						numbers.push(val);
-// 					}
-// 				});
-// 			} else if (shouldInclude(value)) {
-// 				console.log("✅ Adding direct value:", value);
-// 				numbers.push(value);
-// 			}
-// 		}
-// 		console.log("🔢 Field path extraction complete. Numbers found:", numbers.length);
-// 		return numbers;
-// 	}
-
-// 	console.log("🔄 Using recursive traversal");
-// 	function traverse(current, currentKey = null) {
-// 		if (shouldInclude(current, currentKey)) {
-// 			console.log("✅ Adding number:", current, "from key:", currentKey);
-// 			numbers.push(current);
-// 			return;
-// 		}
-
-// 		if (Array.isArray(current)) {
-// 			console.log("📋 Traversing array with", current.length, "items");
-// 			current.forEach((item, index) => {
-// 				console.log(`🔄 Processing array item ${index}`);
-// 				traverse(item);
-// 			});
-// 		} else if (typeof current === "object" && current !== null) {
-// 			const entries = Object.entries(current);
-// 			console.log("🏗️ Traversing object with", entries.length, "properties");
-// 			entries.forEach(([key, value]) => {
-// 				if (!isMetadataField(key)) {
-// 					console.log(`🔄 Processing object property: ${key}`);
-// 					traverse(value, key);
-// 				} else {
-// 					console.log(`⏭️ Skipping metadata field: ${key}`);
-// 				}
-// 			});
-// 		}
-// 	}
-
-// 	traverse(data);
-// 	console.log("🔢 Recursive extraction complete. Numbers found:", numbers.length);
-// 	console.log("🔢 Sample numbers:", numbers.slice(0, 5));
-// 	return numbers;
-// }
-
-// // Calculation functions
-// function calculateAverage({ data, field_path, exclude_zeros = false }) {
-// 	console.log("📊 Starting average calculation:", { field_path, exclude_zeros });
-// 	try {
-// 		const numbers = extractNumbers(data, field_path, exclude_zeros);
-
-// 		if (numbers.length === 0) {
-// 			console.log("❌ No valid numbers found for average calculation");
-// 			return {
-// 				error: "No valid numbers found",
-// 				data_sample: JSON.stringify(data).substring(0, 200) + "...",
-// 			};
-// 		}
-
-// 		const sum = numbers.reduce((acc, num) => acc + num, 0);
-// 		const average = sum / numbers.length;
-
-// 		const result = {
-// 			average: parseFloat(average.toFixed(2)),
-// 			count: numbers.length,
-// 			total_sum: parseFloat(sum.toFixed(2)),
-// 			field_path: field_path || "auto-detected (excluding metadata)",
-// 			exclude_zeros: exclude_zeros,
-// 			sample_values: numbers.slice(0, 5),
-// 		};
-
-// 		console.log("✅ Average calculation complete:", result);
-// 		return result;
-// 	} catch (error) {
-// 		console.error("❌ Average calculation error:", error.message);
-// 		return { error: `Calculation error: ${error.message}` };
-// 	}
-// }
-
-// function calculateSum({ data, field_path, exclude_zeros = false }) {
-// 	console.log("📊 Starting sum calculation:", { field_path, exclude_zeros });
-// 	try {
-// 		const numbers = extractNumbers(data, field_path, exclude_zeros);
-
-// 		if (numbers.length === 0) {
-// 			console.log("❌ No valid numbers found for sum calculation");
-// 			return {
-// 				error: "No valid numbers found",
-// 				data_sample: JSON.stringify(data).substring(0, 200) + "...",
-// 			};
-// 		}
-
-// 		const sum = numbers.reduce((acc, num) => acc + num, 0);
-
-// 		const result = {
-// 			sum: parseFloat(sum.toFixed(2)),
-// 			count: numbers.length,
-// 			field_path: field_path || "auto-detected (excluding metadata)",
-// 			exclude_zeros: exclude_zeros,
-// 			sample_values: numbers.slice(0, 5),
-// 		};
-
-// 		console.log("✅ Sum calculation complete:", result);
-// 		return result;
-// 	} catch (error) {
-// 		console.error("❌ Sum calculation error:", error.message);
-// 		return { error: `Calculation error: ${error.message}` };
-// 	}
-// }
-
-// function calculateDeviation({ data, field_path, population = false, exclude_zeros = false }) {
-// 	console.log("📊 Starting deviation calculation:", { field_path, population, exclude_zeros });
-// 	try {
-// 		const numbers = extractNumbers(data, field_path, exclude_zeros);
-
-// 		if (numbers.length === 0) {
-// 			console.log("❌ No valid numbers found for deviation calculation");
-// 			return {
-// 				error: "No valid numbers found",
-// 				data_sample: JSON.stringify(data).substring(0, 200) + "...",
-// 			};
-// 		}
-
-// 		if (numbers.length === 1) {
-// 			console.log("ℹ️ Only one number found, deviation is 0");
-// 			return {
-// 				standard_deviation: 0,
-// 				variance: 0,
-// 				mean: numbers[0],
-// 				count: 1,
-// 				field_path: field_path || "auto-detected (excluding metadata)",
-// 				exclude_zeros: exclude_zeros,
-// 			};
-// 		}
-
-// 		const mean = numbers.reduce((acc, num) => acc + num, 0) / numbers.length;
-// 		const squaredDifferences = numbers.map((num) => Math.pow(num - mean, 2));
-// 		const variance = squaredDifferences.reduce((acc, diff) => acc + diff, 0) / (population ? numbers.length : numbers.length - 1);
-// 		const standardDeviation = Math.sqrt(variance);
-
-// 		const result = {
-// 			standard_deviation: parseFloat(standardDeviation.toFixed(2)),
-// 			variance: parseFloat(variance.toFixed(2)),
-// 			mean: parseFloat(mean.toFixed(2)),
-// 			count: numbers.length,
-// 			field_path: field_path || "auto-detected (excluding metadata)",
-// 			exclude_zeros: exclude_zeros,
-// 			type: population ? "population" : "sample",
-// 			sample_values: numbers.slice(0, 5),
-// 		};
-
-// 		console.log("✅ Deviation calculation complete:", result);
-// 		return result;
-// 	} catch (error) {
-// 		console.error("❌ Deviation calculation error:", error.message);
-// 		return { error: `Calculation error: ${error.message}` };
-// 	}
-// }
-
-// function calculatePercentageDeviation({ data, exclude_zeros = true }) {
-// 	console.log("📊 Starting percentage deviation calculation (driver-specific):", { exclude_zeros });
-// 	try {
-// 		const driverTotals = data.map((driver, index) => {
-// 			console.log(`👤 Processing driver ${index}:`, driver.driverName || driver.driverId);
-// 			const shifts = driver.shifts || {};
-// 			let totalHours = 0;
-
-// 			Object.entries(shifts).forEach(([shiftType, hours]) => {
-// 				console.log(`   ⏰ Shift ${shiftType}: ${hours} hours`);
-// 				if (typeof hours === "number" && !isNaN(hours)) {
-// 					if (!exclude_zeros || hours !== 0) {
-// 						totalHours += hours;
-// 					}
-// 				}
-// 			});
-
-// 			console.log(`📈 Driver total hours: ${totalHours}`);
-// 			return {
-// 				driverId: driver.driverId,
-// 				driverName: driver.driverName,
-// 				totalHours: totalHours,
-// 				shifts: shifts,
-// 			};
-// 		});
-
-// 		const totalHours = driverTotals.map((driver) => driver.totalHours);
-// 		console.log("📊 All driver total hours:", totalHours);
-
-// 		if (totalHours.length === 0) {
-// 			console.log("❌ No valid working hours found");
-// 			return { error: "No valid working hours found" };
-// 		}
-
-// 		const average = totalHours.reduce((sum, hours) => sum + hours, 0) / totalHours.length;
-// 		console.log("📊 Average total hours:", average);
-
-// 		const results = driverTotals.map((driver) => {
-// 			const deviation = driver.totalHours - average;
-// 			const percentageDeviation = (deviation / average) * 100;
-
-// 			console.log(`👤 ${driver.driverName}: ${driver.totalHours}h (${percentageDeviation.toFixed(2)}% deviation)`);
-
-// 			return {
-// 				driverId: driver.driverId,
-// 				driverName: driver.driverName,
-// 				totalHours: driver.totalHours,
-// 				deviation: parseFloat(deviation.toFixed(2)),
-// 				percentageDeviation: parseFloat(percentageDeviation.toFixed(2)),
-// 				shifts: driver.shifts,
-// 			};
-// 		});
-
-// 		results.sort((a, b) => b.percentageDeviation - a.percentageDeviation);
-
-// 		const finalResult = {
-// 			averageTotalHours: parseFloat(average.toFixed(2)),
-// 			totalDrivers: results.length,
-// 			results: results,
-// 			summary: {
-// 				highestDeviation: results[0].percentageDeviation,
-// 				lowestDeviation: results[results.length - 1].percentageDeviation,
-// 				averageDeviation: parseFloat((results.reduce((sum, r) => sum + r.percentageDeviation, 0) / results.length).toFixed(2)),
-// 			},
-// 		};
-
-// 		console.log("✅ Percentage deviation calculation complete:", finalResult.summary);
-// 		return finalResult;
-// 	} catch (error) {
-// 		console.error("❌ Percentage deviation calculation error:", error.message);
-// 		return { error: `Calculation error: ${error.message}` };
-// 	}
-// }
-
-// function calculateCustomPercentageDeviation({ data, field_path, group_by, exclude_zeros = false }) {
-// 	console.log("📊 Starting custom percentage deviation calculation:", { field_path, group_by, exclude_zeros });
-// 	try {
-// 		if (!Array.isArray(data)) {
-// 			console.log("❌ Data is not an array");
-// 			return { error: "Data must be an array for custom percentage deviation calculation" };
-// 		}
-
-// 		// Extract values and group by specified field
-// 		const groups = {};
-
-// 		data.forEach((item, index) => {
-// 			console.log(`📝 Processing item ${index}`);
-// 			const value = field_path ? getNestedValue(item, field_path) : typeof item === "number" ? item : null;
-// 			const groupKey = group_by ? getNestedValue(item, group_by) || `item_${index}` : `item_${index}`;
-
-// 			console.log(`   🎯 Value: ${value}, Group: ${groupKey}`);
-
-// 			if (typeof value === "number" && !isNaN(value)) {
-// 				if (!exclude_zeros || value !== 0) {
-// 					if (!groups[groupKey]) {
-// 						groups[groupKey] = [];
-// 						console.log(`   🆕 Created new group: ${groupKey}`);
-// 					}
-// 					groups[groupKey].push({ ...item, value });
-// 					console.log(`   ✅ Added to group ${groupKey}: ${value}`);
-// 				} else {
-// 					console.log(`   ⏭️ Excluded zero value for group ${groupKey}`);
-// 				}
-// 			} else {
-// 				console.log(`   ❌ Invalid value for item ${index}: ${value}`);
-// 			}
-// 		});
-
-// 		console.log("📊 Groups created:", Object.keys(groups));
-
-// 		// Calculate overall average
-// 		const allValues = Object.values(groups)
-// 			.flat()
-// 			.map((item) => item.value);
-
-// 		console.log("📊 All values for average calculation:", allValues);
-
-// 		if (allValues.length === 0) {
-// 			console.log("❌ No valid numbers found for calculation");
-// 			return { error: "No valid numbers found for calculation" };
-// 		}
-
-// 		const overallAverage = allValues.reduce((sum, val) => sum + val, 0) / allValues.length;
-// 		console.log("📊 Overall average:", overallAverage);
-
-// 		// Calculate percentage deviation for each group
-// 		const results = Object.entries(groups).map(([groupKey, items]) => {
-// 			const groupValues = items.map((item) => item.value);
-// 			const groupAverage = groupValues.reduce((sum, val) => sum + val, 0) / groupValues.length;
-// 			const deviation = groupAverage - overallAverage;
-// 			const percentageDeviation = (deviation / overallAverage) * 100;
-
-// 			console.log(`📊 Group ${groupKey}: avg=${groupAverage}, dev=${percentageDeviation.toFixed(2)}%`);
-
-// 			return {
-// 				group: groupKey,
-// 				average: parseFloat(groupAverage.toFixed(2)),
-// 				count: groupValues.length,
-// 				deviation: parseFloat(deviation.toFixed(2)),
-// 				percentageDeviation: parseFloat(percentageDeviation.toFixed(2)),
-// 				items: items,
-// 			};
-// 		});
-
-// 		// Sort by percentage deviation
-// 		results.sort((a, b) => b.percentageDeviation - a.percentageDeviation);
-
-// 		const finalResult = {
-// 			overallAverage: parseFloat(overallAverage.toFixed(2)),
-// 			totalItems: allValues.length,
-// 			totalGroups: results.length,
-// 			results: results,
-// 			summary: {
-// 				highestDeviation: results[0]?.percentageDeviation || 0,
-// 				lowestDeviation: results[results.length - 1]?.percentageDeviation || 0,
-// 			},
-// 		};
-
-// 		console.log("✅ Custom percentage deviation calculation complete:", finalResult.summary);
-// 		return finalResult;
-// 	} catch (error) {
-// 		console.error("❌ Custom percentage deviation calculation error:", error.message);
-// 		return { error: `Calculation error: ${error.message}` };
-// 	}
-// }
-
-// function getAllNumbersFromData({ data, field_path, exclude_zeros = false }) {
-// 	console.log("📊 Starting get all numbers extraction:", { field_path, exclude_zeros });
-// 	try {
-// 		const numbers = extractNumbers(data, field_path, exclude_zeros);
-
-// 		const result = {
-// 			numbers: numbers,
-// 			count: numbers.length,
-// 			field_path: field_path || "auto-detected",
-// 			exclude_zeros: exclude_zeros,
-// 			sample_values: numbers.slice(0, 10),
-// 			min: numbers.length > 0 ? Math.min(...numbers) : null,
-// 			max: numbers.length > 0 ? Math.max(...numbers) : null,
-// 			total: numbers.length > 0 ? numbers.reduce((sum, num) => sum + num, 0) : null,
-// 		};
-
-// 		console.log("✅ Get all numbers extraction complete:", {
-// 			count: result.count,
-// 			min: result.min,
-// 			max: result.max,
-// 			total: result.total,
-// 		});
-// 		return result;
-// 	} catch (error) {
-// 		console.error("❌ Get all numbers extraction error:", error.message);
-// 		return { error: `Extraction error: ${error.message}` };
-// 	}
-// }
-
-// /**
-//  * Streams GPT's partial plain text response until "###END###",
-//  * with integrated function calling capabilities for calculations
-//  */
-// const processIntentAndFormatResponse = async ({
-// 	userMessage,
-// 	api,
-// 	exampleResponse,
-// 	actualData,
-// 	params = {},
-// 	session,
-// 	onStream,
-// }) => {
-// 	console.log("🚀 Starting processIntentAndFormatResponse");
-// 	console.log("📝 User message:", userMessage);
-// 	console.log("🔧 API info:", api?.name);
-// 	console.log("📊 Data type:", typeof actualData, "Is array:", Array.isArray(actualData));
-// 	console.log("⚙️ Params:", params);
-
-// 	let fullText = "";
-
-// 	try {
-// 		// Enhanced system prompt with calculation capabilities
-// 		const systemPrompt = `You are a smart assistant specialized in processing structured API data and performing statistical calculations.
-
-// KEY CAPABILITIES:
-// 1. calculate_average: Calculate average of numbers from any data structure
-// 2. calculate_sum: Calculate sum of numbers from any data structure
-// 3. calculate_deviation: Calculate standard deviation and variance
-// 4. get_all_numbers: Extract all numbers from data structure
-// 5. calculate_percentage_deviation: Calculate percentage deviation for driver working hours
-// 6. calculate_custom_percentage_deviation: Calculate percentage deviation for any field with grouping
-
-// CRITICAL FUNCTION SELECTION:
-// - For queries about "deviation in percentage", "percentage difference", "compare items": USE calculate_custom_percentage_deviation or calculate_percentage_deviation
-// - For general "standard deviation" or "variance": USE calculate_deviation
-// - For averages: USE calculate_average
-// - For totals/sums: USE calculate_sum
-// - For data exploration: USE get_all_numbers
-
-// ANALYSIS WORKFLOW:
-// 1. If user asks for calculations, use appropriate function tools first
-// 2. Present results in clear HTML format with proper tables
-// 3. Always calculate averages before showing deviation percentages
-// 4. Stream the response naturally while incorporating calculation results
-
-// Your tasks:
-// 1. Understand the user's intent from their message.
-// 2. Use function tools for any calculations requested (averages, deviations, sums, etc.)
-// 3. Filter, transform, or aggregate the provided API data as needed.
-// 4. If user asks for "top N items per category", group and display accordingly.
-// 5. Apply numeric thresholds strictly when specified.
-// 6. Format responses in appropriate HTML (tables, lists, or paragraphs).
-// 7. Always provide summary insights with exact numbers.
-
-// ---
-
-// ### API Info
-// Name: ${api.name}
-// Description: ${api.description}
-
-// ### User Message
-// "${userMessage}"
-
-// ### Query Parameters
-// ${JSON.stringify(params, null, 2)}
-
-// ### Example Response Format
-// ${JSON.stringify(exampleResponse, null, 2)}
-
-// ### Raw API Data
-// ${JSON.stringify(actualData, null, 2)}
-
-// ---
-
-// ### Output Instructions
-// - Use function tools for any mathematical calculations
-// - Format output as HTML based on data type and user intent
-// - Start with <p> introduction before tables/lists
-// - Include <div class="summary"> with exact counts and insights
-// - Format dates in readable format
-// - For calculations, show both the process and results clearly
-// - End response with exactly: ###END###
-
-// ${
-// 	api?.isSuitableForGraph
-// 		? `<p class="followup-message">Would you like me to turn this into a graph or chart for easier analysis?</p>`
-// 		: ``
-// }
-// `;
-
-// 		console.log("💭 System prompt created, length:", systemPrompt.length);
-
-// 		let messages = [
-// 			{ role: "system", content: systemPrompt },
-// 			{ role: "user", content: `${userMessage}\n\nData: ${JSON.stringify(actualData)}` },
-// 		];
-
-// 		console.log("📨 Initial messages prepared, count:", messages.length);
-
-// 		// Handle function calling workflow
-// 		let iterationCount = 0;
-// 		while (true) {
-// 			iterationCount++;
-// 			console.log(`🔄 Function calling iteration ${iterationCount}`);
-
-// 			const response = await openai.chat.completions.create({
-// 				model: "gpt-4o-mini",
-// 				messages,
-// 				tools,
-// 				tool_choice: "auto",
-// 				temperature: 0,
-// 			});
-
-// 			console.log("🤖 OpenAI response received");
-// 			const message = response.choices[0].message;
-// 			console.log("📝 Message content length:", message.content?.length || 0);
-// 			console.log("🔧 Tool calls count:", message.tool_calls?.length || 0);
-
-// 			messages.push(message);
-
-// 			// If no tool calls, proceed to streaming response
-// 			if (!message.tool_calls || message.tool_calls.length === 0) {
-// 				console.log("✅ No more tool calls needed, proceeding to final response");
-// 				break;
-// 			}
-
-// 			// Execute function calls
-// 			for (const toolCall of message.tool_calls) {
-// 				console.log("🔧 Executing tool call:", toolCall.function.name);
-// 				console.log("📋 Tool arguments:", toolCall.function.arguments);
-
-// 				let result;
-// 				const args = JSON.parse(toolCall.function.arguments);
-
-// 				switch (toolCall.function.name) {
-// 					case "calculate_average":
-// 						console.log("📊 Executing calculate_average");
-// 						result = calculateAverage({
-// 							data: args.data,
-// 							field_path: args.field_path,
-// 							exclude_zeros: args.exclude_zeros,
-// 						});
-// 						break;
-// 					case "calculate_sum":
-// 						console.log("📊 Executing calculate_sum");
-// 						result = calculateSum({
-// 							data: args.data,
-// 							field_path: args.field_path,
-// 							exclude_zeros: args.exclude_zeros,
-// 						});
-// 						break;
-// 					case "calculate_deviation":
-// 						console.log("📊 Executing calculate_deviation");
-// 						result = calculateDeviation({
-// 							data: args.data,
-// 							field_path: args.field_path,
-// 							population: args.population !== undefined ? args.population : false,
-// 							exclude_zeros: args.exclude_zeros,
-// 						});
-// 						break;
-// 					case "calculate_percentage_deviation":
-// 						console.log("📊 Executing calculate_percentage_deviation");
-// 						result = calculatePercentageDeviation({
-// 							data: args.data,
-// 							exclude_zeros: args.exclude_zeros !== undefined ? args.exclude_zeros : true,
-// 						});
-// 						break;
-// 					case "calculate_custom_percentage_deviation":
-// 						console.log("📊 Executing calculate_custom_percentage_deviation");
-// 						result = calculateCustomPercentageDeviation({
-// 							data: args.data,
-// 							field_path: args.field_path,
-// 							group_by: args.group_by,
-// 							exclude_zeros: args.exclude_zeros,
-// 						});
-// 						break;
-// 					case "get_all_numbers":
-// 						console.log("📊 Executing get_all_numbers");
-// 						result = getAllNumbersFromData(args);
-// 						break;
-// 					default:
-// 						console.log("❌ Unknown function:", toolCall.function.name);
-// 						result = { error: `Unknown function: ${toolCall.function.name}` };
-// 				}
-
-// 				console.log("✅ Tool call result:", result.error ? "ERROR" : "SUCCESS");
-// 				if (result.error) {
-// 					console.log("❌ Tool call error:", result.error);
-// 				}
-
-// 				messages.push({
-// 					role: "tool",
-// 					tool_call_id: toolCall.id,
-// 					content: JSON.stringify(result),
-// 				});
-// 			}
-
-// 			console.log("📨 Messages count after tool calls:", messages.length);
-// 		}
-
-// 		// Now stream the final response
-// 		console.log("🌊 Starting final response streaming");
-// 		const finalPrompt = `Based on the function call results above, provide a comprehensive HTML response that addresses the user's question: "${userMessage}"
-
-// Include:
-// - Clear introduction paragraph
-// - Properly formatted HTML tables/lists based on the data
-// - Summary section with key insights
-// - End with ###END###`;
-
-// 		messages.push({ role: "user", content: finalPrompt });
-// 		console.log("📨 Final messages count:", messages.length);
-
-// 		const completion = await openai.chat.completions.create({
-// 			model: "gpt-4o-mini",
-// 			messages,
-// 			temperature: 0,
-// 			stream: true,
-// 		});
-
-// 		console.log("🌊 Streaming response started");
-// 		let chunkCount = 0;
-// 		for await (const chunk of completion) {
-// 			chunkCount++;
-// 			const delta = chunk.choices?.[0]?.delta?.content || "";
-// 			if (!delta) continue;
-
-// 			fullText += delta;
-
-// 			// Stop when END marker appears
-// 			if (fullText.includes("###END###")) {
-// 				console.log("🛑 END marker found, stopping stream");
-// 				break;
-// 			}
-
-// 			const cleaned = delta.replace(/###\s*END\s*###/gi, "");
-// 			if (cleaned) {
-// 				const formatted = cleaned
-// 					.replace(/([a-z])([A-Z])/g, "$1 $2")
-// 					.replace(/(\d)([A-Za-z])/g, "$1 $2")
-// 					.replace(/([a-zA-Z])(\d)/g, "$1 $2");
-// 				if (onStream) onStream(formatted);
-// 			}
-// 		}
-
-// 		const finalReply = fullText.replace(/###END###/g, "").trim();
-
-// 		// Save the session
-// 		await Session.updateOne(
-// 			{ _id: session._id },
-// 			{
-// 				$set: {
-// 					lastResponseMessage: finalReply,
-// 					lastSuccessUserMessage: userMessage,
-// 					lastSuccessIntent: api?.name || null,
-// 					lastSuccessApiResponse: actualData,
-// 					lastSuccessParams: params,
-// 					missingField: null,
-// 				},
-// 			}
-// 		);
-
-// 		return {
-// 			userReply: finalReply,
-// 			params,
-// 			api,
-// 		};
-// 	} catch (err) {
-// 		console.error("processIntentAndFormatResponse error:", err.message);
-// 		return {
-// 			userReply: "Here's the available data. (Intent-based processing failed.)",
-// 			params,
-// 			api,
-// 		};
-// 	}
-// };
-
-// module.exports = processIntentAndFormatResponse;

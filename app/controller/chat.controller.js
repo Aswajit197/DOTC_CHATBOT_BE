@@ -103,7 +103,7 @@ chat.sendMessage = async (req, res) => {
 		const intentResult = await getIntentFromOpenAI(message, session, {
 			onStream: (chunk) => {
 				// 🔹 Check if aborted before streaming
-				if (isAborted || internalAbortController.signal.aborted) {
+				if (isAborted || internalAbortController.signal.aborted) {     
 					console.log("⚠️ Stream aborted, stopping chunk processing");
 					return;
 				}
