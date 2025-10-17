@@ -237,61 +237,86 @@ async function detectCalculationIntent(userMessage, apiData, apiDescription) {
 					role: "system",
 					content: `You are an intelligent calculation intent analyzer. Your job is to understand what mathematical operations the user wants performed on their data.
 
+**CRITICAL: Check API Capabilities First**
+Before recommending ANY calculation, check if the API description already provides that data:
+- If API says "Returns total hours" → Don't calculate sum, just display
+- If API says "Returns average" → Don't calculate average, just display
+- If API says "Returns breakdown by..." → Don't aggregate, just display the breakdown
+- If API says "Returns list of items with values" → User is just asking to see the data
+
+Only recommend calculation if the API does NOT already provide that specific metric.
+
 **Response Format (JSON only):**
 {
   "needsCalculation": boolean,
   "calculationType": "average" | "sum" | "deviation" | "percentageDeviation" | "minMax" | "none",
   "fieldPath": "field.name" or null,
   "excludeZeros": boolean,
-  "reasoning": "brief explanation of your choice"
+  "reasoning": "brief explanation of your choice",
+  "apiAlreadyProvides": "what the API already provides",
+  "userJustWantsToSee": boolean
 }
+
+**Key Decision Logic:**
+
+1. **API Already Provides This** (needsCalculation = false):
+   - API description contains "total" + user asks for "total" → Display only
+   - API description contains "average" + user asks for "average" → Display only
+   - API description contains "breakdown" + user asks to "show breakdown" → Display only
+   - API description contains "returns list" + user asks to "show list/all drivers" → Display only
+   - Set calculationType: "none"
+   - Set userJustWantsToSee: true
+
+2. **User Wants Analysis Beyond API Scope** (needsCalculation = true):
+   - User asks for "which driver deviates most from average" → percentageDeviation
+   - User asks for "standard deviation of values" → deviation
+   - User asks for "highest and lowest" → minMax
+   - API provides list, but user wants statistical comparison → appropriate calculation
+
+3. **Ambiguous Cases:**
+   - If user says "give me hours" and API already returns hours → Display only
+   - If user says "show all drivers" and API shows all drivers → Display only
+   - If user says "total for each driver" and API returns per-driver breakdown → Display only
 
 **Calculation Types Explained:**
 
 1. **"percentageDeviation"** - When user wants to see how items differ from the average:
    - Keywords: "deviation", "variance", "differ from average", "above/below average"
    - Common phrases: 
-     * "total hours with deviation percentage"
-     * "how much do drivers deviate from average"
+     * "which driver deviates most"
+     * "how much do drivers differ from average"
      * "show variance from mean"
-     * "percentage difference from average"
-   - Use when: User wants BOTH the values AND how they compare to average
+   - Use when: User wants BOTH the values AND statistical comparison
 
 2. **"average"** - When user ONLY wants the mean value:
-   - Keywords: "average", "mean" (without deviation/variance)
-   - Common phrases:
-     * "what is the average hours"
-     * "calculate mean value"
-     * "show me average"
-   - Use when: User wants just the average, no comparison
+   - ONLY if API does NOT already return "average" or "mean"
+   - Keywords: "what is the average"
+   - Use when: API provides raw data and user specifically asks for mean calculation
 
 3. **"sum"** - When user ONLY wants the total:
-   - Keywords: "total", "sum", "add up" (without deviation/variance)
-   - Common phrases:
-     * "what is the total of all hours"
-     * "sum of all values"
-     * "add up all shifts"
-   - Use when: User wants just the sum, no per-item breakdown
+   - ONLY if API does NOT already return "total"
+   - Keywords: "what is the total", "add them up"
+   - Use when: API provides items and user wants them summed
 
 4. **"deviation"** - For standard deviation (statistical measure):
-   - Keywords: "standard deviation", "std dev", "statistical variance"
-   - Use when: User specifically asks for standard deviation
+   - Keywords: "standard deviation", "std dev"
+   - ONLY if user explicitly asks for this statistical metric
 
 5. **"minMax"** - For finding extremes:
-   - Keywords: "highest", "lowest", "maximum", "minimum", "top", "bottom"
-   - Use when: User wants to find min/max values
+   - Keywords: "highest", "lowest", "maximum", "minimum"
+   - Use when: User wants to identify outliers/extremes
 
 6. **"none"** - No calculations needed:
+   - API already provides what user asks for
    - User just wants to see/list/display data
-   - No mathematical operations mentioned
+   - NO mathematical operations mentioned or needed
 
-**CRITICAL DECISION RULES:**
+**CRITICAL DECISION TREE:**
 
-Rule 1: If user mentions "deviation", "variance", "differ", "compare to average" → Choose "percentageDeviation"
-Rule 2: If user wants BOTH values AND comparison → Choose "percentageDeviation"
-Rule 3: If user wants ONLY average (no comparison) → Choose "average"
-Rule 4: If user wants ONLY total (no per-item details) → Choose "sum"
-Rule 5: When in doubt between "sum" and "percentageDeviation", ask yourself: "Does the user want to see individual item comparisons?" If yes → "percentageDeviation"
+1. Check if API description mentions the requested metric (total, average, breakdown, etc.)
+2. If YES → calculationType: "none", userJustWantsToSee: true
+3. If NO → Check what calculation would add value
+4. Match user intent to appropriate calculation type
 
 **Field Path Detection:**
 - If data has nested objects (like "shifts"), set fieldPath appropriately
@@ -304,12 +329,14 @@ Rule 5: When in doubt between "sum" and "percentageDeviation", ask yourself: "Do
 				},
 				{
 					role: "user",
-					content: `Analyze this query and determine the calculation intent.
+					content: `Analyze this query and determine if calculation is actually needed.
 
 **User Message:** "${userMessage}"
 
+**API Description:**
+${apiDescription || "No description provided"}
+
 **API Context:**
-- API Name: ${apiDescription || "Unknown"}
 - Data Type: ${Array.isArray(apiData) ? `Array with ${apiData.length} items` : "Object"}
 
 **Data Sample (first 3 items):**
@@ -317,6 +344,12 @@ ${JSON.stringify(dataSample, null, 2)}
 
 **Data Structure Keys:**
 ${Array.isArray(apiData) && apiData.length > 0 ? Object.keys(apiData[0] || {}).join(", ") : "N/A"}
+
+**Analysis Instructions:**
+1. First, check the API description for what it already returns
+2. Compare with what the user is asking for
+3. If the user just wants to SEE what the API already provides, set needsCalculation to false
+4. Only set needsCalculation to true if the user wants NEW calculations/analysis
 
 Provide your analysis in JSON format.`,
 				},
@@ -329,6 +362,9 @@ Provide your analysis in JSON format.`,
 		console.log("🎯 AI Intent Analysis:", {
 			calculationType: result.calculationType,
 			reasoning: result.reasoning,
+			apiAlreadyProvides: result.apiAlreadyProvides,
+			userJustWantsToSee: result.userJustWantsToSee,
+			needsCalculation: result.needsCalculation,
 			fieldPath: result.fieldPath,
 			excludeZeros: result.excludeZeros,
 		});
@@ -343,6 +379,8 @@ Provide your analysis in JSON format.`,
 			fieldPath: null,
 			excludeZeros: false,
 			reasoning: "Error in detection, falling back to display mode",
+			apiAlreadyProvides: "Unknown",
+			userJustWantsToSee: true,
 		};
 	}
 }

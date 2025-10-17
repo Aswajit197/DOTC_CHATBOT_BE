@@ -1,31 +1,6 @@
 const { OpenAI } = require("openai");
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-// // Get last context from session
-// function getLastContext(session) {
-// 	const reversed = [...(session.history || [])].reverse();
-// 	for (const entry of reversed) {
-// 		if (entry.sender === "bot" && entry.context?.lastIntent && entry.context?.lastParams) {
-// 			return {
-// 				lastIntent: entry.context.lastIntent,
-// 				lastParams: entry.context.lastParams,
-// 			};
-// 		}
-// 	}
-// 	return null;
-// }
-
-// // Merge all historic params
-// function gatherMergedParams(session) {
-// 	const merged = {};
-// 	for (const entry of session.history || []) {
-// 		if (entry.context?.lastParams) {
-// 			Object.assign(merged, entry.context.lastParams);
-// 		}
-// 	}
-// 	return merged;
-// }
-
 // Get current ISO week number
 function getCurrentWeekNumber() {
 	const now = new Date();
@@ -34,53 +9,57 @@ function getCurrentWeekNumber() {
 	return Math.ceil((now.getDay() + 1 + numberOfDays) / 7);
 }
 
-// Resolve natural descriptions into week numbers
-function resolveWeekDescription(desc) {
-	const currentWeek = getCurrentWeekNumber();
-
-	if (!desc || desc.trim() === "") return null;
-	desc = desc.toLowerCase().trim();
-
-	if (desc.includes("current")) return currentWeek;
-
-	const matchLastWeeks = desc.match(/last (\d+) weeks?/);
-	if (matchLastWeeks) {
-		const n = parseInt(matchLastWeeks[1], 10);
-		// For "last 3 weeks", we want to start 3 weeks ago
-		const startWeek = currentWeek - n + 1;
-		return startWeek >= 1 ? startWeek : 1;
-	}
-
-	const matchLastWeek = desc.match(/last week/);
-	if (matchLastWeek) {
-		return currentWeek - 1 >= 1 ? currentWeek - 1 : 1;
-	}
-
-	const matchWeekNumber = desc.match(/week (\d+)/);
-	if (matchWeekNumber) {
-		return parseInt(matchWeekNumber[1], 10);
-	}
-
-	return null;
-}
-
 // Helper to extract date-related fields from OpenAI
 async function extractDateParamsFromOpenAI(userMessage) {
+	console.log("entered Here 💬💬💬💬");
+
+	const currentWeek = getCurrentWeekNumber();
+	const currentYear = new Date().getFullYear();
+
 	const prompt = `
-Extract the following fields from the user message if mentioned, else return null:
-- WeekStartingDescription (natural description like "last 3 weeks", "week 32", "current week")
-- WeekEndingDescription (natural description like "current week", "week 37")
-- Year (4-digit integer or null)
+You are a date parameter extraction assistant. Today's information:
+- Current Week Number: ${currentWeek}
+- Current Year: ${currentYear}
+
+Extract week and year parameters from the user's message and return the ACTUAL WEEK NUMBERS.
+
+Rules:
+1. For "last N weeks" or "past N weeks": 
+   - WeekStarting = current week - N + 1
+   - WeekEnding = current week
+   
+2. For "last week" (singular):
+   - WeekStarting = current week - 1
+   - WeekEnding = current week - 1
+   
+3. For "current week" or "this week":
+   - WeekStarting = current week
+   - WeekEnding = current week
+   
+4. For "week N" (specific week):
+   - WeekStarting = N
+   - WeekEnding = N
+   
+5. If year is mentioned, use it. Otherwise, use current year.
+
+6. If no time period is mentioned, return null for all fields.
 
 User message: "${userMessage}"
 
-Return a valid JSON object like:
+Return ONLY a valid JSON object with actual week numbers (integers):
 {
-  "WeekStartingDescription": string or null,
-  "WeekEndingDescription": string or null,
+  "WeekStarting": number or null,
+  "WeekEnding": number or null,
   "Year": number or null
 }
+
+Examples:
+- "last 4 weeks" → {"WeekStarting": ${currentWeek - 4 + 1}, "WeekEnding": ${currentWeek}, "Year": ${currentYear}}
+- "last week" → {"WeekStarting": ${currentWeek - 1}, "WeekEnding": ${currentWeek - 1}, "Year": ${currentYear}}
+- "current week" → {"WeekStarting": ${currentWeek}, "WeekEnding": ${currentWeek}, "Year": ${currentYear}}
+- "week 35" → {"WeekStarting": 35, "WeekEnding": 35, "Year": ${currentYear}}
 `;
+
 	try {
 		const completion = await openai.chat.completions.create({
 			messages: [{ role: "user", content: prompt }],
@@ -89,12 +68,13 @@ Return a valid JSON object like:
 		});
 
 		const response = completion.choices[0].message.content.trim();
+		console.log(response, "response params");
 		return JSON.parse(response);
 	} catch (err) {
 		console.warn("OpenAI param extraction failed:", err.message);
 		return {
-			WeekStartingDescription: null,
-			WeekEndingDescription: null,
+			WeekStarting: null,
+			WeekEnding: null,
 			Year: null,
 		};
 	}
@@ -103,6 +83,7 @@ Return a valid JSON object like:
 // Main param handler
 async function handleParamsForApi(matchedApi, params, userMessage, session, { onStream, abortSignal } = {}, type) {
 	console.log(params, "params in param handler");
+
 	// 🔹 Exit early if aborted
 	if (abortSignal?.aborted) {
 		console.log("🚫 handleParamsForApi: Aborted before processing");
@@ -129,46 +110,6 @@ async function handleParamsForApi(matchedApi, params, userMessage, session, { on
 	}
 
 	let missingFields = matchedApi.requiredFields.filter((f) => !params[f]);
-
-	// Pre-run handler
-	// if (missingFields.length) {
-	// 	try {
-	// 		// 🔹 Abort check
-	// 		if (abortSignal?.aborted) {
-	// 			console.log("🚫 handleParamsForApi aborted before pre-run handler");
-	// 			return { params, missingFields, formattedReply: null };
-	// 		}
-	// 		const tempParams = { ...params };
-	// 		let tempResult;
-	// 		if (type === "multi_intent") {
-	// 			tempResult = await matchedApi.multiHandler(tempParams, userMessage, session, onStream);
-	// 		} else {
-	// 			tempResult = await matchedApi.handler(tempParams, userMessage, session, onStream);
-	// 		}
-
-	// 		if (!tempResult?.missingFields) {
-	// 			return {
-	// 				params: tempParams,
-	// 				formattedReply: tempResult?.userReply,
-	// 				missingFields: [],
-	// 			};
-	// 		} else {
-	// 			for (const f of matchedApi.requiredFields) {
-	// 				if (!params[f] && tempParams[f]) params[f] = tempParams[f];
-	// 			}
-	// 		}
-
-	// 		missingFields = matchedApi.requiredFields.filter((f) => !params[f]);
-	// 	} catch (err) {
-	// 		if (abortSignal?.aborted) {
-	// 			console.log("🚫 Pre-run handler aborted");
-	// 			return { params, missingFields, formattedReply: null };
-	// 		}
-	// 		console.warn("Pre-run handler check failed:", err.message);
-	// 	}
-	// }
-
-	// OpenAI-based intelligent extraction
 	const dateFields = ["WeekStarting", "WeekEnding", "Year"];
 	const needsDateExtraction = missingFields.some((f) => dateFields.includes(f));
 
@@ -179,23 +120,17 @@ async function handleParamsForApi(matchedApi, params, userMessage, session, { on
 			console.log("🚫 handleParamsForApi aborted during date extraction");
 			return { params, missingFields, formattedReply: null };
 		}
-		// console.log("OpenAI extracted:", extracted);
-		const { WeekStartingDescription, WeekEndingDescription, Year } = extracted;
+
+		const { WeekStarting, WeekEnding, Year } = extracted;
 		const currentWeek = getCurrentWeekNumber();
 
-		// Resolve week numbers based on OpenAI's intelligent parsing
-		if (WeekStartingDescription) {
-			const resolvedStart = resolveWeekDescription(WeekStartingDescription);
-			if (resolvedStart !== null) {
-				params.WeekStarting = resolvedStart;
-			}
+		// Use the week numbers directly from OpenAI
+		if (WeekStarting !== null && WeekStarting !== undefined) {
+			params.WeekStarting = WeekStarting;
 		}
 
-		if (WeekEndingDescription) {
-			const resolvedEnd = resolveWeekDescription(WeekEndingDescription);
-			if (resolvedEnd !== null) {
-				params.WeekEnding = resolvedEnd;
-			}
+		if (WeekEnding !== null && WeekEnding !== undefined) {
+			params.WeekEnding = WeekEnding;
 		}
 
 		// Set year
@@ -246,4 +181,29 @@ module.exports = { handleParamsForApi };
 // 		}
 // 	}
 // 	missingFields = matchedApi.requiredFields.filter((f) => !params[f]);
+// }
+
+// // Get last context from session
+// function getLastContext(session) {
+// 	const reversed = [...(session.history || [])].reverse();
+// 	for (const entry of reversed) {
+// 		if (entry.sender === "bot" && entry.context?.lastIntent && entry.context?.lastParams) {
+// 			return {
+// 				lastIntent: entry.context.lastIntent,
+// 				lastParams: entry.context.lastParams,
+// 			};
+// 		}
+// 	}
+// 	return null;
+// }
+
+// // Merge all historic params
+// function gatherMergedParams(session) {
+// 	const merged = {};
+// 	for (const entry of session.history || []) {
+// 		if (entry.context?.lastParams) {
+// 			Object.assign(merged, entry.context.lastParams);
+// 		}
+// 	}
+// 	return merged;
 // }
