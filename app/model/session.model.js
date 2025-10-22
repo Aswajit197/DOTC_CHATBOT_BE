@@ -9,10 +9,9 @@ const sessionSchema = new mongoose.Schema(
 			{
 				sender: String,
 				message: String,
-				context: {},
 				chatType: String, //used for type like visualization in frontend
-				data: { type: mongoose.Schema.Types.Mixed },
-				graphContents: {
+				data: { type: mongoose.Schema.Types.Mixed },  // api response data for visualization 
+				graphContents: {  //only useful/added for visualization type
 					lastGraphPrompt: { type: String }, //last success matched Api
 					lastGraphResponse: { type: String }, //last success bot response message
 					lastGraphParams: { type: mongoose.Schema.Types.Mixed }, // last params used
@@ -22,13 +21,13 @@ const sessionSchema = new mongoose.Schema(
 				timestamp: Date,
 			},
 		],
+		//last successful bot response , api response etc...
 		lastResponseMessage: { type: String },
 		lastSuccessUserMessage: { type: String },
 		lastSuccessIntent: { type: String },
 		lastSuccessApiResponse: { type: mongoose.Schema.Types.Mixed },
 		lastSuccessParams: { type: mongoose.Schema.Types.Mixed },
-
-		// 🔹 to persist missing field context
+		// 🔹 to persist missing field context (using if user forgot to provide some param in last message and send that for that required missing field in current message)
 		missingField: {
 			lastMissingFieldBotMessage: { type: String },
 			lastMissingApiIntent: { type: String },

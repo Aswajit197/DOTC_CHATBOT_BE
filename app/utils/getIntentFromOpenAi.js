@@ -236,6 +236,7 @@ Important:
 	}
 
 	//reducing api call and token if user intent matches the last intent
+		``
 	// if (matchedApi?.name === session?.lastSuccessIntent) {
 	// 	return await refineResponseFromLastResponse(userMessage, session, { onStream, abortSignal });
 	// }
@@ -331,11 +332,8 @@ Respond ONLY with plain text.
 		console.log(missingFields, "missingFields");
 		const fallbackHelpPrompt = `
 You are a helpful assistant for a Driver Management platform.
-
 The user said: "${userMessage}"
-
 You are about to call the API: "${matchedApi.name}".
-
 This API requires the following fields: ${matchedApi.requiredFields.join(", ")}.
 
 Already provided/handled fields should NOT be asked again.
