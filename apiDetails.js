@@ -14,8 +14,8 @@ module.exports = [
 		requiredFields: ["ClientId"],
 		graphType: "bar",
 		exampleResponse: [
-			{ driverName: "Alejandro Reyes", hours: 30 },
-			{ driverName: "Hele Reyes", hours: 40 },
+			{ driverId: 1482, driverName: "Alejandro Reyes", hours: 30 },
+			{ driverId: 1484, driverName: "Hele Reyes", hours: 40 },
 		],
 
 		handler: async (params, userMessage, session, onStream, abortSignal) => {
@@ -43,6 +43,7 @@ module.exports = [
 
 				const driversWeeklyWorkingHrList =
 					data?.data?.map((item) => ({
+						driverId: item?.driverId,
 						driverName: item?.driverName,
 						hours: item?.hours,
 					})) || [];
@@ -57,8 +58,8 @@ module.exports = [
 						isSuitableForGraph: true,
 					},
 					exampleResponse: [
-						{ driverName: "Alejandro Reyes", hours: 30 },
-						{ driverName: "Hele Reyes", hours: 40 },
+						{ driverId: 1482, driverName: "Alejandro Reyes", hours: 30 },
+						{ driverId: 1484, driverName: "Hele Reyes", hours: 40 },
 					],
 					actualData: driversWeeklyWorkingHrList,
 					params,
@@ -1354,6 +1355,7 @@ Respond in JSON only:
 		requiredFields: ["ClientId"],
 		exampleResponse: [
 			{
+				driverId: 1482,
 				driverName: "Alejandaro Rayes",
 				mobilePhone: 9178334663,
 				email: "tincho76ny@gmail.com",
@@ -1382,6 +1384,7 @@ Respond in JSON only:
 
 				const driverList =
 					data?.data?.map((item) => ({
+						driverId: item.driverId,
 						driverName: item.firstName + " " + item.lastName,
 						mobilePhone: item.mobilePhone,
 						email: item.email,
@@ -1397,8 +1400,8 @@ Respond in JSON only:
 					},
 					exampleResponse: [
 						{
-							firstName: "Alejandro",
-							lastName: "Rayes",
+							driverId: 1482,
+							driverName: "Alejandaro Rayes",
 							mobilePhone: 9178334663,
 							email: "tincho76ny@gmail.com",
 						},
@@ -1521,7 +1524,7 @@ Respond in JSON only:
 		description:
 			"provides the default weekly rules used by the scheduler when generating schedules, including maximum working hours, maximum consecutive days or hours allowed, standby shift limits, and tolerable or intolerable thresholds. Use this when the user asks about baseline scheduling rules, such as “What are the maximum weekly hours for drivers?”, “How many consecutive days can a driver work by default?”, or “What is the limit on standby shifts in a week?",
 		requiredFields: ["ClientId"],
-		graphType:"line",
+		graphType: "line",
 		exampleResponse: {
 			maxHrs: 40,
 			maxConsecutiveDaysWork: 5,

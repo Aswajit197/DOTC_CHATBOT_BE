@@ -1,7 +1,7 @@
 const { OpenAI } = require("openai");
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const Session = require("../model/session.model");
-const { detectContextualReference, filterByContext } = require("./contextHandler");
+
 // ===== CALCULATION UTILITIES =====
 
 function getNestedValue(obj, path) {
@@ -452,40 +452,17 @@ const processIntentAndFormatResponse = async ({
 	let fullText = "";
 
 	try {
+		// 🔹 Check abort at start
 		if (abortSignal?.aborted) {
 			console.log("🚫 processIntentAndFormatResponse: Aborted before execution");
 			return { error: "Request aborted" };
 		}
 
-		// 🔹 NEW: Check for contextual reference
-		const contextCheck = await detectContextualReference(userMessage, session);
-		let dataToProcess = actualData;
-
-		if (contextCheck.isContextual && contextCheck.contextualEntities) {
-			console.log("🎯 Applying contextual filtering...");
-			
-			// Filter data based on previous context
-			dataToProcess = filterByContext(
-				actualData,
-				contextCheck.contextualEntities,
-				session.contextData?.lastEntityType
-			);
-
-			// If filtering resulted in data, add context note
-			if (dataToProcess.length < actualData.length) {
-				console.log(`✅ Context applied: ${actualData.length} → ${dataToProcess.length} items`);
-			}
-		}
-
-		if (abortSignal?.aborted) {
-			console.log("🚫 processIntentAndFormatResponse: Aborted after context check");
-			return { error: "Request aborted" };
-		}
-
-		// 🚀 STEP 1: AI-powered intent detection (use filtered data)
+		// 🚀 STEP 1: AI-powered intent detection
 		console.log("🤖 Starting AI intent detection...");
-		const calculationIntent = await detectCalculationIntent(userMessage, dataToProcess, api?.description);
+		const calculationIntent = await detectCalculationIntent(userMessage, actualData, api?.description);
 
+		// 🔹 Check abort after intent detection
 		if (abortSignal?.aborted) {
 			console.log("🚫 processIntentAndFormatResponse: Aborted after intent detection");
 			return { error: "Request aborted" };
@@ -495,11 +472,14 @@ const processIntentAndFormatResponse = async ({
 		let preCalculatedResults = null;
 		if (calculationIntent.needsCalculation && calculationIntent.calculationType !== "none") {
 			console.log("📊 Pre-calculation triggered...");
-			preCalculatedResults = performCalculations(dataToProcess, calculationIntent);
+			preCalculatedResults = performCalculations(actualData, calculationIntent);
 
 			if (preCalculatedResults) {
 				console.log("✅ Pre-calculation complete:", preCalculatedResults.type);
+				console.log("   Result summary:", Object.keys(preCalculatedResults.result).join(", "));
 			}
+		} else {
+			console.log("ℹ️ No calculation needed, proceeding with display-only mode");
 		}
 
 		// 🚀 STEP 3: Build the intelligent prompt
@@ -512,24 +492,8 @@ API Description: ${api.description}
 User Message: "${userMessage}"
 Query Parameters: ${JSON.stringify(params, null, 2)}
 
-${
-	contextCheck.isContextual
-		? `
-### 🎯 CONTEXTUAL QUERY DETECTED
-This query references entities from a previous query:
-- Previous Entity Type: ${session.contextData?.lastEntityType || "unknown"}
-- Previous Intent: ${session.lastSuccessIntent || "none"}
-- Context Applied: Data has been filtered to show only the ${dataToProcess.length} items from the previous result
-- Original Count: ${actualData.length} items → Filtered to: ${dataToProcess.length} items
-
-**Important:** The user is asking about "their/them/these/those" referring to the previous ${session.contextData?.lastEntityCount} ${session.contextData?.lastEntityType}.
-Make sure your response acknowledges this context naturally (e.g., "For the 10 drivers you asked about...").
-`
-		: ""
-}
-
 ### Available Data
-${JSON.stringify(dataToProcess, null, 2)}
+${JSON.stringify(actualData, null, 2)}
 
 ${
 	preCalculatedResults
@@ -539,22 +503,97 @@ Calculation Type: ${preCalculatedResults.type}
 ${JSON.stringify(preCalculatedResults.result, null, 2)}
 
 **CRITICAL: Pre-calculated results are provided. You MUST use them.**
-[Rest of your existing pre-calculation instructions...]
+
+${
+	preCalculatedResults.type === "percentageDeviation"
+		? `
+**Instructions for Percentage Deviation:**
+1. Create an HTML table with these EXACT columns:
+   - Driver Name (or item name from results[].name)
+   - Total Hours/Value (from results[].value)
+   - Deviation (from results[].deviation)
+   - Percentage Deviation (from results[].percentageDeviation with %)
+
+2. Start with: "<p>The average working hours is ${preCalculatedResults.result.average} hours. Here's how each driver compares:</p>"
+
+3. Display ALL ${preCalculatedResults.result.totalItems} items from the results array
+
+4. In the summary, include:
+   - Total drivers: ${preCalculatedResults.result.totalItems}
+   - Average hours: ${preCalculatedResults.result.average}
+   - Highest deviation: ${preCalculatedResults.result.summary.highestDeviationItem} at ${preCalculatedResults.result.summary.highestDeviation}%
+   - Lowest deviation: ${preCalculatedResults.result.summary.lowestDeviationItem} at ${preCalculatedResults.result.summary.lowestDeviation}%
+
+Do NOT recalculate - use these exact values.
+`
+		: ""
+}
+
+${
+	preCalculatedResults.type === "average"
+		? `
+**Instructions for Average:**
+Display the average (${preCalculatedResults.result.average}), count (${preCalculatedResults.result.count}), and total sum (${preCalculatedResults.result.total_sum}).
+`
+		: ""
+}
+
+${
+	preCalculatedResults.type === "sum"
+		? `
+**Instructions for Sum:**
+Display the total sum (${preCalculatedResults.result.sum}) and count (${preCalculatedResults.result.count}).
+`
+		: ""
+}
+
+${
+	preCalculatedResults.type === "standardDeviation"
+		? `
+**Instructions for Standard Deviation:**
+Display standard deviation (${preCalculatedResults.result.standard_deviation}), mean (${preCalculatedResults.result.mean}), and variance (${preCalculatedResults.result.variance}).
+`
+		: ""
+}
+
+${
+	preCalculatedResults.type === "minMax"
+		? `
+**Instructions for Min/Max:**
+Display minimum (${preCalculatedResults.result.min}), maximum (${preCalculatedResults.result.max}), and range (${preCalculatedResults.result.range}).
+`
+		: ""
+}
+
 `
 		: ""
 }
 
 ### Your Task
 1. **Understand the user's intent** from their message
-${contextCheck.isContextual ? "2. **Acknowledge the contextual reference** naturally in your response" : ""}
-3. ${
+2. ${
 			preCalculatedResults
 				? "**Use the pre-calculated results above** - they are accurate and complete"
-				: "**Process the filtered data** to answer the question"
+				: "**Process the raw data** to answer the question"
 		}
-4. **Apply any additional filters** mentioned in the user message
-5. **Choose the best format** (table/list/paragraph)
-6. **Structure your response** with intro, main content, and summary
+3. **Apply any filters** mentioned in the user message:
+   - For "top N": show exactly N items
+   - For thresholds: only include items meeting criteria
+   - For categories: group appropriately
+4. **Choose the best format**:
+   - **Tables**: For comparisons, multiple attributes, calculated results
+     - Use <thead> with <th> and <tbody> with <tr><td>
+     - Make headers descriptive
+   - **Lists**: For simple enumerations
+   - **Paragraphs**: For descriptive content
+5. **Structure your response**:
+   - Introductory <p> sentence
+   - Main content (table/list/paragraph)
+   - <div class="summary"> with:
+     * Exact counts (no vague terms)
+     * 2-3 key insights
+     * Statistics from pre-calculated results if available
+6. **Format dates** in readable format
 
 ${
 	api?.isSuitableForGraph
@@ -582,6 +621,7 @@ Generate the response now:
 		});
 
 		for await (const chunk of completion) {
+			// 🔹 Check abort during streaming
 			if (abortSignal?.aborted) {
 				console.log("🚫 processIntentAndFormatResponse: Aborted during streaming");
 				return { error: "Request aborted" };
@@ -606,12 +646,13 @@ Generate the response now:
 
 		const finalReply = fullText.replace(/###END###/g, "").trim();
 
+		// 🔹 Check abort before saving
 		if (abortSignal?.aborted) {
 			console.log("🚫 processIntentAndFormatResponse: Aborted before session save");
 			return { error: "Request aborted" };
 		}
 
-		// ✅ Save the session with updated context
+		// ✅ Save the session
 		await Session.updateOne(
 			{ _id: session._id },
 			{
@@ -619,18 +660,14 @@ Generate the response now:
 					lastResponseMessage: finalReply,
 					lastSuccessUserMessage: userMessage,
 					lastSuccessIntent: api?.name || null,
-					lastSuccessApiResponse: actualData, // Store ORIGINAL data, not filtered
+					lastSuccessApiResponse: actualData,
 					lastSuccessParams: params,
 					missingField: null,
 				},
 			}
 		);
 
-		// 🔹 Update context data for future queries
-		await session.updateContext(api?.name, actualData);
-		await session.save();
-
-		console.log("✅ Response generation complete with context tracking");
+		console.log("✅ Response generation complete");
 
 		return {
 			userReply: finalReply,
