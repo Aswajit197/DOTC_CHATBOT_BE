@@ -23,39 +23,22 @@ const sessionSchema = new mongoose.Schema(
 			},
 		],
 
-		// Last successful bot response, API response etc...
 		lastResponseMessage: { type: String },
 		lastSuccessUserMessage: { type: String },
 		lastSuccessIntent: { type: String },
 		lastSuccessApiResponse: { type: mongoose.Schema.Types.Mixed },
 		lastSuccessParams: { type: mongoose.Schema.Types.Mixed },
 
-		// 🔹 NEW: Context tracking for referential queries
+		// 🔹 ULTRA SIMPLIFIED CONTEXT - Just IDs/Names
 		contextData: {
-			// Entities from the last query (drivers, items, etc.)
-			lastEntities: [
-				{
-					type: { type: String }, // e.g., "driver", "shift", "station"
-					id: mongoose.Schema.Types.Mixed, // driver ID, shift ID, etc.
-					name: String, // display name
-					data: { type: mongoose.Schema.Types.Mixed }, // full entity data if needed
-				},
-			],
-			// Track what was being discussed
-			lastEntityType: { type: String }, // "drivers", "shifts", "stations"
-			lastEntityCount: { type: Number }, // how many entities were in the result
-			// Intent chain for multi-step queries
-			intentChain: [
-				{
-					intent: String,
-					timestamp: Date,
-					entityType: String,
-				},
-			],
+			entityData: [String], // e.g., ["4637277dhdh37", "e3729wjw282"] or ["Alex", "John"]
+			entityFieldName: { type: String }, // e.g., "driverId" or "driverName"
+			entityIntent: { type: String }, // API name that generated this
+			entityUserMessage: { type: String }, // Original user query
+			entityCount: { type: Number }, // How many entities
 			lastUpdated: { type: Date, default: Date.now },
 		},
 
-		// Missing field context
 		missingField: {
 			lastMissingFieldBotMessage: { type: String },
 			lastMissingApiIntent: { type: String },
@@ -66,65 +49,39 @@ const sessionSchema = new mongoose.Schema(
 		createdAt: {
 			type: Date,
 			default: Date.now,
-			expires: 5 * 60 * 60 * 24, // 5 * 24 hours
+			expires: 5 * 60 * 60 * 24,
 		},
 	},
 	{ timestamps: true }
 );
 
-// Helper method to update context after successful query
-sessionSchema.methods.updateContext = function (apiName, apiResponse, entityType = null) {
-	// Auto-detect entity type from API name if not provided
-	if (!entityType) {
-		if (apiName.toLowerCase().includes("driver")) entityType = "drivers";
-		else if (apiName.toLowerCase().includes("shift")) entityType = "shifts";
-		else if (apiName.toLowerCase().includes("station")) entityType = "stations";
-	}
+// 🔹 Simple method - No complex logic
+sessionSchema.methods.updateContext = function (apiName, entityIds, entityFieldName, userMessage) {
+	console.log("\n========================================");
+	console.log("🔄 UPDATING CONTEXT");
+	console.log("========================================");
+	console.log("API Name:", apiName);
+	console.log("Entity field:", entityFieldName);
+	console.log("Entity IDs/Names:", entityIds?.slice(0, 5));
+	console.log("Total count:", entityIds?.length);
 
-	// Extract entities from response
-	const entities = [];
-	if (Array.isArray(apiResponse)) {
-		apiResponse.forEach((item) => {
-			// 🔹 CRITICAL: Always prioritize actual ID fields over names
-			const entityId = item.driverId || item.shiftId || item.stationId || item.id;
-			const entityName = item.driverName || item.name || item.description || item.title;
-
-			// Only add if we have a valid ID
-			if (entityId !== undefined && entityId !== null) {
-				entities.push({
-					type: entityType,
-					id: entityId, // ✅ This must be the numeric/unique ID
-					name: entityName, // This is for display only
-					data: item,
-				});
-			}
-		});
+	if (!entityIds || entityIds.length === 0) {
+		console.log("⚠️ No entities to store");
+		this.contextData = null;
+		return;
 	}
 
 	this.contextData = {
-		lastEntities: entities,
-		lastEntityType: entityType,
-		lastEntityCount: entities.length,
-		intentChain: [
-			...(this.contextData?.intentChain || []).slice(-4), // Keep last 5 intents
-			{
-				intent: apiName,
-				timestamp: new Date(),
-				entityType,
-			},
-		],
+		entityData: entityIds, // Just array of IDs or names
+		entityFieldName: entityFieldName, // "driverId" or "driverName"
+		entityIntent: apiName,
+		entityUserMessage: userMessage,
+		entityCount: entityIds.length,
 		lastUpdated: new Date(),
 	};
-};
 
-// Helper method to get contextual entity IDs
-sessionSchema.methods.getContextualEntityIds = function () {
-	return this.contextData?.lastEntities?.map((e) => e.id) || [];
-};
-
-// Helper method to get contextual entity names
-sessionSchema.methods.getContextualEntityNames = function () {
-	return this.contextData?.lastEntities?.map((e) => e.name) || [];
+	console.log("✅ Context saved");
+	console.log("========================================\n");
 };
 
 module.exports = mongoose.model("Session", sessionSchema);

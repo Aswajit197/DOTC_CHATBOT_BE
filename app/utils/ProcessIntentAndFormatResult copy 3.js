@@ -2,6 +2,7 @@ const { OpenAI } = require("openai");
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const Session = require("../model/session.model");
 const { detectContextualReference, filterByContext } = require("./contextHandler");
+
 // ===== CALCULATION UTILITIES =====
 
 function getNestedValue(obj, path) {
@@ -131,7 +132,6 @@ function calculateDeviation({ data, field_path, population = false, exclude_zero
 function calculatePercentageDeviation({ data, field_path = null, exclude_zeros = true }) {
 	let itemsWithValues = [];
 
-	// Handle driver-specific structure (shifts object)
 	if (Array.isArray(data) && data.length > 0 && data[0]?.shifts) {
 		itemsWithValues = data.map((driver) => {
 			const shifts = driver.shifts || {};
@@ -153,9 +153,7 @@ function calculatePercentageDeviation({ data, field_path = null, exclude_zeros =
 				rawData: driver,
 			};
 		});
-	}
-	// Handle generic array with field_path
-	else if (Array.isArray(data)) {
+	} else if (Array.isArray(data)) {
 		itemsWithValues = data
 			.map((item, index) => {
 				const value = field_path ? getNestedValue(item, field_path) : typeof item === "number" ? item : null;
@@ -255,77 +253,7 @@ Only recommend calculation if the API does NOT already provide that specific met
   "reasoning": "brief explanation of your choice",
   "apiAlreadyProvides": "what the API already provides",
   "userJustWantsToSee": boolean
-}
-
-**Key Decision Logic:**
-
-1. **API Already Provides This** (needsCalculation = false):
-   - API description contains "total" + user asks for "total" → Display only
-   - API description contains "average" + user asks for "average" → Display only
-   - API description contains "breakdown" + user asks to "show breakdown" → Display only
-   - API description contains "returns list" + user asks to "show list/all drivers" → Display only
-   - Set calculationType: "none"
-   - Set userJustWantsToSee: true
-
-2. **User Wants Analysis Beyond API Scope** (needsCalculation = true):
-   - User asks for "which driver deviates most from average" → percentageDeviation
-   - User asks for "standard deviation of values" → deviation
-   - User asks for "highest and lowest" → minMax
-   - API provides list, but user wants statistical comparison → appropriate calculation
-
-3. **Ambiguous Cases:**
-   - If user says "give me hours" and API already returns hours → Display only
-   - If user says "show all drivers" and API shows all drivers → Display only
-   - If user says "total for each driver" and API returns per-driver breakdown → Display only
-
-**Calculation Types Explained:**
-
-1. **"percentageDeviation"** - When user wants to see how items differ from the average:
-   - Keywords: "deviation", "variance", "differ from average", "above/below average"
-   - Common phrases: 
-     * "which driver deviates most"
-     * "how much do drivers differ from average"
-     * "show variance from mean"
-   - Use when: User wants BOTH the values AND statistical comparison
-
-2. **"average"** - When user ONLY wants the mean value:
-   - ONLY if API does NOT already return "average" or "mean"
-   - Keywords: "what is the average"
-   - Use when: API provides raw data and user specifically asks for mean calculation
-
-3. **"sum"** - When user ONLY wants the total:
-   - ONLY if API does NOT already return "total"
-   - Keywords: "what is the total", "add them up"
-   - Use when: API provides items and user wants them summed
-
-4. **"deviation"** - For standard deviation (statistical measure):
-   - Keywords: "standard deviation", "std dev"
-   - ONLY if user explicitly asks for this statistical metric
-
-5. **"minMax"** - For finding extremes:
-   - Keywords: "highest", "lowest", "maximum", "minimum"
-   - Use when: User wants to identify outliers/extremes
-
-6. **"none"** - No calculations needed:
-   - API already provides what user asks for
-   - User just wants to see/list/display data
-   - NO mathematical operations mentioned or needed
-
-**CRITICAL DECISION TREE:**
-
-1. Check if API description mentions the requested metric (total, average, breakdown, etc.)
-2. If YES → calculationType: "none", userJustWantsToSee: true
-3. If NO → Check what calculation would add value
-4. Match user intent to appropriate calculation type
-
-**Field Path Detection:**
-- If data has nested objects (like "shifts"), set fieldPath appropriately
-- For simple arrays with direct values, fieldPath can be the numeric field name
-- If unclear, leave as null (system will auto-detect)
-
-**Exclude Zeros:**
-- Set to true when dealing with working hours, attendance, or similar metrics where zeros are not meaningful
-- Set to false for financial data or when zeros are significant`,
+}`,
 				},
 				{
 					role: "user",
@@ -345,12 +273,6 @@ ${JSON.stringify(dataSample, null, 2)}
 **Data Structure Keys:**
 ${Array.isArray(apiData) && apiData.length > 0 ? Object.keys(apiData[0] || {}).join(", ") : "N/A"}
 
-**Analysis Instructions:**
-1. First, check the API description for what it already returns
-2. Compare with what the user is asking for
-3. If the user just wants to SEE what the API already provides, set needsCalculation to false
-4. Only set needsCalculation to true if the user wants NEW calculations/analysis
-
 Provide your analysis in JSON format.`,
 				},
 			],
@@ -362,17 +284,12 @@ Provide your analysis in JSON format.`,
 		console.log("🎯 AI Intent Analysis:", {
 			calculationType: result.calculationType,
 			reasoning: result.reasoning,
-			apiAlreadyProvides: result.apiAlreadyProvides,
-			userJustWantsToSee: result.userJustWantsToSee,
 			needsCalculation: result.needsCalculation,
-			fieldPath: result.fieldPath,
-			excludeZeros: result.excludeZeros,
 		});
 
 		return result;
 	} catch (error) {
 		console.error("❌ AI intent detection failed:", error.message);
-		// Fallback: return safe default
 		return {
 			needsCalculation: false,
 			calculationType: "none",
@@ -391,8 +308,6 @@ function performCalculations(data, intent) {
 	const { calculationType, fieldPath, excludeZeros } = intent;
 
 	console.log(`📊 Performing calculation: ${calculationType}`);
-	console.log(`   Field path: ${fieldPath || "auto-detect"}`);
-	console.log(`   Exclude zeros: ${excludeZeros}`);
 
 	try {
 		switch (calculationType) {
@@ -437,6 +352,152 @@ function performCalculations(data, intent) {
 	}
 }
 
+// ===== ENTITY EXTRACTION FROM RESPONSE =====
+
+/**
+ * Extracts which entities were actually displayed in the AI's response
+ * by parsing the HTML and matching back to the source data
+ */
+async function extractEntitiesFromResponse(htmlResponse, sourceData, apiName) {
+	console.log("\n========================================");
+	console.log("🔍 EXTRACTING DISPLAYED ENTITIES FROM RESPONSE");
+	console.log("========================================");
+	console.log("Source data length:", sourceData.length);
+	console.log("API name:", apiName);
+
+	if (!Array.isArray(sourceData) || sourceData.length === 0) {
+		console.log("⚠️ Source data is empty or not an array");
+		console.log("========================================\n");
+		return [];
+	}
+
+	try {
+		// Ask OpenAI to extract the entity identifiers from the HTML response
+		const extractionPrompt = `You are analyzing an HTML response to identify which entities from a dataset were actually displayed.
+
+**HTML Response:**
+${htmlResponse}
+
+**Source Data (first 5 items):**
+${JSON.stringify(sourceData.slice(0, 5), null, 2)}
+
+**Source Data Structure:**
+- Total items in source: ${sourceData.length}
+- Fields available: ${Object.keys(sourceData[0] || {}).join(", ")}
+
+**Your Task:**
+Extract the identifiers (IDs or names) of entities that were ACTUALLY displayed in the HTML response.
+
+**Instructions:**
+1. Look for driver names, IDs, or other identifiers in the HTML (in tables, lists, paragraphs)
+2. Match them to the source data
+3. Return the IDs or unique identifiers of ONLY the displayed items
+4. If you see "Here are 10 drivers" or similar, extract exactly those 10
+5. If you see "showing X out of Y", extract only the X that were shown
+
+**Response Format (JSON only):**
+{
+  "displayedCount": number,
+  "identifiers": ["id1", "id2", ...] or [123, 456, ...],
+  "identifierType": "driverId" | "name" | "id" | "shiftId",
+  "reasoning": "brief explanation of what you found"
+}
+
+If the response shows ALL items or you cannot determine specific items, return:
+{
+  "displayedCount": ${sourceData.length},
+  "identifiers": [],
+  "identifierType": "all",
+  "reasoning": "All items were displayed"
+}`;
+
+		const response = await openai.chat.completions.create({
+			model: "gpt-4o-mini",
+			messages: [{ role: "user", content: extractionPrompt }],
+			temperature: 0.1,
+			response_format: { type: "json_object" },
+		});
+
+		const extraction = JSON.parse(response.choices[0].message.content);
+
+		console.log("\n📋 Extraction Results:");
+		console.log("  - Displayed count:", extraction.displayedCount);
+		console.log("  - Identifier type:", extraction.identifierType);
+		console.log("  - Identifiers found:", extraction.identifiers?.length || 0);
+		console.log("  - Reasoning:", extraction.reasoning);
+
+		// If all items were displayed or extraction failed, return all source data
+		if (extraction.identifierType === "all" || !extraction.identifiers || extraction.identifiers.length === 0) {
+			console.log("✅ Using all source data (no filtering detected)");
+			console.log("========================================\n");
+			return sourceData;
+		}
+
+		// Match identifiers back to source data
+		const identifierSet = new Set(
+			extraction.identifiers.map((id) => {
+				// Normalize identifiers (handle both strings and numbers)
+				if (typeof id === "string") return id.toLowerCase().trim();
+				return id;
+			})
+		);
+
+		console.log("\n🔍 Matching identifiers to source data...");
+		console.log("  - Identifiers to match:", Array.from(identifierSet).slice(0, 5));
+
+		const matchedEntities = sourceData.filter((item) => {
+			// Try matching by different fields based on identifierType
+			let matched = false;
+
+			if (extraction.identifierType === "driverId" || extraction.identifierType === "id") {
+				const itemId = item.driverId || item.id || item.shiftId || item.stationId;
+				matched = identifierSet.has(itemId) || identifierSet.has(String(itemId));
+			}
+
+			if (!matched && (extraction.identifierType === "name" || extraction.identifierType === "driverName")) {
+				const itemName = (item.driverName || item.name || item.description || "").toLowerCase().trim();
+				matched = identifierSet.has(itemName);
+			}
+
+			// Fallback: try all possible matches
+			if (!matched) {
+				const itemId = item.driverId || item.id || item.shiftId || item.stationId;
+				const itemName = (item.driverName || item.name || item.description || "").toLowerCase().trim();
+
+				matched = identifierSet.has(itemId) || identifierSet.has(String(itemId)) || identifierSet.has(itemName);
+			}
+
+			return matched;
+		});
+
+		console.log("\n✅ Matching complete:");
+		console.log("  - Matched entities:", matchedEntities.length);
+		console.log("  - Expected count:", extraction.displayedCount);
+
+		if (matchedEntities.length > 0) {
+			console.log("  - First 3 matched:");
+			matchedEntities.slice(0, 3).forEach((e, i) => {
+				console.log(`    ${i}. ${e.driverName || e.name} (ID: ${e.driverId || e.id})`);
+			});
+		}
+
+		console.log("========================================\n");
+
+		// If matching failed or count mismatch is too large, fallback to source data
+		if (matchedEntities.length === 0 || Math.abs(matchedEntities.length - extraction.displayedCount) > 5) {
+			console.warn("⚠️ Matching failed or count mismatch - using source data");
+			return sourceData;
+		}
+
+		return matchedEntities;
+	} catch (error) {
+		console.error("❌ Entity extraction failed:", error.message);
+		console.log("Falling back to source data");
+		console.log("========================================\n");
+		return sourceData;
+	}
+}
+
 // ===== MAIN PROCESSING FUNCTION =====
 
 const processIntentAndFormatResponse = async ({
@@ -452,29 +513,39 @@ const processIntentAndFormatResponse = async ({
 	let fullText = "";
 
 	try {
+		console.log("\n========================================");
+		console.log("🚀 PROCESS INTENT AND FORMAT RESPONSE");
+		console.log("========================================");
+		console.log("API:", api.name);
+		console.log("User message:", userMessage);
+		console.log("Actual data length:", Array.isArray(actualData) ? actualData.length : "N/A");
+
 		if (abortSignal?.aborted) {
 			console.log("🚫 processIntentAndFormatResponse: Aborted before execution");
 			return { error: "Request aborted" };
 		}
 
-		// 🔹 NEW: Check for contextual reference
+		// 🔹 Check for contextual reference
 		const contextCheck = await detectContextualReference(userMessage, session);
 		let dataToProcess = actualData;
 
 		if (contextCheck.isContextual && contextCheck.contextualEntities) {
-			console.log("🎯 Applying contextual filtering...");
-			
-			// Filter data based on previous context
-			dataToProcess = filterByContext(
-				actualData,
-				contextCheck.contextualEntities,
-				session.contextData?.lastEntityType
-			);
+			console.log("\n🎯 CONTEXTUAL QUERY DETECTED - Applying filtering...");
+			console.log("Context entities to filter by:", contextCheck.contextualEntities.length);
 
-			// If filtering resulted in data, add context note
+			// Filter data based on previous context
+			dataToProcess = filterByContext(actualData, contextCheck.contextualEntities, session.contextData?.lastEntityType);
+
 			if (dataToProcess.length < actualData.length) {
-				console.log(`✅ Context applied: ${actualData.length} → ${dataToProcess.length} items`);
+				console.log(`\n✅ CONTEXT FILTERING SUCCESSFUL:`);
+				console.log(`   Before: ${actualData.length} items`);
+				console.log(`   After: ${dataToProcess.length} items`);
+				console.log(`   Reduction: ${((1 - dataToProcess.length / actualData.length) * 100).toFixed(1)}%`);
+			} else {
+				console.log(`\n⚠️ WARNING: Context filtering had no effect`);
 			}
+		} else {
+			console.log("\n📋 NO CONTEXT - Processing full dataset");
 		}
 
 		if (abortSignal?.aborted) {
@@ -482,8 +553,8 @@ const processIntentAndFormatResponse = async ({
 			return { error: "Request aborted" };
 		}
 
-		// 🚀 STEP 1: AI-powered intent detection (use filtered data)
-		console.log("🤖 Starting AI intent detection...");
+		// 🚀 STEP 1: AI-powered intent detection
+		console.log("\n🤖 Starting AI intent detection...");
 		const calculationIntent = await detectCalculationIntent(userMessage, dataToProcess, api?.description);
 
 		if (abortSignal?.aborted) {
@@ -500,6 +571,8 @@ const processIntentAndFormatResponse = async ({
 			if (preCalculatedResults) {
 				console.log("✅ Pre-calculation complete:", preCalculatedResults.type);
 			}
+		} else {
+			console.log("ℹ️ No calculation needed");
 		}
 
 		// 🚀 STEP 3: Build the intelligent prompt
@@ -522,8 +595,10 @@ This query references entities from a previous query:
 - Context Applied: Data has been filtered to show only the ${dataToProcess.length} items from the previous result
 - Original Count: ${actualData.length} items → Filtered to: ${dataToProcess.length} items
 
-**Important:** The user is asking about "their/them/these/those" referring to the previous ${session.contextData?.lastEntityCount} ${session.contextData?.lastEntityType}.
-Make sure your response acknowledges this context naturally (e.g., "For the 10 drivers you asked about...").
+**Important:** The user is asking about "their/them/these/those" referring to the previous ${
+				session.contextData?.lastEntityCount
+		  } ${session.contextData?.lastEntityType}.
+Make sure your response acknowledges this context naturally (e.g., "For the ${dataToProcess.length} drivers you asked about...").
 `
 		: ""
 }
@@ -539,7 +614,6 @@ Calculation Type: ${preCalculatedResults.type}
 ${JSON.stringify(preCalculatedResults.result, null, 2)}
 
 **CRITICAL: Pre-calculated results are provided. You MUST use them.**
-[Rest of your existing pre-calculation instructions...]
 `
 		: ""
 }
@@ -574,6 +648,7 @@ Generate the response now:
 `;
 
 		// 🚀 STEP 4: Stream the response
+		console.log("\n📤 Streaming response to user...");
 		const completion = await openai.chat.completions.create({
 			model: "gpt-4o-mini",
 			messages: [{ role: "user", content: prompt }],
@@ -605,13 +680,27 @@ Generate the response now:
 		}
 
 		const finalReply = fullText.replace(/###END###/g, "").trim();
+		console.log("✅ Response streaming complete");
 
 		if (abortSignal?.aborted) {
 			console.log("🚫 processIntentAndFormatResponse: Aborted before session save");
 			return { error: "Request aborted" };
 		}
 
-		// ✅ Save the session with updated context
+		// 🔹 CRITICAL: Extract which entities were actually displayed in the response
+		console.log("\n🔍 Extracting entities from AI response...");
+		const displayedEntities = await extractEntitiesFromResponse(finalReply, dataToProcess, api?.name);
+
+		console.log("📊 Displayed entities count:", displayedEntities.length);
+		console.log("📊 Original data count:", dataToProcess.length);
+
+		// Use displayed entities if extraction was successful, otherwise use processed data
+		const dataForContext = displayedEntities.length > 0 ? displayedEntities : dataToProcess;
+
+		console.log("💾 Will store in context:", dataForContext.length, "items");
+
+		// ✅ Save the session
+		console.log("\n💾 Saving session and updating context...");
 		await Session.updateOne(
 			{ _id: session._id },
 			{
@@ -619,18 +708,20 @@ Generate the response now:
 					lastResponseMessage: finalReply,
 					lastSuccessUserMessage: userMessage,
 					lastSuccessIntent: api?.name || null,
-					lastSuccessApiResponse: actualData, // Store ORIGINAL data, not filtered
+					lastSuccessApiResponse: actualData, // Store ORIGINAL full data for reference
 					lastSuccessParams: params,
 					missingField: null,
 				},
 			}
 		);
 
-		// 🔹 Update context data for future queries
-		await session.updateContext(api?.name, actualData);
+		// 🔹 Update context data with ONLY the entities that were displayed
+		console.log("Calling updateContext with filtered data...");
+		await session.updateContext(api?.name, dataForContext);
 		await session.save();
 
 		console.log("✅ Response generation complete with context tracking");
+		console.log("========================================\n");
 
 		return {
 			userReply: finalReply,

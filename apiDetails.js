@@ -1,5 +1,5 @@
 const axios = require("axios");
-const processIntentAndFormatResponse = require("./app/utils/ProcessIntentAndFormatResult");
+const processIntentAndFormatResponse = require("./app/utils/ProcessIntentAndFormatResponse");
 const { OpenAI } = require("openai");
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -10,16 +10,19 @@ module.exports = [
 	{
 		name: "GetDriverWeeklyWorkingHrList",
 		description:
-			"This API should be triggered whenever the user asks about a driver’s preferred weekly working hours. It provides the number of hours each driver wishes to work in a week along with their name. This is useful for managers to align schedules with driver availability and preferences. Use this API when the user asks questions such as: “How many hours does Alejandro Reyes want to work per week?”, “Show me all drivers with their weekly working hour preferences”, “Who prefers 40 hours per week?”, “List drivers with less than 35 weekly hours preference”, or “What is Anthony Semidey’s weekly working hour preference?”",
+			"This API should be triggered whenever the user asks about a driver's preferred weekly working hours. It provides the number of hours each driver wishes to work in a week along with their name.",
 		requiredFields: ["ClientId"],
+		followupItem: "driverId", // 🔹 What to track for follow-up queries
 		graphType: "bar",
 		exampleResponse: [
 			{ driverId: 1482, driverName: "Alejandro Reyes", hours: 30 },
 			{ driverId: 1484, driverName: "Hele Reyes", hours: 40 },
 		],
 
-		handler: async (params, userMessage, session, onStream, abortSignal) => {
-			// 🔹 Check abort at start
+		handler: async (params, userMessage, session, onStream, abortSignal, isContextual = false) => {
+			// 🔹 ADD contextEntities
+			console.log("\n🔹 GetDriverWeeklyWorkingHrList Handler")
+
 			if (abortSignal?.aborted) {
 				console.log("🚫 GetDriverWeeklyWorkingHrList handler: Aborted before execution");
 				return { error: "Request aborted" };
@@ -34,7 +37,8 @@ module.exports = [
 				}
 
 				const { data } = await axios.get(`${API_BASE}/GetDriverWeeklyWorkingHrList?ClientId=${params.ClientId}`);
-				console.log(data);
+
+				console.log("📊 API Response length:", data?.data?.length);
 
 				if (abortSignal?.aborted) {
 					console.log("🚫 GetDriverWeeklyWorkingHrList handler: Aborted after axios call");
@@ -43,12 +47,13 @@ module.exports = [
 
 				const driversWeeklyWorkingHrList =
 					data?.data?.map((item) => ({
-						driverId: item?.driverId,
+						driverId: item?.driverId, // 🔹 CRITICAL: Must include driverId
 						driverName: item?.driverName,
 						hours: item?.hours,
 					})) || [];
 
-				console.log(driversWeeklyWorkingHrList);
+				console.log("📋 Processed data length:", driversWeeklyWorkingHrList.length);
+				console.log("📋 Sample item:", driversWeeklyWorkingHrList[0]);
 
 				return await processIntentAndFormatResponse({
 					userMessage,
@@ -66,6 +71,8 @@ module.exports = [
 					session,
 					onStream,
 					abortSignal,
+					isContextual, // 🔹 Pass this
+					followupItem: this.followupItem, // 🔹 Pass this
 				});
 			} catch (err) {
 				if (abortSignal?.aborted) {
@@ -81,7 +88,6 @@ module.exports = [
 		},
 
 		multiHandler: async (params, userMessage, session, onStream, abortSignal) => {
-			// 🔹 Check abort at start
 			if (abortSignal?.aborted) {
 				console.log("🚫 GetDriverWeeklyWorkingHrList multiHandler: Aborted before execution");
 				return { error: "Request aborted" };
@@ -104,6 +110,7 @@ module.exports = [
 
 				const driversWeeklyWorkingHrList =
 					data?.data?.map((item) => ({
+						driverId: item?.driverId, // 🔹 Include driverId in multiHandler too
 						driverName: item?.driverName,
 						hours: item?.hours,
 					})) || [];
@@ -122,17 +129,21 @@ module.exports = [
 			}
 		},
 	},
+
 	// 2. GetDayFactor
 	{
 		name: "GetDayFactor",
 		description:
-			"Returns priority factors for each day of the week including saturday and sunday .If a day is provided, returns only that day's data. Supports filtering by given asked day or multiple day",
+			"Returns priority factors for each day of the week including saturday and sunday. If a day is provided, returns only that day's data. Supports filtering by given asked day or multiple day",
 		requiredFields: ["ClientId"],
 		exampleResponse: [{ dayName: "Monday", factor: 2 }],
+		followupItem: "dayName", // 🔹 What to track for follow-up queries
 		graphType: "pie",
-		handler: async (params, userMessage, session, onStream, abortSignal) => {
-			console.log(onStream, "onStream in get day factor handler");
-			// 🔹 Check abort at start
+
+		handler: async (params, userMessage, session, onStream, abortSignal, isContextual = false) => {
+			// 🔹 ADD contextEntities
+			console.log("\n🔹 GetDayFactor Handler");
+
 			if (abortSignal?.aborted) {
 				console.log("🚫 GetDayFactor handler: Aborted before execution");
 				return { error: "Request aborted" };
@@ -145,9 +156,9 @@ module.exports = [
 					console.log("🚫 GetDayFactor handler: Aborted before axios call");
 					return { error: "Request aborted" };
 				}
+
 				const { data } = await axios.get(`${API_BASE}/GetDayFactor?ClientId=${params.ClientId}`);
-				// console.log(data)
-				// 🔹 Check abort after API call
+
 				if (abortSignal?.aborted) {
 					console.log("🚫 GetDayFactor handler: Aborted after axios call");
 					return { error: "Request aborted" };
@@ -159,8 +170,7 @@ module.exports = [
 						dayName: item.dayName,
 						factor: item.factor,
 					})) || [];
-
-				// console.log(dayFactors)
+				console.log(dayFactors, "dayFactors");
 
 				return await processIntentAndFormatResponse({
 					userMessage,
@@ -175,8 +185,11 @@ module.exports = [
 					session,
 					onStream,
 					abortSignal,
+					isContextual, // 🔹 Pass this
+					followupItem: "dayName",
 				});
 			} catch (err) {
+				console.log(err, "error");
 				if (abortSignal?.aborted) {
 					console.log("🚫 GetDayFactor handler: Aborted during execution");
 					return { error: "Request aborted" };
@@ -187,21 +200,19 @@ module.exports = [
 				};
 			}
 		},
+
 		multiHandler: async (params, userMessage, session, onStream) => {
-			// console.log(params,"params in get day factor handler")
 			if (!params?.ClientId) params.ClientId = 2;
 
 			try {
 				const { data } = await axios.get(`${API_BASE}/GetDayFactor?ClientId=${params.ClientId}`);
-				// console.log(data)
+
 				const dayFactors =
 					data?.data?.map((item) => ({
 						id: item.id,
 						dayName: item.dayName,
 						factor: item.factor,
 					})) || [];
-
-				// console.log(dayFactors)
 
 				return { data: dayFactors };
 			} catch (err) {
@@ -219,6 +230,7 @@ module.exports = [
 			"Returns available shift types and their details for scheduling, including minimum qualification (minQualification) and hours per shift",
 		requiredFields: ["ClientId"],
 		graphType: "line",
+		followupItem: "shiftTitle", // 🔹 What to track for follow-up queries
 		exampleResponse: [
 			{
 				shiftTitle: "Step Van",
@@ -275,6 +287,8 @@ module.exports = [
 					session,
 					onStream,
 					abortSignal,
+					isContextual, // 🔹 Pass this
+					followupItem: this.followupItem, // 🔹 Pass this
 				});
 			} catch (err) {
 				if (abortSignal?.aborted) {
@@ -339,6 +353,7 @@ module.exports = [
 			"This API is used to fetch a driver’s day-wise work preference, showing which days they prefer to work, avoid, or are neutral about. The preference field represents the main value to consider, while oldPreference can be ignored. Use this intent when the user wants to know a driver’s preferred working days or availability patterns. For example: “What is Anthony Semidey’s day preference?”, “Show me which days Alejandro Reyes prefers to work”, “List all drivers and their day preferences”, or “Which days does a driver not want to work?” This helps managers align schedules with driver availability and reduce conflicts.",
 		requiredFields: ["DriverId", "ClientId"],
 		graphType: "bar",
+		followupItem: "DriverId",
 		exampleResponse: [
 			{
 				driverName: "JORGE VALENCIA",
@@ -1353,6 +1368,7 @@ Respond in JSON only:
 		description:
 			"Retrieves the complete list of all drivers associated with the client. Use this intent when the user asks for 'all drivers list', 'give me the driver list', 'list all LMDPs', 'show all drivers with their details', or 'driver directory'. It returns each driver's ID, first name, last name, mobile number, email, and unique identifier. Always output in table format for easy viewing",
 		requiredFields: ["ClientId"],
+		followupItem: "driverId",
 		exampleResponse: [
 			{
 				driverId: 1482,
@@ -1361,7 +1377,7 @@ Respond in JSON only:
 				email: "tincho76ny@gmail.com",
 			},
 		],
-		handler: async (params, userMessage, session, onStream, abortSignal) => {
+		handler: async (params, userMessage, session, onStream, abortSignal, isContextual = false) => {
 			if (!params?.ClientId !== 2) params.ClientId = 2;
 
 			if (abortSignal?.aborted) {
@@ -1390,6 +1406,8 @@ Respond in JSON only:
 						email: item.email,
 					})) || [];
 
+				console.log(driverList, "Get drivers List");
+
 				return await processIntentAndFormatResponse({
 					userMessage,
 					api: {
@@ -1410,6 +1428,8 @@ Respond in JSON only:
 					params,
 					session,
 					onStream,
+					isContextual, // 🔹 Pass this
+					followupItem: this.followupItem, // 🔹 Pass this
 				});
 			} catch (err) {
 				return {

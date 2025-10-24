@@ -253,19 +253,22 @@ chat.sendMessage = async (req, res) => {
 				res.write(`data: ${JSON.stringify({ type: "final", response: intentResult.formattedReply })}\n\n`);
 				res.end();
 
-				// 🔹 Save bot message with enhanced context
+				// 🔹 NEW: Save bot message with enhanced context
 				const botHistoryEntry = {
 					sender: "bot",
 					message: intentResult.formattedReply,
 					context: {
 						lastIntent: intentResult?.api?.name,
 						lastParams: intentResult?.params,
-						wasContextual: !!intentResult?.contextEntities, // 🔹 Track if it was contextual
 					},
 					timestamp: new Date(),
 				};
 
 				session.history.push(botHistoryEntry);
+
+				// 🔹 Update context tracking
+				// This will be called inside processIntentAndFormatResponse
+				// but we ensure the session is saved
 				await session.save();
 
 				console.log("✅ Response sent and context saved successfully");
