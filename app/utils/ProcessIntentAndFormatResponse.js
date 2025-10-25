@@ -362,41 +362,55 @@ const processIntentAndFormatResponse = async ({
 	session,
 	onStream,
 	abortSignal,
-	isContextual = false, // 🔹 Passed from getIntent
-	followupItem = null, // 🔹 From API definition
+	isContextual = false,
+	followupItem = null,
 }) => {
 	let fullText = "";
 
 	try {
 		console.log("\n========================================");
-		console.log("🚀 PROCESS INTENT (ULTRA SIMPLIFIED)");
+		console.log("🚀 PROCESS INTENT (ROLLING CONTEXT)");
 		console.log("========================================");
 		console.log("API:", api.name);
 		console.log("User message:", userMessage);
 		console.log("Actual data length:", Array.isArray(actualData) ? actualData.length : "N/A");
 		console.log("Is contextual:", isContextual);
 		console.log("Follow-up item:", followupItem);
+		console.log("Context history length:", session.contextHistory?.length || 0);
 
 		if (abortSignal?.aborted) return { error: "Request aborted" };
 
-		// 🔹 Get context if this is a contextual query
-		const contextInfo =
-			isContextual && session.contextData
-				? {
-						entityData: session.contextData.entityData,
-						entityFieldName: session.contextData.entityFieldName,
-						entityIntent: session.contextData.entityIntent,
-						entityUserMessage: session.contextData.entityUserMessage,
-						entityCount: session.contextData.entityCount,
-				  }
-				: null;
+		// 🔹 Get context information if contextual query
+		let contextInfo = null;
+		let contextSummary = null;
 
-		if (contextInfo) {
+		if (isContextual) {
+			// Get most recent context
+			const recentContext = session.getMostRecentContext();
+
+			// Get full context summary for AI
+			contextSummary = session.getContextSummary();
+
 			console.log("\n🎯 CONTEXTUAL QUERY DETECTED");
-			console.log("Previous context:");
-			console.log("  - Field:", contextInfo.entityFieldName);
-			console.log("  - Count:", contextInfo.entityCount);
-			console.log("  - Sample:", contextInfo.entityData.slice(0, 5));
+			console.log("📚 Context History Available:");
+			console.log(contextSummary);
+
+			if (recentContext) {
+				contextInfo = {
+					entityData: recentContext.entityData,
+					entityFieldName: recentContext.entityFieldName,
+					entityType: recentContext.entityType,
+					entityIntent: recentContext.entityIntent,
+					entityUserMessage: recentContext.entityUserMessage,
+					entityCount: recentContext.entityCount,
+				};
+
+				console.log("\n🎯 Using Most Recent Context:");
+				console.log("  - Type:", contextInfo.entityType);
+				console.log("  - Field:", contextInfo.entityFieldName);
+				console.log("  - Count:", contextInfo.entityCount);
+				console.log("  - Sample:", contextInfo.entityData.slice(0, 5));
+			}
 		}
 
 		// AI intent detection
@@ -412,7 +426,7 @@ const processIntentAndFormatResponse = async ({
 			preCalculatedResults = performCalculations(actualData, calculationIntent);
 		}
 
-		// 🔹 Build prompt - OpenAI does ALL the filtering
+		// 🔹 Build enhanced prompt with rolling context
 		const prompt = `
 You are a smart assistant processing structured API data and answering user questions.
 
@@ -423,25 +437,40 @@ User Message: "${userMessage}"
 Query Parameters: ${JSON.stringify(params, null, 2)}
 
 ${
-	contextInfo
+	isContextual && contextSummary
 		? `
-### 🎯 CONTEXTUAL QUERY - FILTER THE DATA!
-The user previously asked: "${contextInfo.entityUserMessage}"
-That query returned ${contextInfo.entityCount} items.
+### 🎯 CONTEXTUAL QUERY WITH HISTORY
 
-**Previous ${contextInfo.entityFieldName} values:**
-${JSON.stringify(contextInfo.entityData)}
+**IMPORTANT:** The user is asking a follow-up question that references previous queries.
 
-**CRITICAL INSTRUCTION:**
-The current query "${userMessage}" refers to ONLY those ${contextInfo.entityCount} items above.
-You MUST filter the data below to show ONLY items where ${contextInfo.entityFieldName} matches one of the values above.
+**Context History (Most Recent First):**
+${contextSummary}
 
-Example:
-- If ${contextInfo.entityFieldName} = "driverId" and values are [1482, 1488, 1497]
-- Only show data where driverId is 1482, 1488, or 1497
-- Ignore all other items
+**INSTRUCTIONS FOR USING CONTEXT:**
 
-DO NOT show all ${actualData?.length || 0} items - show only the ${contextInfo.entityCount} matching items!
+1. **Identify which context the user is referring to:**
+   - If they say "them", "their", "those" → Use the MOST RECENT context (#1)
+   - If they mention a specific type like "drivers" or "shifts" → Find that context
+   - If they say "the drivers from before" → Look for the most recent "drivers" context
+   - If ambiguous, use the most recent context
+
+2. **Apply filtering based on identified context:**
+   ${
+			contextInfo
+				? `
+   - Most Recent Context: ${contextInfo.entityType}
+   - Filter field: ${contextInfo.entityFieldName}
+   - Filter values: ${JSON.stringify(contextInfo.entityData)}
+   - ONLY show items where ${contextInfo.entityFieldName} matches these values
+   `
+				: ""
+		}
+
+3. **Acknowledge the context naturally:**
+   - Example: "For the ${contextInfo?.entityCount || 0} ${contextInfo?.entityType || "items"} you asked about..."
+   - Example: "Based on the drivers from your previous query..."
+
+**CRITICAL:** If the current data doesn't match any context type, inform the user politely.
 `
 		: ""
 }
@@ -465,7 +494,7 @@ ${JSON.stringify(preCalculatedResults.result, null, 2)}
 1. **Understand the user's intent** from their message
 2. ${
 			contextInfo
-				? `**FIRST: Filter the data to show only ${contextInfo.entityCount} matching items**`
+				? `**FIRST: Identify and apply the correct context for filtering**`
 				: "**Process the data** to answer the question"
 		}
 3. ${
@@ -512,10 +541,8 @@ After your response, add this hidden meta tag with the ACTUAL ${followupItem} va
 - Include ALL items you showed (even if it's 100+)
 - Use exact values from the data
 - Examples:
-  * If ${followupItem} = "driverId" and you showed drivers with ID 1482, 1488, 1497:
-    <meta name="displayed-items" content='{"field":"driverId","values":[1482,1488,1497]}' />
-  * If ${followupItem} = "driverName" and you showed "Alex", "John":
-    <meta name="displayed-items" content='{"field":"driverName","values":["Alex","John"]}' />
+  * <meta name="displayed-items" content='{"field":"driverId","values":[1482,1488,1497]}' />
+  * <meta name="displayed-items" content='{"field":"driverName","values":["Alex","John"]}' />
 
 ### Output Format
 - Output ONLY valid HTML
@@ -599,21 +626,23 @@ Generate the response now:
 			}
 		);
 
-		// 🔹 Update context with displayed items
+		// 🔹 Add to rolling context history
 		if (displayedInfo && displayedInfo.field && displayedInfo.values && displayedInfo.values.length > 0) {
-			console.log("\n🔄 Updating context with displayed items...");
-			await session.updateContext(
-				api?.name,
-				displayedInfo.values, // Just the IDs/names
-				displayedInfo.field, // Field name
-				userMessage
-			);
+			console.log("\n🔄 Adding to context history...");
+
+			// Determine entity type from API name or followupItem
+			let entityType = "items";
+			if (api.name.toLowerCase().includes("driver")) entityType = "drivers";
+			else if (api.name.toLowerCase().includes("shift")) entityType = "shifts";
+			else if (api.name.toLowerCase().includes("day")) entityType = "days";
+			else if (api.name.toLowerCase().includes("station")) entityType = "stations";
+
+			await session.addToContextHistory(api?.name, displayedInfo.values, displayedInfo.field, entityType, userMessage);
 			await session.save();
 		} else if (followupItem && !isContextual) {
 			// First query - try to extract from response
 			console.log("\n🔄 First query - attempting to extract context...");
 
-			// Ask OpenAI to extract what it displayed
 			try {
 				const extractPrompt = `
 Given this HTML response, extract the ${followupItem} values that were displayed.
@@ -637,9 +666,14 @@ Do not include any explanation, just the JSON array.`;
 
 				if (Array.isArray(extractedValues) && extractedValues.length > 0) {
 					console.log("  - Extracted:", extractedValues.length, "items");
-					console.log("  - Sample:", extractedValues.slice(0, 5));
 
-					await session.updateContext(api?.name, extractedValues, followupItem, userMessage);
+					// Determine entity type
+					let entityType = "items";
+					if (api.name.toLowerCase().includes("driver")) entityType = "drivers";
+					else if (api.name.toLowerCase().includes("shift")) entityType = "shifts";
+					else if (api.name.toLowerCase().includes("day")) entityType = "days";
+
+					await session.addToContextHistory(api?.name, extractedValues, followupItem, entityType, userMessage);
 					await session.save();
 				}
 			} catch (e) {

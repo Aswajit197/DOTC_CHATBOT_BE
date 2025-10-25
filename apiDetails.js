@@ -21,7 +21,7 @@ module.exports = [
 
 		handler: async (params, userMessage, session, onStream, abortSignal, isContextual = false) => {
 			// 🔹 ADD contextEntities
-			console.log("\n🔹 GetDriverWeeklyWorkingHrList Handler")
+			console.log("\n🔹 GetDriverWeeklyWorkingHrList Handler");
 
 			if (abortSignal?.aborted) {
 				console.log("🚫 GetDriverWeeklyWorkingHrList handler: Aborted before execution");
@@ -72,7 +72,7 @@ module.exports = [
 					onStream,
 					abortSignal,
 					isContextual, // 🔹 Pass this
-					followupItem: this.followupItem, // 🔹 Pass this
+					followupItem: "driverId", // 🔹 Pass this
 				});
 			} catch (err) {
 				if (abortSignal?.aborted) {
@@ -239,7 +239,7 @@ module.exports = [
 			},
 		],
 
-		handler: async (params, userMessage, session, onStream, abortSignal) => {
+		handler: async (params, userMessage, session, onStream, abortSignal, isContextual = false) => {
 			// 🔹 Check abort at start
 			if (abortSignal?.aborted) {
 				console.log("🚫 GetSchedulingShiftTypeList handler: Aborted before execution");
@@ -288,7 +288,7 @@ module.exports = [
 					onStream,
 					abortSignal,
 					isContextual, // 🔹 Pass this
-					followupItem: this.followupItem, // 🔹 Pass this
+					followupItem: "shiftTitle", // 🔹 Pass this
 				});
 			} catch (err) {
 				if (abortSignal?.aborted) {
@@ -353,7 +353,7 @@ module.exports = [
 			"This API is used to fetch a driver’s day-wise work preference, showing which days they prefer to work, avoid, or are neutral about. The preference field represents the main value to consider, while oldPreference can be ignored. Use this intent when the user wants to know a driver’s preferred working days or availability patterns. For example: “What is Anthony Semidey’s day preference?”, “Show me which days Alejandro Reyes prefers to work”, “List all drivers and their day preferences”, or “Which days does a driver not want to work?” This helps managers align schedules with driver availability and reduce conflicts.",
 		requiredFields: ["DriverId", "ClientId"],
 		graphType: "bar",
-		followupItem: "DriverId",
+		followupItem: "day",
 		exampleResponse: [
 			{
 				driverName: "JORGE VALENCIA",
@@ -362,7 +362,7 @@ module.exports = [
 			},
 		],
 
-		handler: async (params, userMessage, session, onStream, abortSignal) => {
+		handler: async (params, userMessage, session, onStream, abortSignal, isContextual = false) => {
 			// 🔹 Check abort at start
 			if (abortSignal?.aborted) {
 				console.log("🚫 GetLMDPDayPreferenceList handler: Aborted before execution");
@@ -414,6 +414,8 @@ module.exports = [
 					session,
 					onStream,
 					abortSignal,
+					isContextual, // 🔹 Pass this
+					followupItem: "day", // 🔹 Pass this
 				});
 			} catch (err) {
 				if (abortSignal?.aborted) {
@@ -482,8 +484,9 @@ module.exports = [
 		requiredFields: ["ClientId"],
 		exampleResponse: [{ driverName: "JORGE VALENCIA", preference: 2 }],
 		graphType: "area",
+		followupItem: "driverId",
 
-		handler: async (params, userMessage, session, onStream, abortSignal) => {
+		handler: async (params, userMessage, session, onStream, abortSignal, isContextual = false) => {
 			// 🔹 Check abort at start
 			if (abortSignal?.aborted) {
 				console.log("🚫 GetDriverOTPreferenceList handler: Aborted before execution");
@@ -510,6 +513,7 @@ module.exports = [
 
 				const DriversOTPPreferenceList =
 					data?.data?.map((item) => ({
+						driverId: item.driverId,
 						driverName: item?.driverName,
 						preference: item?.preference,
 					})) || [];
@@ -523,6 +527,7 @@ module.exports = [
 					},
 					exampleResponse: [
 						{
+							driverId: 1482,
 							driverName: "JORGE VALENCIA",
 							preference: 2,
 						},
@@ -532,6 +537,8 @@ module.exports = [
 					session,
 					onStream,
 					abortSignal,
+					isContextual, // 🔹 Pass this
+					followupItem: "driverId", // 🔹 Pass this
 				});
 			} catch (err) {
 				if (abortSignal?.aborted) {
@@ -596,8 +603,9 @@ module.exports = [
 			"Retrieves the maximum qualification level of all drivers (also called LMDPs) for a specific ClientId within a specified weekly date range (FromDate to ToDate), based on a Sunday–Saturday week. This API should also be used when the user requests qualifications alongside other driver-related information (such as overtime preferences, shifts, or assignments), or when the query involves filtering drivers by qualification level (e.g., 'show drivers with qualification 3 and their OT preferences' or 'list all LMDPs above qualification 2'). It also supports queries for a single driver by name or for the full list of drivers.",
 		requiredFields: ["ClientId", "FromDate", "ToDate"],
 		exampleResponse: [{ driverName: "JORGE VALENCIA", qualification: 2 }],
+		followupItem: "qualification",
 
-		handler: async (params, userMessage, session, onStream, abortSignal) => {
+		handler: async (params, userMessage, session, onStream, abortSignal, isContextual = false) => {
 			console.log(onStream, "on stream on GetLMDPMaxQualificationsList");
 
 			if (abortSignal?.aborted) {
@@ -731,6 +739,8 @@ Respond in JSON only:
 					session,
 					onStream,
 					abortSignal,
+					isContextual, // 🔹 Pass this
+					followupItem: "qualification", // 🔹 Pass this
 				});
 			} catch (err) {
 				if (abortSignal?.aborted) {
@@ -903,8 +913,9 @@ Respond in JSON only:
 				},
 			},
 		],
+		followupItem: "driverId",
 
-		handler: async (params, userMessage, session, onStream, abortSignal) => {
+		handler: async (params, userMessage, session, onStream, abortSignal, isContextual = false) => {
 			if (abortSignal?.aborted) {
 				console.log("🚫 GetBlobShiftDriverData handler: Aborted before execution");
 				return { error: "Request aborted" };
@@ -967,6 +978,8 @@ Respond in JSON only:
 					session,
 					onStream,
 					abortSignal,
+					isContextual, // 🔹 Pass this
+					followupItem: "driverId", // 🔹 Pass this
 				});
 			} catch (err) {
 				if (abortSignal?.aborted) {
@@ -1040,13 +1053,15 @@ Respond in JSON only:
 				requestStatus: "Declined",
 			},
 		],
-		handler: async (params, userMessage, session, onStream) => {
+		followupItem: "driverId",
+		handler: async (params, userMessage, session, onStream, abortSignal, isContextual = false) => {
 			if (!params?.ClientId !== 2) params.ClientId = 2;
 
 			try {
 				const { data } = await axios.get(`${API_BASE}/GetTimeOffRequestForBackend?ClientId=${params?.ClientId}`);
 				const driversOffRequestList =
 					data?.data?.map((item) => ({
+						driverId: item?.driverId,
 						driverName: item?.driverName,
 						dateStart: item?.dateStart,
 						dateEnd: item?.dateEnd,
@@ -1064,6 +1079,7 @@ Respond in JSON only:
 					},
 					exampleResponse: [
 						{
+							driverId: 1482,
 							driverName: "ALEJANDRO LAYA",
 							dateStart: "2025-03-05T00:00:00",
 							dateEnd: "2025-02-10T00:00:00",
@@ -1075,6 +1091,8 @@ Respond in JSON only:
 					params,
 					session,
 					onStream,
+					isContextual, // 🔹 Pass this
+					followupItem: "driverId", // 🔹 Pass this
 				});
 			} catch (err) {
 				return {
@@ -1122,8 +1140,9 @@ Respond in JSON only:
 				locationState: "New York",
 			},
 		],
+		followupItem: "locationCity",
 
-		handler: async (params, userMessage, session, onStream, abortSignal) => {
+		handler: async (params, userMessage, session, onStream, abortSignal, isContextual = false) => {
 			if (abortSignal?.aborted) {
 				console.log("🚫 GetLocationListForBackEnd handler: Aborted before execution");
 				return { error: "Request aborted" };
@@ -1175,6 +1194,8 @@ Respond in JSON only:
 					session,
 					onStream,
 					abortSignal,
+					isContextual, // 🔹 Pass this
+					followupItem: "locationCity", // 🔹 Pass this
 				});
 			} catch (err) {
 				if (abortSignal?.aborted) {
@@ -1249,8 +1270,9 @@ Respond in JSON only:
 				chatResponsesVisible: false,
 			},
 		],
+		followupItem: "maxDaysUnavailable",
 
-		handler: async (params, userMessage, session, onStream, abortSignal) => {
+		handler: async (params, userMessage, session, onStream, abortSignal, isContextual = false) => {
 			if (abortSignal?.aborted) {
 				console.log("🚫 GetSchedAlignEngineLMDPPermissions handler: Aborted before execution");
 				return { error: "Request aborted" };
@@ -1304,6 +1326,8 @@ Respond in JSON only:
 					session,
 					onStream,
 					abortSignal,
+					isContextual, // 🔹 Pass this
+					followupItem: "maxDaysUnavailable", // 🔹 Pass this
 				});
 			} catch (err) {
 				if (abortSignal?.aborted) {
@@ -1429,7 +1453,7 @@ Respond in JSON only:
 					session,
 					onStream,
 					isContextual, // 🔹 Pass this
-					followupItem: this.followupItem, // 🔹 Pass this
+					followupItem: "driverId", // 🔹 Pass this
 				});
 			} catch (err) {
 				return {
@@ -1475,8 +1499,9 @@ Respond in JSON only:
 				preferenceDefault: 2,
 			},
 		],
+		followupItem: "preferenceType",
 
-		handler: async (params, userMessage, session, onStream) => {
+		handler: async (params, userMessage, session, onStream, abortSignal, isContextual = false) => {
 			if (!params?.ClientId !== 2) params.ClientId = 2;
 
 			try {
@@ -1508,6 +1533,8 @@ Respond in JSON only:
 					params,
 					session,
 					onStream,
+					isContextual, // 🔹 Pass this
+					followupItem: "preferenceType", // 🔹 Pass this
 				});
 			} catch (err) {
 				return {
@@ -1553,7 +1580,8 @@ Respond in JSON only:
 			tolerableThreshold: 15,
 			intolerableThreshold: 20,
 		},
-		handler: async (params, userMessage, session, onStream) => {
+		followupItem: "graphHrs",
+		handler: async (params, userMessage, session, onStream, abortSignal, isContextual = false) => {
 			if (!params?.ClientId) params.ClientId = 2;
 
 			try {
@@ -1591,6 +1619,8 @@ Respond in JSON only:
 					params,
 					session,
 					onStream,
+					isContextual, // 🔹 Pass this
+					followupItem: "maxHrs", // 🔹 Pass this
 				});
 			} catch (err) {
 				return {
@@ -1708,7 +1738,8 @@ Respond in JSON only:
 			},
 			active: 1,
 		},
-		handler: async (params, userMessage, session, onStream) => {
+		followupItem: "shifts",
+		handler: async (params, userMessage, session, onStream,abortSignal, isContextual = false) => {
 			// If FromDate/ToDate missing
 			if (!params?.FromDate || !params?.ToDate) {
 				const today = new Date();
@@ -1902,6 +1933,8 @@ Respond in JSON only:
 					params,
 					session,
 					onStream,
+					isContextual, // 🔹 Pass this
+					followupItem: "shifts", // 🔹 Pass this
 				});
 			} catch (err) {
 				return {
@@ -2055,8 +2088,9 @@ Respond in JSON only:
 				expiration: "0001-01-01T00:00:00",
 			},
 		],
+		followupItem: "driverId",
 
-		handler: async (params, userMessage, session, onStream, abortSignal) => {
+		handler: async (params, userMessage, session, onStream, abortSignal,isContextual = false) => {
 			if (abortSignal?.aborted) {
 				console.log("🚫 GetOpenShiftForBackEnd handler: Aborted before execution");
 				return { error: "Request aborted" };
@@ -2134,6 +2168,8 @@ Respond in JSON only:
 					session,
 					onStream,
 					abortSignal,
+					isContextual, // 🔹 Pass this
+					followupItem: "driverId", // 🔹 Pass this
 				});
 			} catch (err) {
 				if (abortSignal?.aborted) {
@@ -2222,8 +2258,9 @@ Respond in JSON only:
 				expiration: "2025-09-03T06:08:24.173",
 			},
 		],
+		followupItem: "driverId",
 
-		handler: async (params, userMessage, session, onStream, abortSignal) => {
+		handler: async (params, userMessage, session, onStream, abortSignal, isContextual = false) => {
 			if (abortSignal?.aborted) {
 				console.log("🚫 GetAllPreferenceHistoryForBackEnd handler: Aborted before execution");
 				return { error: "Request aborted" };
@@ -2244,6 +2281,7 @@ Respond in JSON only:
 
 				const preferenceHistory =
 					data?.data?.map((item) => ({
+						driverId: item?.driverId,
 						driverName: item?.driverName,
 						preferenceType: item?.preferenceType,
 						preferenceDescription: item?.preferenceDescription,
@@ -2264,6 +2302,7 @@ Respond in JSON only:
 					},
 					exampleResponse: [
 						{
+							driverId: 1482,
 							driverName: "Alejandro Reyes",
 							preferenceType: "Day",
 							preferenceDescription: "Wed",
@@ -2279,6 +2318,8 @@ Respond in JSON only:
 					session,
 					onStream,
 					abortSignal,
+					isContextual, // 🔹 Pass this
+					followupItem: "driverId", // 🔹 Pass this
 				});
 			} catch (err) {
 				if (abortSignal?.aborted) {
