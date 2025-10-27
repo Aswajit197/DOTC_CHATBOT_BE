@@ -16,25 +16,18 @@ async function getIntentFromOpenAI(userMessage, session, { onStream, abortSignal
 
 	const topApis = await searchAPIs(userMessage);
 
-	// 🔹 NEW: Build context information for the prompt
-	const hasContext = session.contextData?.lastEntities?.length > 0;
+	// 🔹 Build context information for the prompt
+	const hasContext = session.contextHistory?.length > 0;
 	const contextInfo = hasContext
 		? `
 
-### 🎯 PREVIOUS QUERY CONTEXT (IMPORTANT!)
-The user just completed a previous query:
-- Previous API: ${session.lastSuccessIntent || "None"}
-- Previous Entity Type: ${session.contextData.lastEntityType || "unknown"}
-- Previous Entity Count: ${session.contextData.lastEntityCount || 0}
-- Sample Entities: ${
-				session.contextData.lastEntities
-					?.slice(0, 5)
-					.map((e) => e.name)
-					.join(", ") || "None"
-		  }
+### 🎯 ROLLING CONTEXT HISTORY (IMPORTANT!)
+The user has a conversation history with previous queries:
+
+${session.getContextSummary()}
 
 **CRITICAL DECISION:**
-If the current user message references these previous entities using:
+If the current user message references entities from previous queries using:
 - Pronouns: "they", "them", "their", "theirs"
 - Demonstratives: "these", "those"
 - References: "the same", "above", "previous", "last"
@@ -70,10 +63,28 @@ Current user message:
 Instructions:
 - Decide the intent type: **independent**, **contextual_followup**, **dependent**, **multi_intent**, **missing field resolution**, or **visualization follow-up**.
 
-### 1. Contextual Follow-up (NEW - HIGHEST PRIORITY!)
+### 🚨 CRITICAL PARAMETER EXTRACTION RULES:
+**ONLY extract parameters that are EXPLICITLY mentioned in the user message.**
+
+❌ DO NOT auto-fill or assume ANY parameters
+❌ DO NOT default ClientId, StationId, or any other field
+❌ DO NOT extract parameters from context unless explicitly referenced
+❌ DO NOT invent values based on previous queries
+
+✅ ONLY extract if the user literally says it: "driver 1234", "station 5", "client 2"
+✅ Leave params empty "null" if nothing is explicitly mentioned
+✅ Missing field handling is done separately - your job is ONLY extraction
+
+**Examples:**
+- "Give me 15 drivers" → params: {}  (no specific IDs mentioned)
+- "Show driver 1234" → params: { driverId: 1234 }
+- "List drivers for station 5" → params: { StationId: 5 }
+- "Give me their hours" → params: {}  (context-based, no explicit params)
+
+### 1. Contextual Follow-up (HIGHEST PRIORITY!)
 **Check this FIRST before anything else!**
 
-If the user message references entities from the previous query:
+If the user message references entities from previous queries:
 - Examples: "give me their hours", "show them", "what about those drivers", "give me details for these"
 - Keywords: they, them, their, these, those, the same, for them, about them
 
@@ -82,12 +93,10 @@ If the user message references entities from the previous query:
 → Return JSON in this format:
 {
   "apiName": "<exact API name that provides the requested data>",
-  "params": { /* extracted params */ },
+  "params": { /* ONLY explicitly mentioned params */ },
   "dependent": false,
   "type": "contextual_followup",
-  "contextualReference": true,
-  "previousEntityType": "${session.contextData?.lastEntityType || "unknown"}",
-  "previousEntityCount": ${session.contextData?.lastEntityCount || 0}
+  "contextualReference": true
 }
 
 **Example:**
@@ -96,25 +105,22 @@ Current message: "Give me their weekly working hours"
 Response:
 {
   "apiName": "GetDriverWeeklyWorkingHrList",
-  "params": { "ClientId": 2 },
+  "params": {},
   "dependent": false,
   "type": "contextual_followup",
-  "contextualReference": true,
-  "previousEntityType": "drivers",
-  "previousEntityCount": 15
+  "contextualReference": true
 }
 
 ### 2. Independent (Single Intent)
 If Independent (Fresh query with no reference to previous results):
    * Identify the most appropriate API from the Available APIs list.
-   * Extract parameters only if they are explicitly in the message.
-   * Do NOT assume or invent values (like ClientId, StationId, etc).
-   * Do NOT fill in defaults except ClientId or StationId (which is allowed to default to ${session.ClientId}).
+   * Extract parameters ONLY if EXPLICITLY mentioned in the message.
+   * DO NOT assume or auto-fill ANY values.
 
 → Return JSON:
 {
   "apiName": "<exact API name from above>",
-  "params": { /* extracted params */ },
+  "params": { /* ONLY explicitly mentioned params */ },
   "dependent": false,
   "type": "independent"
 }
@@ -129,8 +135,8 @@ Examples:
 → Return JSON:
 {
   "apis": [
-    { "apiName": "<exact API name from above>", "params": { /* extracted params */ } },
-    { "apiName": "<another API name>", "params": { /* extracted params */ } }
+    { "apiName": "<exact API name from above>", "params": { /* ONLY explicit params */ } },
+    { "apiName": "<another API name>", "params": { /* ONLY explicit params */ } }
   ],
   "dependent": false,
   "type": "multi_intent"
@@ -160,7 +166,7 @@ If the user message modifies the LAST response (not referencing previous entitie
 → Return JSON:
 {
   "apiName": "<exact API name from above>",
-  "params": { /* extracted params if any */ },
+  "params": { /* ONLY explicit params if any */ },
   "dependent": true,
   "type": "refinement_request"
 }
@@ -196,6 +202,7 @@ Important:
 - DO NOT explain your reasoning.
 - DO NOT add comments or extra text.
 - Output valid JSON only.
+- Remember: ONLY extract explicitly mentioned parameters!
 `;
 
 	if (abortSignal?.aborted) {
@@ -234,16 +241,13 @@ Important:
 		return { error: "OpenAI parsing failed" };
 	}
 
-	console.log(extracted,"extracted")
-
 	console.log("\n========================================");
 	console.log("🎯 INTENT EXTRACTION RESULT");
 	console.log("========================================");
-	if (extracted.contextualReference) {
-		console.log("Previous Entity Type:", extracted.previousEntityType);
-		console.log("Previous Entity Count:", extracted.previousEntityCount);
-	}
+	console.log("Type:", extracted.type);
+	console.log("API:", extracted.apiName);
 	console.log("Params:", JSON.stringify(extracted.params));
+	console.log("Contextual:", extracted.contextualReference || false);
 	console.log("========================================\n");
 
 	const matchedApi = apiListData.find((api) => api.name === extracted.apiName);
@@ -254,13 +258,10 @@ Important:
 		return { error: "Request aborted" };
 	}
 
-	// 🔹 NEW: Handle contextual followup
+	// 🔹 Handle contextual followup
 	if (extracted.type === "contextual_followup" && extracted.contextualReference) {
 		console.log("\n🎯 CONTEXTUAL FOLLOW-UP DETECTED");
-		console.log("Will pass context entities to handler for filtering");
-
-		// Pass context entities to the handler
-		const contextEntities = session.contextData?.lastEntities || [];
+		console.log("Will use rolling context history for filtering");
 
 		if (!matchedApi) {
 			return { error: "No API matched for contextual followup" };
@@ -288,7 +289,6 @@ Important:
 		}
 
 		if (missingFields.length) {
-			// Handle missing fields...
 			const fallbackHelpPrompt = `
 You are a helpful assistant for a Driver Management platform.
 The user said: "${userMessage}"
@@ -328,18 +328,17 @@ Your task:
 			};
 		}
 
-		// Call API with context entities
+		// Call API with isContextual flag
 		try {
 			console.log(matchedApi.name, "matched api (contextual)");
 
-			// 🔹 Pass context entities to the handler
 			const apiResponse = await matchedApi.handler(
 				params,
 				userMessage,
 				session,
 				onStream,
 				abortSignal,
-				contextEntities // 🔹 NEW: Pass context entities
+				true // 🔹 isContextual = true
 			);
 
 			if (abortSignal?.aborted) {
@@ -350,7 +349,6 @@ Your task:
 				api: matchedApi,
 				params,
 				formattedReply: apiResponse?.userReply,
-				contextEntities, // 🔹 Pass to response for tracking
 			};
 		} catch (err) {
 			if (err.name === "AbortError" || abortSignal?.aborted) {
@@ -376,7 +374,7 @@ Your task:
 		if (extracted.type === "visualization_request") {
 			return await getGraphJsonFromLastResponse(userMessage, session, { onStream, abortSignal });
 		} else if (extracted.type === "refinement_request") {
-			if (session.lastSuccessApiResponse && session.lastSuccessIntent === matchedApi.name) {
+			if (session.lastSuccessApiResponse && session.lastSuccessIntent === matchedApi?.name) {
 				return await refineResponseFromLastResponse(userMessage, session, { onStream, abortSignal });
 			} else {
 				extracted.dependent = false;
@@ -501,7 +499,7 @@ Your task:
 		return { error: "Request aborted" };
 	}
 
-	// Step 3: All fields ready → call API
+	// All fields ready → call API
 	try {
 		console.log(matchedApi.name, "matched api");
 		const apiResponse = await matchedApi.handler(

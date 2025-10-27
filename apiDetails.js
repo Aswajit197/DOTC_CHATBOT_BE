@@ -895,6 +895,7 @@ Respond in JSON only:
 		requiredFields: ["WeekStarting", "WeekEnding", "Year", "ClientId"],
 		exampleResponse: [
 			{
+				driverId: 5520,
 				driverName: "ALEJANDRO LAYA",
 				shifts: {
 					"Parcel Van": 0,
@@ -904,6 +905,7 @@ Respond in JSON only:
 				},
 			},
 			{
+				driverId: 1482,
 				driverName: "Alejandro Reyes",
 				shifts: {
 					"Parcel Van": 0,
@@ -955,6 +957,7 @@ Respond in JSON only:
 					},
 					exampleResponse: [
 						{
+							driverId: 5520,
 							driverName: "ALEJANDRO LAYA",
 							shifts: {
 								"Parcel Van": 0,
@@ -964,6 +967,7 @@ Respond in JSON only:
 							},
 						},
 						{
+							driverId: 1482,
 							driverName: "Alejandro Reyes",
 							shifts: {
 								"Parcel Van": 0,
@@ -1739,7 +1743,7 @@ Respond in JSON only:
 			active: 1,
 		},
 		followupItem: "shifts",
-		handler: async (params, userMessage, session, onStream,abortSignal, isContextual = false) => {
+		handler: async (params, userMessage, session, onStream, abortSignal, isContextual = false) => {
 			// If FromDate/ToDate missing
 			if (!params?.FromDate || !params?.ToDate) {
 				const today = new Date();
@@ -2090,7 +2094,7 @@ Respond in JSON only:
 		],
 		followupItem: "driverId",
 
-		handler: async (params, userMessage, session, onStream, abortSignal,isContextual = false) => {
+		handler: async (params, userMessage, session, onStream, abortSignal, isContextual = false) => {
 			if (abortSignal?.aborted) {
 				console.log("🚫 GetOpenShiftForBackEnd handler: Aborted before execution");
 				return { error: "Request aborted" };

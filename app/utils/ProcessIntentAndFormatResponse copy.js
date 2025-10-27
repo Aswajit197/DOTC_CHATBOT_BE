@@ -236,22 +236,12 @@ async function detectCalculationIntent(userMessage, apiData, apiDescription) {
 
 **CRITICAL: Check API Capabilities First**
 Before recommending ANY calculation, check if the API description already provides that data:
+- If API says "Returns total hours" → Don't calculate sum, just display
+- If API says "Returns average" → Don't calculate average, just display
+- If API says "Returns breakdown by..." → Don't aggregate, just display the breakdown
+- If API says "Returns list of items with values" → User is just asking to see the data
 
-**Keywords that indicate API ALREADY provides the data (DO NOT calculate):**
-- "Returns total...", "Returns sum...", "Returns average..."
-- "Returns breakdown...", "Returns list with..."
-- "Includes hours", "Contains totals", "Shows averages"
-- "Provides calculated...", "Pre-calculated..."
-- "With working hours", "Including shift details"
-
-**Examples of when NOT to calculate:**
-- API: "Returns total working hours for drivers" + User: "show total hours" → DON'T calculate, just display
-- API: "Returns list of drivers with weekly hours breakdown" + User: "give me average" → DON'T calculate, just display
-- API: "Returns average shift duration" + User: "what's the average" → DON'T calculate, just display
-
-**Examples of when TO calculate:**
-- API: "Returns list of drivers with names only" + User: "give me average hours" → NEEDS calculation (API doesn't provide hours)
-- API: "Returns driver names" + User: "show me the sum" → NEEDS calculation (API doesn't have numeric data)
+Only recommend calculation if the API does NOT already provide that specific metric.
 
 **Response Format (JSON only):**
 {
@@ -282,12 +272,6 @@ ${JSON.stringify(dataSample, null, 2)}
 **Data Structure Keys:**
 ${Array.isArray(apiData) && apiData.length > 0 ? Object.keys(apiData[0] || {}).join(", ") : "N/A"}
 
-**Your Task:**
-1. Read the API description carefully
-2. Check if it says "returns total", "returns average", "includes hours", etc.
-3. If API already provides what user asks for → needsCalculation: false
-4. If API doesn't provide that metric → needsCalculation: true
-
 Provide your analysis in JSON format.`,
 				},
 			],
@@ -300,7 +284,6 @@ Provide your analysis in JSON format.`,
 			calculationType: result.calculationType,
 			reasoning: result.reasoning,
 			needsCalculation: result.needsCalculation,
-			apiAlreadyProvides: result.apiAlreadyProvides,
 		});
 
 		return result;
@@ -389,7 +372,6 @@ const processIntentAndFormatResponse = async ({
 		console.log("🚀 PROCESS INTENT (ROLLING CONTEXT)");
 		console.log("========================================");
 		console.log("API:", api.name);
-		console.log("API Description:", api.description);
 		console.log("User message:", userMessage);
 		console.log("Actual data length:", Array.isArray(actualData) ? actualData.length : "N/A");
 		console.log("Is contextual:", isContextual);
@@ -431,7 +413,7 @@ const processIntentAndFormatResponse = async ({
 			}
 		}
 
-		// AI intent detection with API description
+		// AI intent detection
 		console.log("\n🤖 Starting AI intent detection...");
 		const calculationIntent = await detectCalculationIntent(userMessage, actualData, api?.description);
 
@@ -442,8 +424,6 @@ const processIntentAndFormatResponse = async ({
 		if (calculationIntent.needsCalculation && calculationIntent.calculationType !== "none") {
 			console.log("📊 Pre-calculation triggered...");
 			preCalculatedResults = performCalculations(actualData, calculationIntent);
-		} else {
-			console.log("ℹ️  No calculation needed - API already provides this data");
 		}
 
 		// 🔹 Build enhanced prompt with rolling context
@@ -455,21 +435,6 @@ API Name: ${api.name}
 API Description: ${api.description}
 User Message: "${userMessage}"
 Query Parameters: ${JSON.stringify(params, null, 2)}
-
-${
-	calculationIntent.apiAlreadyProvides && !calculationIntent.needsCalculation
-		? `
-### ⚠️ IMPORTANT: API Already Provides This Data
-**API Capabilities:** ${calculationIntent.apiAlreadyProvides}
-**User Intent:** ${calculationIntent.reasoning}
-
-The API already returns the data the user needs. Your job is to:
-1. Display the data clearly (NO additional calculations needed)
-2. Present it in a user-friendly format
-3. Acknowledge what the API provides naturally
-`
-		: ""
-}
 
 ${
 	isContextual && contextSummary
@@ -535,7 +500,7 @@ ${JSON.stringify(preCalculatedResults.result, null, 2)}
 3. ${
 			preCalculatedResults
 				? "**Use the pre-calculated results above** - they are accurate and complete"
-				: "**Display the data** as provided by the API (no calculations needed)"
+				: "**Process the data** as needed"
 		}
 4. **Apply any filters** mentioned in the user message:
    - For "top N": show exactly N items
@@ -737,3 +702,4 @@ Do not include any explanation, just the JSON array.`;
 };
 
 module.exports = processIntentAndFormatResponse;
+
