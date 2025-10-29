@@ -1,4 +1,5 @@
 const { OpenAI } = require("openai");
+const { getCurrentWeekDates, handleFromDateToDate, formatToISODate } = require("./dateParamsHandler");
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 // Get current ISO week number
@@ -147,10 +148,28 @@ async function handleParamsForApi(matchedApi, params, userMessage, session, { on
 		if (matchedApi.requiredFields.includes("WeekEnding") && !params.WeekEnding) {
 			params.WeekEnding = currentWeek;
 		}
-
-		missingFields = matchedApi.requiredFields.filter((f) => !params[f]);
 	}
 
+	// 🔹 Handle FromDate / ToDate fields (new logic)
+	const fromToFields = ["FromDate", "ToDate"];
+	const needsFromToExtraction = missingFields.some((f) => fromToFields.includes(f));
+
+	if (needsFromToExtraction) {
+		try {
+			const { FromDate, ToDate } = await handleFromDateToDate(userMessage);
+
+			// Validate ISO format or fix it
+			params.FromDate = formatToISODate(FromDate);
+			params.ToDate = formatToISODate(ToDate);
+		} catch (err) {
+			console.warn("⚠️ FromDate/ToDate extraction failed, using current week:", err);
+			const { FromDate, ToDate } = getCurrentWeekDates();
+			params.FromDate = FromDate;
+			params.ToDate = ToDate;
+		}
+	}
+
+	missingFields = matchedApi.requiredFields.filter((f) => !params[f]);
 	console.log(params, "final resolved params");
 	console.log(missingFields, "missing fields");
 

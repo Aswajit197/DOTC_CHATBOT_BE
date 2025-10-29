@@ -354,23 +354,25 @@ chat.createSession = async (req, res) => {
 	}
 };
 
-// 🔹 Fetch Sessions by userId
+// 🔹 Fetch Sessions by userId and ClientId
 chat.getSessionsByUserId = async (req, res) => {
 	try {
-		const { userId } = req.params;
-		if (!userId) {
-			return res.status(400).json({ error: "userId is required" });
+		const { userId, ClientId } = req.params;
+
+		if (!userId || !ClientId) {
+			return res.status(400).json({ error: "userId and ClientId are required" });
 		}
 
-		const sessions = await Session.find({ userId }).sort({ createdAt: -1 });
+		const sessions = await Session.find({ userId, ClientId }).sort({ createdAt: -1 });
+
 		if (!sessions.length) {
-			return res.status(200).json({ data: [], message: "No sessions found for this user" });
+			return res.status(200).json({ data: [], message: "No sessions found for this user and client" });
 		}
 
-		res.status(200).json({ data: sessions, message: "Sessions Fetched Successfully..." });
+		res.status(200).json({ data: sessions, message: "Sessions fetched successfully." });
 	} catch (err) {
-		console.error("Error fetching chats:", err);
-		res.status(500).json({ err, error: "Failed to fetch chats" });
+		console.error("Error fetching sessions:", err);
+		res.status(500).json({ err, error: "Failed to fetch sessions" });
 	}
 };
 

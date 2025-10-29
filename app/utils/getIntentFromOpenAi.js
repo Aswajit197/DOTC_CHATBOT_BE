@@ -26,15 +26,42 @@ The user has a conversation history with previous queries:
 
 ${session.getContextSummary()}
 
-**CRITICAL DECISION:**
-If the current user message references entities from previous queries using:
-- Pronouns: "they", "them", "their", "theirs"
-- Demonstratives: "these", "those"
-- References: "the same", "above", "previous", "last"
-- Implicit context: "give me hours" (meaning "for those previous drivers")
+**CRITICAL CONTEXTUAL REFERENCE RULES:**
+A query is ONLY contextual_followup if it meets ALL these conditions:
+1. Context history EXISTS (not empty)
+2. Uses explicit reference words: "they", "them", "their", "these", "those", "the same", "above", "previous", "last", "that", "it"
+3. The reference word MUST directly refer to entities from previous results
+4. The query CANNOT work standalone without previous context
 
-Then classify as type: "contextual_followup"`
-		: "";
+**Examples of TRUE contextual_followup:**
+- Previous: "Give me 10 drivers"
+  Current: "Give me their hours" ✅ (uses "their" referring to those 10 drivers)
+- Previous: "Show drivers from station 5"
+  Current: "What are their schedules?" ✅ (uses "their")
+- Previous: "List all drivers"
+  Current: "Show me hours for the above drivers" ✅ (uses "above")
+- Previous: "Get driver details"
+  Current: "Give me weekly hours for previous drivers" ✅ (uses "previous")
+
+**Examples of FALSE contextual_followup (independent queries):**
+- Previous: "Give me 10 drivers"
+  Current: "Give me drivers time off requests" ❌ (no reference word, asks for ALL drivers)
+- Previous: "Show me drivers"
+  Current: "Get all driver schedules" ❌ (no reference word, independent query)
+- Previous: "List drivers"
+  Current: "Show driver overtime preferences" ❌ (no reference to previous results)
+- Current: "Give me hours for drivers" ❌ (generic query, no specific reference)
+
+**Key distinction:**
+- "Give me their hours" → contextual (refers to specific previous entities)
+- "Give me driver hours" → independent (general query for all drivers)
+`
+		: `
+### ⚠️ NO CONTEXT AVAILABLE
+There is NO conversation history. Therefore:
+- This query CANNOT be contextual_followup
+- Treat as independent query regardless of pronouns used
+`;
 
 	const systemPrompt = `
 You are an assistant that maps user queries to API operations.
@@ -44,7 +71,7 @@ ${topApis
 	.map(
 		(api, i) =>
 			`${i + 1}. ${api.name}: ${api.description}
-     Required fields: ${api.requiredFields && api.requiredFields.length ? api.requiredFields.join(", ") : "None"}`
+	 Required fields: ${api.requiredFields && api.requiredFields.length ? api.requiredFields.join(", ") : "None"}`
 	)
 	.join("\n")}
 
@@ -72,7 +99,7 @@ Instructions:
 ❌ DO NOT invent values based on previous queries
 
 ✅ ONLY extract if the user literally says it: "driver 1234", "station 5", "client 2"
-✅ Leave params empty "null" if nothing is explicitly mentioned
+✅ Leave params empty "{}" if nothing is explicitly mentioned
 ✅ Missing field handling is done separately - your job is ONLY extraction
 
 **Examples:**
@@ -81,30 +108,36 @@ Instructions:
 - "List drivers for station 5" → params: { StationId: 5 }
 - "Give me their hours" → params: {}  (context-based, no explicit params)
 
-### 1. Contextual Follow-up (HIGHEST PRIORITY!)
-**Check this FIRST before anything else!**
+### 1. Contextual Follow-up (HIGHEST PRIORITY - CHECK CAREFULLY!)
+**⚠️ CRITICAL: Only classify as contextual_followup if ALL conditions are met:**
 
-If the user message references entities from previous queries:
-- Examples: "give me their hours", "show them", "what about those drivers", "give me details for these"
-- Keywords: they, them, their, these, those, the same, for them, about them
+**REQUIRED CONDITIONS (ALL MUST BE TRUE):**
+1. ✅ Context history EXISTS (session has previous queries)
+2. ✅ Message contains explicit reference words:
+   - Pronouns: "they", "them", "their", "theirs"
+   - Demonstratives: "these", "those", "that"
+   - References: "the same", "above", "previous", "last", "it"
+3. ✅ The reference word DIRECTLY refers to entities from previous results
+4. ✅ Query CANNOT stand alone without previous context
 
-→ Classify as **contextual_followup**
+**If ANY condition fails → classify as independent, NOT contextual_followup**
 
+**⚠️ COMMON FALSE POSITIVES TO AVOID:**
+❌ "Give me drivers time off requests" → independent (no reference word)
+❌ "Show all driver schedules" → independent (generic, not referring to previous)
+❌ "Get driver overtime preferences" → independent (general query)
+❌ "List driver hours" → independent (no specific reference)
+
+**✅ TRUE CONTEXTUAL EXAMPLES:**
+✅ "Give me their hours" (refers to specific previous drivers)
+✅ "Show me details for those drivers" (uses "those")
+✅ "What about the previous drivers?" (uses "previous")
+✅ "Get hours for above drivers" (uses "above")
+
+**If contextual_followup:**
 → Return JSON in this format:
 {
   "apiName": "<exact API name that provides the requested data>",
-  "params": { /* ONLY explicitly mentioned params */ },
-  "dependent": false,
-  "type": "contextual_followup",
-  "contextualReference": true
-}
-
-**Example:**
-Previous query: "Give me 15 drivers"
-Current message: "Give me their weekly working hours"
-Response:
-{
-  "apiName": "GetDriverWeeklyWorkingHrList",
   "params": {},
   "dependent": false,
   "type": "contextual_followup",
@@ -112,10 +145,17 @@ Response:
 }
 
 ### 2. Independent (Single Intent)
-If Independent (Fresh query with no reference to previous results):
+If Independent (Fresh query with no reference to previous results OR no context exists):
    * Identify the most appropriate API from the Available APIs list.
    * Extract parameters ONLY if EXPLICITLY mentioned in the message.
    * DO NOT assume or auto-fill ANY values.
+
+**Common patterns for independent queries:**
+- "Give me X drivers"
+- "Show driver Y"
+- "List all drivers with Z"
+- "Get driver schedules"
+- Any query without reference words (their/those/previous/etc.)
 
 → Return JSON:
 {
@@ -135,8 +175,8 @@ Examples:
 → Return JSON:
 {
   "apis": [
-    { "apiName": "<exact API name from above>", "params": { /* ONLY explicit params */ } },
-    { "apiName": "<another API name>", "params": { /* ONLY explicit params */ } }
+	{ "apiName": "<exact API name from above>", "params": {} },
+	{ "apiName": "<another API name>", "params": {} }
   ],
   "dependent": false,
   "type": "multi_intent"
@@ -166,7 +206,7 @@ If the user message modifies the LAST response (not referencing previous entitie
 → Return JSON:
 {
   "apiName": "<exact API name from above>",
-  "params": { /* ONLY explicit params if any */ },
+  "params": {},
   "dependent": true,
   "type": "refinement_request"
 }
@@ -191,18 +231,25 @@ If casual, small talk, or not related to any API:
 }
 
 **CRITICAL DECISION TREE:**
-1. Check for contextual reference FIRST (they/them/their/these/those) → contextual_followup
-2. Check for visualization request → visualization_request
-3. Check for missing field resolution → handle_missing_field
-4. Check for refinement of last response → refinement_request
-5. Check for multi-intent → multi_intent
-6. Otherwise → independent
+1. ⚠️ Check if context history exists → if NO, skip to step 3
+2. ⚠️ Check for EXPLICIT contextual reference words (their/those/previous/last/above) AND refers to previous entities → contextual_followup
+3. Check for visualization request → visualization_request
+4. Check for missing field resolution → handle_missing_field
+5. Check for refinement of last response → refinement_request
+6. Check for multi-intent → multi_intent
+7. Otherwise → independent
+
+**REMEMBER:**
+- Without context history → ALWAYS independent
+- Without explicit reference words → ALWAYS independent
+- Generic queries like "give me driver X" → ALWAYS independent
+- Only use contextual_followup when user explicitly refers to previous results
 
 Important:
 - DO NOT explain your reasoning.
 - DO NOT add comments or extra text.
 - Output valid JSON only.
-- Remember: ONLY extract explicitly mentioned parameters!
+- Be STRICT about contextual_followup classification!
 `;
 
 	if (abortSignal?.aborted) {
@@ -241,6 +288,23 @@ Important:
 		return { error: "OpenAI parsing failed" };
 	}
 
+	// 🔹 POST-PROCESSING VALIDATION: Enforce contextual rules
+	if (extracted.type === "contextual_followup") {
+		if (!hasContext) {
+			console.log("⚠️ OVERRIDE: No context history exists, changing to independent");
+			extracted.type = "independent";
+			extracted.contextualReference = false;
+		} else {
+			// Check for explicit reference words
+			const referenceWords = /\b(they|them|their|theirs|these|those|that|above|previous|last|the same|it)\b/i;
+			if (!referenceWords.test(userMessage)) {
+				console.log("⚠️ OVERRIDE: No reference words found, changing to independent");
+				extracted.type = "independent";
+				extracted.contextualReference = false;
+			}
+		}
+	}
+
 	console.log("\n========================================");
 	console.log("🎯 INTENT EXTRACTION RESULT");
 	console.log("========================================");
@@ -248,6 +312,7 @@ Important:
 	console.log("API:", extracted.apiName);
 	console.log("Params:", JSON.stringify(extracted.params));
 	console.log("Contextual:", extracted.contextualReference || false);
+	console.log("Has Context:", hasContext);
 	console.log("========================================\n");
 
 	const matchedApi = apiListData.find((api) => api.name === extracted.apiName);
@@ -530,3 +595,4 @@ Your task:
 }
 
 module.exports = getIntentFromOpenAI;
+

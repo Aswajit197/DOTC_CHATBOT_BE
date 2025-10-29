@@ -1,6 +1,7 @@
 const axios = require("axios");
 const processIntentAndFormatResponse = require("./app/utils/ProcessIntentAndFormatResponse");
 const { OpenAI } = require("openai");
+const { handleFromDateToDate } = require("./app/utils/dateParamsHandler");
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 const API_BASE = process.env.API_BASE_URL;
@@ -11,7 +12,7 @@ module.exports = [
 		name: "GetDriverWeeklyWorkingHrList",
 		description:
 			"This API should be triggered whenever the user asks about a driver's preferred weekly working hours. It provides the number of hours each driver wishes to work in a week along with their name.",
-		requiredFields: ["ClientId"],
+		requiredFields: ["ClientId", "FromDate", "ToDate"],
 		followupItem: "driverId", // 🔹 What to track for follow-up queries
 		graphType: "bar",
 		exampleResponse: [
@@ -28,7 +29,8 @@ module.exports = [
 				return { error: "Request aborted" };
 			}
 
-			if (!params?.ClientId) params.ClientId = 2;
+			if (!params?.ClientId) params.ClientId = session.ClientId || 2;
+			// Auto-extract dates if missing
 
 			try {
 				if (abortSignal?.aborted) {
@@ -36,7 +38,9 @@ module.exports = [
 					return { error: "Request aborted" };
 				}
 
-				const { data } = await axios.get(`${API_BASE}/GetDriverWeeklyWorkingHrList?ClientId=${params.ClientId}`);
+				const { data } = await axios.get(
+					`${API_BASE}/GetDriverWeeklyWorkingHrList?ClientId=${params.ClientId}&FromDate=${`2025-10-19`}&ToDate=${`2025-10-25`}`
+				);
 
 				console.log("📊 API Response length:", data?.data?.length);
 
@@ -142,14 +146,14 @@ module.exports = [
 
 		handler: async (params, userMessage, session, onStream, abortSignal, isContextual = false) => {
 			// 🔹 ADD contextEntities
-			console.log("\n🔹 GetDayFactor Handler");
+			console.log("\n🔹 GetDayFactor Handler", session);
 
 			if (abortSignal?.aborted) {
 				console.log("🚫 GetDayFactor handler: Aborted before execution");
 				return { error: "Request aborted" };
 			}
 
-			if (!params?.ClientId) params.ClientId = 2;
+			if (!params?.ClientId) params.ClientId = session.ClientId || 2;
 
 			try {
 				if (abortSignal?.aborted) {
@@ -246,7 +250,7 @@ module.exports = [
 				return { error: "Request aborted" };
 			}
 
-			if (!params?.ClientId) params.ClientId = 2;
+			if (!params?.ClientId) params.ClientId = session.ClientId || 2;
 
 			try {
 				if (abortSignal?.aborted) {
@@ -310,7 +314,7 @@ module.exports = [
 				return { error: "Request aborted" };
 			}
 
-			if (!params?.ClientId) params.ClientId = 2;
+			if (!params?.ClientId) params.ClientId = session.ClientId || 2;
 
 			try {
 				if (abortSignal?.aborted) {
@@ -369,7 +373,7 @@ module.exports = [
 				return { error: "Request aborted" };
 			}
 
-			if (!params?.ClientId) params.ClientId = 2;
+			if (!params?.ClientId) params.ClientId = session.ClientId || 2;
 			if (!params?.DriverId) return { missingFields: ["DriverId"] };
 
 			try {
@@ -437,7 +441,7 @@ module.exports = [
 				return { error: "Request aborted" };
 			}
 
-			if (!params?.ClientId) params.ClientId = 2;
+			if (!params?.ClientId) params.ClientId = session.ClientId || 2;
 			if (!params?.DriverId) return { missingFields: ["DriverId"] };
 
 			try {
@@ -493,18 +497,14 @@ module.exports = [
 				return { error: "Request aborted" };
 			}
 
-			if (!params?.ClientId) params.ClientId = 2;
+			if (!params?.ClientId) params.ClientId = session.ClientId || 2;
 
 			try {
 				if (abortSignal?.aborted) {
 					console.log("🚫 GetDriverOTPreferenceList handler: Aborted before axios call");
 					return { error: "Request aborted" };
 				}
-
-				console.log(`${API_BASE}/GetDriverOTPreferenceList?ClientId=${params.ClientId}`);
 				const { data } = await axios.get(`${API_BASE}/GetDriverOTPreferenceList?ClientId=${params.ClientId}`);
-
-				console.log(data);
 
 				if (abortSignal?.aborted) {
 					console.log("🚫 GetDriverOTPreferenceList handler: Aborted after axios call");
@@ -560,7 +560,7 @@ module.exports = [
 				return { error: "Request aborted" };
 			}
 
-			if (!params?.ClientId) params.ClientId = 2;
+			if (!params?.ClientId) params.ClientId = session.ClientId || 2;
 
 			try {
 				if (abortSignal?.aborted) {
@@ -696,7 +696,7 @@ Respond in JSON only:
 			}
 
 			const missingFields = [];
-			if (!params?.ClientId) params.ClientId = 2;
+			if (!params?.ClientId) params.ClientId = session.ClientId || 2;
 			if (!params?.FromDate) missingFields.push("FromDate");
 			if (!params?.ToDate) missingFields.push("ToDate");
 
@@ -844,7 +844,7 @@ Respond in JSON only:
 			}
 
 			const missingFields = [];
-			if (!params?.ClientId) params.ClientId = 2;
+			if (!params?.ClientId) params.ClientId = session.ClientId || 2;
 			if (!params?.FromDate) missingFields.push("FromDate");
 			if (!params?.ToDate) missingFields.push("ToDate");
 
@@ -923,7 +923,7 @@ Respond in JSON only:
 				return { error: "Request aborted" };
 			}
 
-			if (params?.ClientId !== 2) params.ClientId = 2;
+			if (!params?.ClientId) params.ClientId = session.ClientId || 2;
 			if (!params?.WeekStarting) return { missingFields: ["WeekStarting"] };
 			if (!params?.WeekEnding) return { missingFields: ["WeekEnding"] };
 			if (!params?.Year) {
@@ -932,10 +932,10 @@ Respond in JSON only:
 
 			try {
 				const url = `${API_BASE}/GetBlobShiftDriverData?WeekStarting=${params.WeekStarting}&WeekEnding=${params.WeekEnding}&Year=${params.Year}&ClientId=${params.ClientId}`;
-				console.log(url);
 
 				const { data } = await axios.get(url);
 
+				console.log(data);
 				if (abortSignal?.aborted) {
 					console.log("🚫 GetBlobShiftDriverData handler: Aborted after axios call");
 					return { error: "Request aborted" };
@@ -1004,7 +1004,7 @@ Respond in JSON only:
 				return { error: "Request aborted" };
 			}
 
-			if (params?.ClientId !== 2) params.ClientId = 2;
+			if (!params?.ClientId) params.ClientId = session.ClientId || 2;
 			if (!params?.WeekStarting) return { missingFields: ["WeekStarting"] };
 			if (!params?.WeekEnding) return { missingFields: ["WeekEnding"] };
 			if (!params?.Year) {
@@ -1059,7 +1059,7 @@ Respond in JSON only:
 		],
 		followupItem: "driverId",
 		handler: async (params, userMessage, session, onStream, abortSignal, isContextual = false) => {
-			if (!params?.ClientId !== 2) params.ClientId = 2;
+			if (!params?.ClientId) params.ClientId = session.ClientId || 2;
 
 			try {
 				const { data } = await axios.get(`${API_BASE}/GetTimeOffRequestForBackend?ClientId=${params?.ClientId}`);
@@ -1106,7 +1106,7 @@ Respond in JSON only:
 			}
 		},
 		multiHandler: async (params, userMessage, session, onStream) => {
-			if (!params?.ClientId !== 2) params.ClientId = 2;
+			if (!params?.ClientId) params.ClientId = session.ClientId || 2;
 
 			try {
 				const { data } = await axios.get(`${API_BASE}/GetTimeOffRequestForBackend?ClientId=${params?.ClientId}`);
@@ -1152,7 +1152,7 @@ Respond in JSON only:
 				return { error: "Request aborted" };
 			}
 
-			if (params?.ClientId !== 2) params.ClientId = 2;
+			if (!params?.ClientId) params.ClientId = session.ClientId || 2;
 
 			try {
 				const url = `${API_BASE}/GetLocationListForBackEnd?ClientId=${params.ClientId}`;
@@ -1220,7 +1220,7 @@ Respond in JSON only:
 				return { error: "Request aborted" };
 			}
 
-			if (params?.ClientId !== 2) params.ClientId = 2;
+			if (!params?.ClientId) params.ClientId = session.ClientId || 2;
 
 			try {
 				const url = `${API_BASE}/GetLocationListForBackEnd?ClientId=${params.ClientId}`;
@@ -1282,7 +1282,7 @@ Respond in JSON only:
 				return { error: "Request aborted" };
 			}
 
-			if (params?.ClientId !== 2) params.ClientId = 2;
+			if (!params?.ClientId) params.ClientId = session.ClientId || 2;
 
 			try {
 				const url = `${API_BASE}/GetSchedAlignEngineLMDPPermissions?ClientId=${params.ClientId}`;
@@ -1352,7 +1352,7 @@ Respond in JSON only:
 				return { error: "Request aborted" };
 			}
 
-			if (params?.ClientId !== 2) params.ClientId = 2;
+			if (!params?.ClientId) params.ClientId = session.ClientId || 2;
 
 			try {
 				const url = `${API_BASE}/GetSchedAlignEngineLMDPPermissions?ClientId=${params.ClientId}`;
@@ -1406,7 +1406,7 @@ Respond in JSON only:
 			},
 		],
 		handler: async (params, userMessage, session, onStream, abortSignal, isContextual = false) => {
-			if (!params?.ClientId !== 2) params.ClientId = 2;
+			if (!params?.ClientId) params.ClientId = session.ClientId || 2;
 
 			if (abortSignal?.aborted) {
 				console.log("🚫 getDriverByClientId handler: Aborted before execution");
@@ -1433,8 +1433,6 @@ Respond in JSON only:
 						mobilePhone: item.mobilePhone,
 						email: item.email,
 					})) || [];
-
-				console.log(driverList, "Get drivers List");
 
 				return await processIntentAndFormatResponse({
 					userMessage,
@@ -1468,7 +1466,7 @@ Respond in JSON only:
 		},
 		// new handler for multi-intent (raw data only)
 		multiHandler: async (params) => {
-			if (!params?.ClientId) params.ClientId = 2;
+			if (!params?.ClientId) params.ClientId = session.ClientId || 2;
 
 			try {
 				const { data } = await axios.get(`${API_BASE}/GetDriverByClientId?ClientId=${params?.ClientId}`);
@@ -1506,7 +1504,7 @@ Respond in JSON only:
 		followupItem: "preferenceType",
 
 		handler: async (params, userMessage, session, onStream, abortSignal, isContextual = false) => {
-			if (!params?.ClientId !== 2) params.ClientId = 2;
+			if (!params?.ClientId) params.ClientId = session.ClientId || 2;
 
 			try {
 				const { data } = await axios.get(`${API_BASE}/GetSchedAlignEngineLMDPPreference?ClientId=${params?.ClientId}`);
@@ -1548,7 +1546,7 @@ Respond in JSON only:
 			}
 		},
 		multiHandler: async (params, userMessage, session, onStream, abortSignal) => {
-			if (!params?.ClientId !== 2) params.ClientId = 2;
+			if (!params?.ClientId) params.ClientId = session.ClientId || 2;
 
 			try {
 				const { data } = await axios.get(`${API_BASE}/GetSchedAlignEngineLMDPPreference?ClientId=${params?.ClientId}`);
@@ -1586,7 +1584,7 @@ Respond in JSON only:
 		},
 		followupItem: "graphHrs",
 		handler: async (params, userMessage, session, onStream, abortSignal, isContextual = false) => {
-			if (!params?.ClientId) params.ClientId = 2;
+			if (!params?.ClientId) params.ClientId = session.ClientId || 2;
 
 			try {
 				const { data } = await axios.get(`${API_BASE}/GetSchedAlignEngineWeeklySetting?ClientId=${params.ClientId}`);
@@ -1634,7 +1632,7 @@ Respond in JSON only:
 			}
 		},
 		multiHandler: async (params, userMessage, session, onStream) => {
-			if (!params?.ClientId) params.ClientId = 2;
+			if (!params?.ClientId) params.ClientId = session.ClientId || 2;
 
 			try {
 				const { data } = await axios.get(`${API_BASE}/GetSchedAlignEngineWeeklySetting?ClientId=${params.ClientId}`);
@@ -1826,7 +1824,7 @@ Respond in JSON only:
 
 			// 3️⃣ Final param validation
 			const missingFields = [];
-			if (!params?.ClientId) params.ClientId = 2;
+			if (!params?.ClientId) params.ClientId = session.ClientId || 2;
 			if (!params?.FromDate) missingFields.push("FromDate");
 			if (!params?.ToDate) missingFields.push("ToDate");
 
@@ -2029,7 +2027,7 @@ Respond in JSON only:
 
 			// 3️⃣ Final param validation
 			const missingFields = [];
-			if (!params?.ClientId) params.ClientId = 2;
+			if (!params?.ClientId) params.ClientId = session.ClientId || 2;
 			if (!params?.FromDate) missingFields.push("FromDate");
 			if (!params?.ToDate) missingFields.push("ToDate");
 
@@ -2100,7 +2098,7 @@ Respond in JSON only:
 				return { error: "Request aborted" };
 			}
 
-			if (params?.ClientId !== 2) params.ClientId = 2;
+			if (!params?.ClientId) params.ClientId = session.ClientId || 2;
 
 			try {
 				const url = `${API_BASE}/GetOpenShiftForBackEnd?ClientId=${params.ClientId}`;
@@ -2194,7 +2192,7 @@ Respond in JSON only:
 				return { error: "Request aborted" };
 			}
 
-			if (params?.ClientId !== 2) params.ClientId = 2;
+			if (!params?.ClientId) params.ClientId = session.ClientId || 2;
 
 			try {
 				const url = `${API_BASE}/GetOpenShiftForBackEnd?ClientId=${params.ClientId}`;
@@ -2270,7 +2268,7 @@ Respond in JSON only:
 				return { error: "Request aborted" };
 			}
 
-			if (params?.ClientId !== 2) params.ClientId = 2;
+			if (!params?.ClientId) params.ClientId = session.ClientId || 2;
 
 			try {
 				const url = `${API_BASE}/GetAllPreferenceHistoryForBackEnd?ClientId=${params.ClientId}`;
@@ -2344,7 +2342,7 @@ Respond in JSON only:
 				return { error: "Request aborted" };
 			}
 
-			if (params?.ClientId !== 2) params.ClientId = 2;
+			if (!params?.ClientId) params.ClientId = session.ClientId || 2;
 
 			try {
 				const url = `${API_BASE}/GetAllPreferenceHistoryForBackEnd?ClientId=${params.ClientId}`;

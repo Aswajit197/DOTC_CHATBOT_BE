@@ -236,22 +236,12 @@ async function detectCalculationIntent(userMessage, apiData, apiDescription) {
 
 **CRITICAL: Check API Capabilities First**
 Before recommending ANY calculation, check if the API description already provides that data:
+- If API says "Returns total hours" → Don't calculate sum, just display
+- If API says "Returns average" → Don't calculate average, just display
+- If API says "Returns breakdown by..." → Don't aggregate, just display the breakdown
+- If API says "Returns list of items with values" → User is just asking to see the data
 
-**Keywords that indicate API ALREADY provides the data (DO NOT calculate):**
-- "Returns total...", "Returns sum...", "Returns average..."
-- "Returns breakdown...", "Returns list with..."
-- "Includes hours", "Contains totals", "Shows averages"
-- "Provides calculated...", "Pre-calculated..."
-- "With working hours", "Including shift details"
-
-**Examples of when NOT to calculate:**
-- API: "Returns total working hours for drivers" + User: "show total hours" → DON'T calculate, just display
-- API: "Returns list of drivers with weekly hours breakdown" + User: "give me average" → DON'T calculate, just display
-- API: "Returns average shift duration" + User: "what's the average" → DON'T calculate, just display
-
-**Examples of when TO calculate:**
-- API: "Returns list of drivers with names only" + User: "give me average hours" → NEEDS calculation (API doesn't provide hours)
-- API: "Returns driver names" + User: "show me the sum" → NEEDS calculation (API doesn't have numeric data)
+Only recommend calculation if the API does NOT already provide that specific metric.
 
 **Response Format (JSON only):**
 {
@@ -282,12 +272,6 @@ ${JSON.stringify(dataSample, null, 2)}
 **Data Structure Keys:**
 ${Array.isArray(apiData) && apiData.length > 0 ? Object.keys(apiData[0] || {}).join(", ") : "N/A"}
 
-**Your Task:**
-1. Read the API description carefully
-2. Check if it says "returns total", "returns average", "includes hours", etc.
-3. If API already provides what user asks for → needsCalculation: false
-4. If API doesn't provide that metric → needsCalculation: true
-
 Provide your analysis in JSON format.`,
 				},
 			],
@@ -300,7 +284,6 @@ Provide your analysis in JSON format.`,
 			calculationType: result.calculationType,
 			reasoning: result.reasoning,
 			needsCalculation: result.needsCalculation,
-			apiAlreadyProvides: result.apiAlreadyProvides,
 		});
 
 		return result;
@@ -370,6 +353,52 @@ function performCalculations(data, intent) {
 
 // ===== MAIN PROCESSING FUNCTION =====
 
+/**
+ * Check if data is empty (null, undefined, empty array, empty object, empty string)
+ */
+function isEmptyData(data) {
+	if (data === null || data === undefined) return true;
+	if (typeof data === "string" && data.trim() === "") return true;
+	if (Array.isArray(data) && data.length === 0) return true;
+	if (typeof data === "object" && Object.keys(data).length === 0) return true;
+	return false;
+}
+
+/**
+ * Generate a friendly "no data" message using AI
+ */
+async function generateEmptyDataMessage(userMessage, apiName, apiDescription) {
+	try {
+		const prompt = `The user asked: "${userMessage}"
+
+They were trying to use the API: ${apiName}
+API Description: ${apiDescription || "No description available"}
+
+However, the API returned no data/empty results.
+
+Generate a friendly, helpful message that:
+1. Acknowledges what they were looking for
+2. Explains that no data was found
+3. Suggests possible reasons (e.g., no records match criteria, date range has no data, etc.)
+4. Offers help or next steps
+
+Keep it conversational, empathetic, and under 3 sentences.
+Output ONLY the message text, no JSON or formatting.`;
+
+		const response = await openai.chat.completions.create({
+			model: "gpt-3.5-turbo",
+			messages: [{ role: "user", content: prompt }],
+			temperature: 0.7,
+		});
+
+		return response.choices[0].message.content.trim();
+	} catch (error) {
+		console.error("❌ Failed to generate empty data message:", error.message);
+		// Fallback message
+		return `I couldn't find any data for your request. There might be no records matching your criteria, or the data might not be available at the moment. Please try adjusting your search parameters or check back later.`;
+	}
+}
+
 const processIntentAndFormatResponse = async ({
 	userMessage,
 	api,
@@ -383,13 +412,12 @@ const processIntentAndFormatResponse = async ({
 	followupItem = null,
 }) => {
 	let fullText = "";
-
+	console.log(actualData, "actualData");
 	try {
 		console.log("\n========================================");
 		console.log("🚀 PROCESS INTENT (ROLLING CONTEXT)");
 		console.log("========================================");
 		console.log("API:", api.name);
-		console.log("API Description:", api.description);
 		console.log("User message:", userMessage);
 		console.log("Actual data length:", Array.isArray(actualData) ? actualData.length : "N/A");
 		console.log("Is contextual:", isContextual);
@@ -397,6 +425,57 @@ const processIntentAndFormatResponse = async ({
 		console.log("Context history length:", session.contextHistory?.length || 0);
 
 		if (abortSignal?.aborted) return { error: "Request aborted" };
+
+		// 🔹 CHECK FOR EMPTY DATA FIRST
+		if (isEmptyData(actualData)) {
+			console.log("\n⚠️ EMPTY DATA DETECTED");
+			console.log("Data type:", typeof actualData);
+			console.log("Data value:", actualData);
+
+			// Generate friendly empty message
+			const emptyMessage = await generateEmptyDataMessage(userMessage, api.name, api.description);
+
+			console.log("📭 Empty data message:", emptyMessage);
+
+			// Format as HTML for consistency
+			const htmlMessage = `
+<div class="empty-response">
+	<p>${emptyMessage}</p>
+	<div class="summary">
+		<p><strong>Search details:</strong></p>
+		<ul>
+			<li>API used: ${api.name}</li>
+			<li>Parameters: ${Object.keys(params).length > 0 ? JSON.stringify(params) : "None specified"}</li>
+			<li>Results found: 0</li>
+		</ul>
+	</div>
+</div>
+			`.trim();
+
+			// Save to session
+			await Session.updateOne(
+				{ _id: session._id },
+				{
+					$set: {
+						lastResponseMessage: htmlMessage,
+						lastSuccessUserMessage: userMessage,
+						lastSuccessIntent: api?.name || null,
+						lastSuccessApiResponse: actualData,
+						lastSuccessParams: params,
+						missingField: null,
+					},
+				}
+			);
+
+			console.log("✅ Empty response handled");
+			console.log("========================================\n");
+
+			return {
+				userReply: htmlMessage,
+				params,
+				api,
+			};
+		}
 
 		// 🔹 Get context information if contextual query
 		let contextInfo = null;
@@ -427,11 +506,11 @@ const processIntentAndFormatResponse = async ({
 				console.log("  - Type:", contextInfo.entityType);
 				console.log("  - Field:", contextInfo.entityFieldName);
 				console.log("  - Count:", contextInfo.entityCount);
-				console.log("  - Sample:", contextInfo.entityData.slice(0, 5));
+				console.log("  - Sample:", contextInfo.entityData);
 			}
 		}
 
-		// AI intent detection with API description
+		// AI intent detection
 		console.log("\n🤖 Starting AI intent detection...");
 		const calculationIntent = await detectCalculationIntent(userMessage, actualData, api?.description);
 
@@ -442,8 +521,6 @@ const processIntentAndFormatResponse = async ({
 		if (calculationIntent.needsCalculation && calculationIntent.calculationType !== "none") {
 			console.log("📊 Pre-calculation triggered...");
 			preCalculatedResults = performCalculations(actualData, calculationIntent);
-		} else {
-			console.log("ℹ️  No calculation needed - API already provides this data");
 		}
 
 		// 🔹 Build enhanced prompt with rolling context
@@ -455,21 +532,6 @@ API Name: ${api.name}
 API Description: ${api.description}
 User Message: "${userMessage}"
 Query Parameters: ${JSON.stringify(params, null, 2)}
-
-${
-	calculationIntent.apiAlreadyProvides && !calculationIntent.needsCalculation
-		? `
-### ⚠️ IMPORTANT: API Already Provides This Data
-**API Capabilities:** ${calculationIntent.apiAlreadyProvides}
-**User Intent:** ${calculationIntent.reasoning}
-
-The API already returns the data the user needs. Your job is to:
-1. Display the data clearly (NO additional calculations needed)
-2. Present it in a user-friendly format
-3. Acknowledge what the API provides naturally
-`
-		: ""
-}
 
 ${
 	isContextual && contextSummary
@@ -535,7 +597,7 @@ ${JSON.stringify(preCalculatedResults.result, null, 2)}
 3. ${
 			preCalculatedResults
 				? "**Use the pre-calculated results above** - they are accurate and complete"
-				: "**Display the data** as provided by the API (no calculations needed)"
+				: "**Process the data** as needed"
 		}
 4. **Apply any filters** mentioned in the user message:
    - For "top N": show exactly N items
@@ -543,19 +605,19 @@ ${JSON.stringify(preCalculatedResults.result, null, 2)}
    - For categories: group appropriately
 5. **Choose the best format**:
    - **Tables**: For comparisons, multiple attributes, calculated results
-     - Use <thead> with <th> and <tbody> with <tr><td>
-     - Make headers descriptive and user-friendly
-     - DO NOT include ID fields (like driverId, id, shiftId, etc.) in the table
-     - Only show meaningful fields (names, hours, dates, status, etc.)
+	 - Use <thead> with <th> and <tbody> with <tr><td>
+	 - Make headers descriptive and user-friendly
+	 - DO NOT include ID fields (like driverId, id, shiftId, etc.) in the table
+	 - Only show meaningful fields (names, hours, dates, status, etc.)
    - **Lists**: For simple enumerations
    - **Paragraphs**: For descriptive content
 6. **Structure your response**:
    - Introductory <p> sentence
    - Main content (table/list/paragraph)
    - <div class="summary"> with:
-     * Exact counts (no vague terms)
-     * 2-3 key insights
-     * Statistics from pre-calculated results if available
+	 * Exact counts (no vague terms)
+	 * 2-3 key insights
+	 * Statistics from pre-calculated results if available
 7. **Format dates** in readable format (e.g., "January 15, 2025" not "2025-01-15")
 
 ${
@@ -587,7 +649,6 @@ After your response, add this hidden meta tag with the ACTUAL ${followupItem} va
 
 Generate the response now:
 `;
-
 		// Stream response
 		console.log("\n📤 Streaming response...");
 		const completion = await openai.chat.completions.create({
@@ -707,7 +768,6 @@ Do not include any explanation, just the JSON array.`;
 					if (api.name.toLowerCase().includes("driver")) entityType = "drivers";
 					else if (api.name.toLowerCase().includes("shift")) entityType = "shifts";
 					else if (api.name.toLowerCase().includes("day")) entityType = "days";
-
 					await session.addToContextHistory(api?.name, extractedValues, followupItem, entityType, userMessage);
 					await session.save();
 				}
@@ -728,8 +788,20 @@ Do not include any explanation, just the JSON array.`;
 		if (abortSignal?.aborted) return { error: "Request aborted" };
 
 		console.error("❌ Error:", err.message);
+
+		// Generate a proper error message instead of generic text
+		const errorMessage = `
+<div class="error-response">
+	<p>I encountered an issue while processing your request: "${userMessage}"</p>
+	<p>Please try again or rephrase your question. If the problem persists, contact support.</p>
+	<div class="summary">
+		<p><strong>Error details:</strong> ${err.message || "Unknown error"}</p>
+	</div>
+</div>
+		`.trim();
+
 		return {
-			userReply: "Here's the available data.",
+			userReply: errorMessage,
 			params,
 			api,
 		};

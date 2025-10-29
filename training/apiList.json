@@ -2,7 +2,7 @@
 	{
 		"name": "GetDriverWeeklyWorkingHrList",
 		"description": "This API should be triggered whenever the user asks about a driver’s preferred weekly working hours. It provides the number of hours each driver wishes to work in a week along with their name. This is useful for managers to align schedules with driver availability and preferences. Use this API when the user asks questions such as: “How many hours does Alejandro Reyes want to work per week?”, “Show me all drivers with their weekly working hour preferences”, “Who prefers 40 hours per week?”, “List drivers with less than 35 weekly hours preference”, or “What is Anthony Semidey’s weekly working hour preference?”",
-		"requiredFields": ["ClientId"]
+		"requiredFields": ["ClientId", "FromDate", "ToDate"]
 	},
 	{
 		"name": "GetDayFactor",
