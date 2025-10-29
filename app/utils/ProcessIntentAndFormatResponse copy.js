@@ -702,4 +702,3 @@ Do not include any explanation, just the JSON array.`;
 };
 
 module.exports = processIntentAndFormatResponse;
-

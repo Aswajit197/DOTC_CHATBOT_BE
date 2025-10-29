@@ -39,7 +39,7 @@ module.exports = [
 				}
 
 				const { data } = await axios.get(
-					`${API_BASE}/GetDriverWeeklyWorkingHrList?ClientId=${params.ClientId}&FromDate=${`2025-10-19`}&ToDate=${`2025-10-25`}`
+					`${API_BASE}/GetDriverWeeklyWorkingHrList?ClientId=${params.ClientId}&FromDate=${params.FromDate}&ToDate=${params.ToDate}`
 				);
 
 				console.log("📊 API Response length:", data?.data?.length);

@@ -236,12 +236,22 @@ async function detectCalculationIntent(userMessage, apiData, apiDescription) {
 
 **CRITICAL: Check API Capabilities First**
 Before recommending ANY calculation, check if the API description already provides that data:
-- If API says "Returns total hours" → Don't calculate sum, just display
-- If API says "Returns average" → Don't calculate average, just display
-- If API says "Returns breakdown by..." → Don't aggregate, just display the breakdown
-- If API says "Returns list of items with values" → User is just asking to see the data
 
-Only recommend calculation if the API does NOT already provide that specific metric.
+**Keywords that indicate API ALREADY provides the data (DO NOT calculate):**
+- "Returns total...", "Returns sum...", "Returns average..."
+- "Returns breakdown...", "Returns list with..."
+- "Includes hours", "Contains totals", "Shows averages"
+- "Provides calculated...", "Pre-calculated..."
+- "With working hours", "Including shift details"
+
+**Examples of when NOT to calculate:**
+- API: "Returns total working hours for drivers" + User: "show total hours" → DON'T calculate, just display
+- API: "Returns list of drivers with weekly hours breakdown" + User: "give me average" → DON'T calculate, just display
+- API: "Returns average shift duration" + User: "what's the average" → DON'T calculate, just display
+
+**Examples of when TO calculate:**
+- API: "Returns list of drivers with names only" + User: "give me average hours" → NEEDS calculation (API doesn't provide hours)
+- API: "Returns driver names" + User: "show me the sum" → NEEDS calculation (API doesn't have numeric data)
 
 **Response Format (JSON only):**
 {
@@ -272,6 +282,12 @@ ${JSON.stringify(dataSample, null, 2)}
 **Data Structure Keys:**
 ${Array.isArray(apiData) && apiData.length > 0 ? Object.keys(apiData[0] || {}).join(", ") : "N/A"}
 
+**Your Task:**
+1. Read the API description carefully
+2. Check if it says "returns total", "returns average", "includes hours", etc.
+3. If API already provides what user asks for → needsCalculation: false
+4. If API doesn't provide that metric → needsCalculation: true
+
 Provide your analysis in JSON format.`,
 				},
 			],
@@ -284,6 +300,7 @@ Provide your analysis in JSON format.`,
 			calculationType: result.calculationType,
 			reasoning: result.reasoning,
 			needsCalculation: result.needsCalculation,
+			apiAlreadyProvides: result.apiAlreadyProvides,
 		});
 
 		return result;
@@ -353,151 +370,6 @@ function performCalculations(data, intent) {
 
 // ===== MAIN PROCESSING FUNCTION =====
 
-/**
- * Check if data is empty (null, undefined, empty array, empty object, empty string)
- */
-function isEmptyData(data) {
-	if (data === null || data === undefined) return true;
-	if (typeof data === "string" && data.trim() === "") return true;
-	if (Array.isArray(data) && data.length === 0) return true;
-	if (typeof data === "object" && Object.keys(data).length === 0) return true;
-	return false;
-}
-
-/**
- * Generate a friendly "no data" message using AI
- */
-async function generateEmptyDataMessage(userMessage, apiName, apiDescription) {
-	try {
-		const prompt = `The user asked: "${userMessage}"
-
-They were trying to use the API: ${apiName}
-API Description: ${apiDescription || "No description available"}
-
-However, the API returned no data/empty results.
-
-Generate a friendly, helpful message that:
-1. Acknowledges what they were looking for
-2. Explains that no data was found
-3. Suggests possible reasons (e.g., no records match criteria, date range has no data, etc.)
-4. Offers help or next steps
-
-Keep it conversational, empathetic, and under 3 sentences.
-Output ONLY the message text, no JSON or formatting.`;
-
-		const response = await openai.chat.completions.create({
-			model: "gpt-3.5-turbo",
-			messages: [{ role: "user", content: prompt }],
-			temperature: 0.7,
-		});
-
-		return response.choices[0].message.content.trim();
-	} catch (error) {
-		console.error("❌ Failed to generate empty data message:", error.message);
-		// Fallback message
-		return `I couldn't find any data for your request. There might be no records matching your criteria, or the data might not be available at the moment. Please try adjusting your search parameters or check back later.`;
-	}
-}
-
-/**
- * Filter actualData to only include items matching context
- * Returns { filteredData, matchCount, contextField, contextValues }
- */
-function applyContextualFilter(actualData, contextInfo) {
-	if (!contextInfo || !contextInfo.entityData || !contextInfo.entityFieldName) {
-		return { filteredData: actualData, matchCount: 0, contextField: null, contextValues: [] };
-	}
-
-	const { entityData, entityFieldName } = contextInfo;
-
-	console.log("\n🔍 APPLYING CONTEXTUAL FILTER");
-	console.log("  - Context field:", entityFieldName);
-	console.log("  - Context values count:", entityData.length);
-	console.log("  - Data to filter:", Array.isArray(actualData) ? actualData.length : "N/A");
-
-	if (!Array.isArray(actualData)) {
-		console.log("  ⚠️ Data is not an array, cannot filter");
-		return { filteredData: actualData, matchCount: 0, contextField: entityFieldName, contextValues: entityData };
-	}
-
-	// Normalize context values for comparison (convert to strings)
-	const normalizedContextValues = entityData.map((v) => String(v).toLowerCase().trim());
-
-	// Filter data to only include items matching context
-	const filteredData = actualData.filter((item) => {
-		if (!item || typeof item !== "object") return false;
-
-		// Get the value from the item (handle nested paths)
-		const itemValue = getNestedValue(item, entityFieldName);
-		if (itemValue === null || itemValue === undefined) return false;
-
-		// Normalize for comparison
-		const normalizedItemValue = String(itemValue).toLowerCase().trim();
-
-		return normalizedContextValues.includes(normalizedItemValue);
-	});
-
-	console.log("  ✅ Filtered results:", filteredData.length, "matches");
-
-	if (filteredData.length > 0) {
-		console.log(
-			"  - Sample matched IDs:",
-			filteredData.slice(0, 3).map((item) => getNestedValue(item, entityFieldName))
-		);
-	}
-
-	return {
-		filteredData,
-		matchCount: filteredData.length,
-		contextField: entityFieldName,
-		contextValues: entityData,
-		originalCount: actualData.length,
-	};
-}
-
-/**
- * Generate a contextual "no matches" message
- */
-async function generateNoMatchesMessage(userMessage, contextInfo, apiName) {
-	try {
-		const prompt = `The user asked a follow-up question: "${userMessage}"
-
-They were referring to ${contextInfo.entityCount} ${contextInfo.entityType} from their previous query:
-"${contextInfo.entityUserMessage}"
-
-Context details:
-- Entity type: ${contextInfo.entityType}
-- Entity IDs: ${contextInfo.entityData.slice(0, 10).join(", ")}${contextInfo.entityData.length > 10 ? "..." : ""}
-- Field: ${contextInfo.entityFieldName}
-
-However, the API "${apiName}" returned NO data matching any of these ${contextInfo.entityType}.
-
-Generate a friendly, contextual message that:
-1. Acknowledges what they were asking about (their follow-up question)
-2. References the specific ${contextInfo.entityType} from their previous query
-3. Explains that none of those ${contextInfo.entityType} have any results for the current query
-4. Suggests they might want to check different ${contextInfo.entityType} or a different time period
-
-Keep it conversational, empathetic, and under 3 sentences.
-Use "them", "those", "these" naturally when referring to the previous context.
-Output ONLY the message text, no JSON or formatting.`;
-
-		const response = await openai.chat.completions.create({
-			model: "gpt-3.5-turbo",
-			messages: [{ role: "user", content: prompt }],
-			temperature: 0.7,
-		});
-
-		return response.choices[0].message.content.trim();
-	} catch (error) {
-		console.error("❌ Failed to generate no matches message:", error.message);
-
-		// Fallback contextual message
-		return `None of the ${contextInfo.entityCount} ${contextInfo.entityType} from your previous query have any data for this request. You might want to check different ${contextInfo.entityType} or adjust your search criteria.`;
-	}
-}
-
-// Update the main processIntentAndFormatResponse function
 const processIntentAndFormatResponse = async ({
 	userMessage,
 	api,
@@ -511,13 +383,13 @@ const processIntentAndFormatResponse = async ({
 	followupItem = null,
 }) => {
 	let fullText = "";
-	console.log(actualData, "actualData");
 
 	try {
 		console.log("\n========================================");
 		console.log("🚀 PROCESS INTENT (ROLLING CONTEXT)");
 		console.log("========================================");
 		console.log("API:", api.name);
+		console.log("API Description:", api.description);
 		console.log("User message:", userMessage);
 		console.log("Actual data length:", Array.isArray(actualData) ? actualData.length : "N/A");
 		console.log("Is contextual:", isContextual);
@@ -526,49 +398,15 @@ const processIntentAndFormatResponse = async ({
 
 		if (abortSignal?.aborted) return { error: "Request aborted" };
 
-		// 🔹 CHECK FOR EMPTY DATA FIRST (non-contextual)
-		if (!isContextual && isEmptyData(actualData)) {
-			console.log("\n⚠️ EMPTY DATA DETECTED (non-contextual)");
-			const emptyMessage = await generateEmptyDataMessage(userMessage, api.name, api.description);
-
-			const htmlMessage = `
-<div class="empty-response">
-	<p>${emptyMessage}</p>
-	<div class="summary">
-		<p><strong>Search details:</strong></p>
-		<ul>
-			<li>API used: ${api.name}</li>
-			<li>Parameters: ${Object.keys(params).length > 0 ? JSON.stringify(params) : "None specified"}</li>
-			<li>Results found: 0</li>
-		</ul>
-	</div>
-</div>
-			`.trim();
-
-			await Session.updateOne(
-				{ _id: session._id },
-				{
-					$set: {
-						lastResponseMessage: htmlMessage,
-						lastSuccessUserMessage: userMessage,
-						lastSuccessIntent: api?.name || null,
-						lastSuccessApiResponse: actualData,
-						lastSuccessParams: params,
-						missingField: null,
-					},
-				}
-			);
-
-			return { userReply: htmlMessage, params, api };
-		}
-
 		// 🔹 Get context information if contextual query
 		let contextInfo = null;
 		let contextSummary = null;
-		let filteredResult = null;
 
 		if (isContextual) {
+			// Get most recent context
 			const recentContext = session.getMostRecentContext();
+
+			// Get full context summary for AI
 			contextSummary = session.getContextSummary();
 
 			console.log("\n🎯 CONTEXTUAL QUERY DETECTED");
@@ -589,68 +427,11 @@ const processIntentAndFormatResponse = async ({
 				console.log("  - Type:", contextInfo.entityType);
 				console.log("  - Field:", contextInfo.entityFieldName);
 				console.log("  - Count:", contextInfo.entityCount);
-				console.log("  - Sample:", contextInfo.entityData);
-
-				// 🔹 APPLY CONTEXTUAL FILTER
-				filteredResult = applyContextualFilter(actualData, contextInfo);
-
-				console.log("\n📊 FILTER RESULTS:");
-				console.log("  - Original data count:", filteredResult.originalCount);
-				console.log("  - Matched items:", filteredResult.matchCount);
-				console.log("  - Context expected:", contextInfo.entityCount);
-
-				// 🔹 Handle NO MATCHES case
-				if (filteredResult.matchCount === 0) {
-					console.log("\n❌ NO MATCHES FOUND");
-					console.log("  - None of the context items found in current data");
-
-					const noMatchMessage = await generateNoMatchesMessage(userMessage, contextInfo, api.name);
-
-					const htmlMessage = `
-<div class="contextual-no-match">
-	<p>${noMatchMessage}</p>
-	<div class="summary">
-		<p><strong>Context details:</strong></p>
-		<ul>
-			<li>Referenced ${contextInfo.entityType}: ${contextInfo.entityCount} items</li>
-			<li>Field checked: ${contextInfo.entityFieldName}</li>
-			<li>Matches found: 0</li>
-			<li>Total items in ${api.name}: ${filteredResult.originalCount}</li>
-		</ul>
-		<p><em>Tip: Try asking about different ${contextInfo.entityType} or adjusting your time period.</em></p>
-	</div>
-</div>
-					`.trim();
-
-					await Session.updateOne(
-						{ _id: session._id },
-						{
-							$set: {
-								lastResponseMessage: htmlMessage,
-								lastSuccessUserMessage: userMessage,
-								lastSuccessIntent: api?.name || null,
-								lastSuccessApiResponse: actualData,
-								lastSuccessParams: params,
-								missingField: null,
-							},
-						}
-					);
-
-					console.log("✅ No matches response sent");
-					console.log("========================================\n");
-
-					return { userReply: htmlMessage, params, api };
-				}
-
-				// 🔹 Update actualData with filtered data
-				actualData = filteredResult.filteredData;
-
-				console.log("\n✅ USING FILTERED DATA");
-				console.log("  - Filtered to:", actualData.length, "items");
+				console.log("  - Sample:", contextInfo.entityData.slice(0, 5));
 			}
 		}
 
-		// AI intent detection
+		// AI intent detection with API description
 		console.log("\n🤖 Starting AI intent detection...");
 		const calculationIntent = await detectCalculationIntent(userMessage, actualData, api?.description);
 
@@ -661,6 +442,8 @@ const processIntentAndFormatResponse = async ({
 		if (calculationIntent.needsCalculation && calculationIntent.calculationType !== "none") {
 			console.log("📊 Pre-calculation triggered...");
 			preCalculatedResults = performCalculations(actualData, calculationIntent);
+		} else {
+			console.log("ℹ️  No calculation needed - API already provides this data");
 		}
 
 		// 🔹 Build enhanced prompt with rolling context
@@ -674,41 +457,60 @@ User Message: "${userMessage}"
 Query Parameters: ${JSON.stringify(params, null, 2)}
 
 ${
+	calculationIntent.apiAlreadyProvides && !calculationIntent.needsCalculation
+		? `
+### ⚠️ IMPORTANT: API Already Provides This Data
+**API Capabilities:** ${calculationIntent.apiAlreadyProvides}
+**User Intent:** ${calculationIntent.reasoning}
+
+The API already returns the data the user needs. Your job is to:
+1. Display the data clearly (NO additional calculations needed)
+2. Present it in a user-friendly format
+3. Acknowledge what the API provides naturally
+`
+		: ""
+}
+
+${
 	isContextual && contextSummary
 		? `
-### 🎯 CONTEXTUAL QUERY WITH FILTERING APPLIED
+### 🎯 CONTEXTUAL QUERY WITH HISTORY
 
-**IMPORTANT:** The user asked a follow-up question about items from their previous query.
+**IMPORTANT:** The user is asking a follow-up question that references previous queries.
 
 **Context History (Most Recent First):**
 ${contextSummary}
 
-**FILTERING APPLIED:**
-${
-	contextInfo && filteredResult
-		? `
-- Previous query: "${contextInfo.entityUserMessage}"
-- Referenced ${contextInfo.entityType}: ${contextInfo.entityCount} items
-- Field used for filtering: ${contextInfo.entityFieldName}
-- **MATCHES FOUND: ${filteredResult.matchCount} out of ${contextInfo.entityCount}**
-- Original data before filtering: ${filteredResult.originalCount} items
+**INSTRUCTIONS FOR USING CONTEXT:**
 
-**CRITICAL INSTRUCTIONS:**
-1. The data below is ALREADY FILTERED to only include the ${filteredResult.matchCount} matching ${contextInfo.entityType}
-2. DO NOT try to show more than ${filteredResult.matchCount} items
-3. Acknowledge the context: "For the ${filteredResult.matchCount} ${contextInfo.entityType} from your previous query..."
-4. If ${filteredResult.matchCount} < ${contextInfo.entityCount}, mention: "${
-				contextInfo.entityCount - filteredResult.matchCount
-		  } of them had no data for this request"
-5. NEVER add items not in the filtered data below
+1. **Identify which context the user is referring to:**
+   - If they say "them", "their", "those" → Use the MOST RECENT context (#1)
+   - If they mention a specific type like "drivers" or "shifts" → Find that context
+   - If they say "the drivers from before" → Look for the most recent "drivers" context
+   - If ambiguous, use the most recent context
+
+2. **Apply filtering based on identified context:**
+   ${
+			contextInfo
+				? `
+   - Most Recent Context: ${contextInfo.entityType}
+   - Filter field: ${contextInfo.entityFieldName}
+   - Filter values: ${JSON.stringify(contextInfo.entityData)}
+   - ONLY show items where ${contextInfo.entityFieldName} matches these values
+   `
+				: ""
+		}
+
+3. **Acknowledge the context naturally:**
+   - Example: "For the ${contextInfo?.entityCount || 0} ${contextInfo?.entityType || "items"} you asked about..."
+   - Example: "Based on the drivers from your previous query..."
+
+**CRITICAL:** If the current data doesn't match any context type, inform the user politely.
 `
 		: ""
 }
-`
-		: ""
-}
 
-### Available Data (Filtered to: ${actualData?.length || 0} items)
+### Available Data (Total: ${actualData?.length || 0} items)
 ${JSON.stringify(actualData, null, 2)}
 
 ${
@@ -726,36 +528,34 @@ ${JSON.stringify(preCalculatedResults.result, null, 2)}
 ### Your Task
 1. **Understand the user's intent** from their message
 2. ${
-			contextInfo && filteredResult
-				? `**Acknowledge the context**: Mention the ${filteredResult.matchCount} ${contextInfo.entityType} found (out of ${contextInfo.entityCount} requested)`
+			contextInfo
+				? `**FIRST: Identify and apply the correct context for filtering**`
 				: "**Process the data** to answer the question"
 		}
 3. ${
 			preCalculatedResults
 				? "**Use the pre-calculated results above** - they are accurate and complete"
-				: "**Process the data** as needed"
+				: "**Display the data** as provided by the API (no calculations needed)"
 		}
-4. **Work ONLY with the ${actualData?.length || 0} items provided** - do not add extras
+4. **Apply any filters** mentioned in the user message:
+   - For "top N": show exactly N items
+   - For thresholds: only include items meeting criteria
+   - For categories: group appropriately
 5. **Choose the best format**:
    - **Tables**: For comparisons, multiple attributes, calculated results
-	 - Use <thead> with <th> and <tbody> with <tr><td>
-	 - Make headers descriptive and user-friendly
-	 - DO NOT include ID fields (like driverId, id, shiftId, etc.) in the table
-	 - Only show meaningful fields (names, hours, dates, status, etc.)
+     - Use <thead> with <th> and <tbody> with <tr><td>
+     - Make headers descriptive and user-friendly
+     - DO NOT include ID fields (like driverId, id, shiftId, etc.) in the table
+     - Only show meaningful fields (names, hours, dates, status, etc.)
    - **Lists**: For simple enumerations
    - **Paragraphs**: For descriptive content
 6. **Structure your response**:
-   - Introductory <p> sentence ${contextInfo && filteredResult ? `mentioning the ${filteredResult.matchCount} matches` : ""}
+   - Introductory <p> sentence
    - Main content (table/list/paragraph)
    - <div class="summary"> with:
-	 * Exact counts (no vague terms)
-	 * ${
-			contextInfo && filteredResult && filteredResult.matchCount < contextInfo.entityCount
-				? `Mention: "${contextInfo.entityCount - filteredResult.matchCount} had no data"`
-				: ""
-		}
-	 * 2-3 key insights
-	 * Statistics from pre-calculated results if available
+     * Exact counts (no vague terms)
+     * 2-3 key insights
+     * Statistics from pre-calculated results if available
 7. **Format dates** in readable format (e.g., "January 15, 2025" not "2025-01-15")
 
 ${
@@ -773,8 +573,11 @@ After your response, add this hidden meta tag with the ACTUAL ${followupItem} va
 
 **Instructions for meta tag:**
 - Extract the ${followupItem} values from the items you actually displayed
-- Include ALL items you showed
+- Include ALL items you showed (even if it's 100+)
 - Use exact values from the data
+- Examples:
+  * <meta name="displayed-items" content='{"field":"driverId","values":[1482,1488,1497]}' />
+  * <meta name="displayed-items" content='{"field":"driverName","values":["Alex","John"]}' />
 
 ### Output Format
 - Output ONLY valid HTML
@@ -858,10 +661,11 @@ Generate the response now:
 			}
 		);
 
-		// 🔹 Add to rolling context history (only for non-contextual queries)
-		if (!isContextual && displayedInfo && displayedInfo.field && displayedInfo.values && displayedInfo.values.length > 0) {
+		// 🔹 Add to rolling context history
+		if (displayedInfo && displayedInfo.field && displayedInfo.values && displayedInfo.values.length > 0) {
 			console.log("\n🔄 Adding to context history...");
 
+			// Determine entity type from API name or followupItem
 			let entityType = "items";
 			if (api.name.toLowerCase().includes("driver")) entityType = "drivers";
 			else if (api.name.toLowerCase().includes("shift")) entityType = "shifts";
@@ -870,7 +674,7 @@ Generate the response now:
 
 			await session.addToContextHistory(api?.name, displayedInfo.values, displayedInfo.field, entityType, userMessage);
 			await session.save();
-		} else if (!isContextual && followupItem) {
+		} else if (followupItem && !isContextual) {
 			// First query - try to extract from response
 			console.log("\n🔄 First query - attempting to extract context...");
 
@@ -898,6 +702,7 @@ Do not include any explanation, just the JSON array.`;
 				if (Array.isArray(extractedValues) && extractedValues.length > 0) {
 					console.log("  - Extracted:", extractedValues.length, "items");
 
+					// Determine entity type
 					let entityType = "items";
 					if (api.name.toLowerCase().includes("driver")) entityType = "drivers";
 					else if (api.name.toLowerCase().includes("shift")) entityType = "shifts";
@@ -923,19 +728,8 @@ Do not include any explanation, just the JSON array.`;
 		if (abortSignal?.aborted) return { error: "Request aborted" };
 
 		console.error("❌ Error:", err.message);
-
-		const errorMessage = `
-<div class="error-response">
-	<p>I encountered an issue while processing your request: "${userMessage}"</p>
-	<p>Please try again or rephrase your question. If the problem persists, contact support.</p>
-	<div class="summary">
-		<p><strong>Error details:</strong> ${err.message || "Unknown error"}</p>
-	</div>
-</div>
-		`.trim();
-
 		return {
-			userReply: errorMessage,
+			userReply: "Here's the available data.",
 			params,
 			api,
 		};

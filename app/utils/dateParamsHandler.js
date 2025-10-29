@@ -4,39 +4,54 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 // ===== DATE UTILITY FUNCTIONS =====
 
 /**
- * Get current ISO week number
+ * Get current week number (US style: Sunday-Saturday)
+ * Week 1 starts on the first Sunday of the year
  */
 function getCurrentWeekNumber() {
 	const now = new Date();
-	const oneJan = new Date(now.getFullYear(), 0, 1);
-	const numberOfDays = Math.floor((now - oneJan) / (24 * 60 * 60 * 1000));
-	return Math.ceil((now.getDay() + 1 + numberOfDays) / 7);
+	const startOfYear = new Date(now.getFullYear(), 0, 1);
+
+	// Find the first Sunday of the year
+	const firstSunday = new Date(startOfYear);
+	const dayOfWeek = startOfYear.getDay(); // 0 = Sunday
+	if (dayOfWeek !== 0) {
+		firstSunday.setDate(startOfYear.getDate() + (7 - dayOfWeek));
+	}
+
+	// Calculate days between first Sunday and now
+	const daysSinceFirstSunday = Math.floor((now - firstSunday) / (24 * 60 * 60 * 1000));
+	const weekNumber = Math.floor(daysSinceFirstSunday / 7) + 1;
+
+	return weekNumber;
 }
 
 /**
- * Get start date (Monday) of a given week number and year
+ * Get start date (Sunday) of a given week number and year
  */
 function getStartDateOfWeek(weekNumber, year) {
-	const firstDayOfYear = new Date(year, 0, 1);
-	const daysOffset = (weekNumber - 1) * 7;
-	const startDate = new Date(firstDayOfYear);
-	startDate.setDate(firstDayOfYear.getDate() + daysOffset);
+	const startOfYear = new Date(year, 0, 1);
 
-	// Adjust to Monday (if not already)
-	const dayOfWeek = startDate.getDay();
-	const daysToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-	startDate.setDate(startDate.getDate() + daysToMonday);
+	// Find the first Sunday of the year
+	const firstSunday = new Date(startOfYear);
+	const dayOfWeek = startOfYear.getDay(); // 0 = Sunday
+	if (dayOfWeek !== 0) {
+		firstSunday.setDate(startOfYear.getDate() + (7 - dayOfWeek));
+	}
 
-	return startDate;
+	// Add (weekNumber - 1) weeks to get to the target week's Sunday
+	const targetSunday = new Date(firstSunday);
+	targetSunday.setDate(firstSunday.getDate() + (weekNumber - 1) * 7);
+
+	return targetSunday;
 }
 
 /**
- * Get end date (Sunday) of a given week number and year
+ * Get end date (Saturday) of a given week number and year
  */
 function getEndDateOfWeek(weekNumber, year) {
 	const startDate = getStartDateOfWeek(weekNumber, year);
 	const endDate = new Date(startDate);
-	endDate.setDate(startDate.getDate() + 6); // Add 6 days to get Sunday
+	endDate.setDate(startDate.getDate() + 6); // Add 6 days to get Saturday
 	return endDate;
 }
 
@@ -51,15 +66,23 @@ function formatDate(date) {
 }
 
 /**
- * Get current week's start (Monday) and end (Sunday) dates
+ * Get current week's start (Sunday) and end (Saturday) dates
  */
 function getCurrentWeekDates() {
 	const currentWeek = getCurrentWeekNumber();
 	const currentYear = new Date().getFullYear();
 
+	const fromDate = formatDate(getStartDateOfWeek(currentWeek, currentYear));
+	const toDate = formatDate(getEndDateOfWeek(currentWeek, currentYear));
+
+	console.log("\n📅 Current Week Dates:");
+	console.log(`  - Week ${currentWeek}, ${currentYear}`);
+	console.log(`  - Sunday (FromDate): ${fromDate}`);
+	console.log(`  - Saturday (ToDate): ${toDate}`);
+
 	return {
-		FromDate: formatDate(getStartDateOfWeek(currentWeek, currentYear)),
-		ToDate: formatDate(getEndDateOfWeek(currentWeek, currentYear)),
+		FromDate: fromDate,
+		ToDate: toDate,
 	};
 }
 
@@ -75,26 +98,34 @@ async function extractDateParamsFromOpenAI(userMessage) {
 	const currentWeek = getCurrentWeekNumber();
 	const currentYear = new Date().getFullYear();
 
+	// Get actual current week dates for reference
+	const currentWeekDates = getCurrentWeekDates();
+
 	const prompt = `
 You are a date parameter extraction assistant. Today's information:
 - Current Week Number: ${currentWeek}
 - Current Year: ${currentYear}
 - Today's Date: ${new Date().toISOString().split("T")[0]}
+- Current Week Range: ${currentWeekDates.FromDate} (Sunday) to ${currentWeekDates.ToDate} (Saturday)
 
 Extract week and year parameters from the user's message and return the ACTUAL WEEK NUMBERS.
 
+**IMPORTANT: Weeks run from SUNDAY to SATURDAY**
+
 Rules:
 1. For "last N weeks" or "past N weeks": 
-   - WeekStarting = current week - N + 1
-   - WeekEnding = current week
+   - WeekStarting = current week - N
+   - WeekEnding = current week - 1
+   - Example: "last 4 weeks" = weeks ${currentWeek - 4} to ${currentWeek - 1}
    
 2. For "last week" (singular):
    - WeekStarting = current week - 1
    - WeekEnding = current week - 1
+   - Example: "last week" = week ${currentWeek - 1}
    
 3. For "current week" or "this week":
-   - WeekStarting = current week
-   - WeekEnding = current week
+   - WeekStarting = current week (${currentWeek})
+   - WeekEnding = current week (${currentWeek})
    
 4. For "week N" (specific week):
    - WeekStarting = N
@@ -108,9 +139,9 @@ Rules:
    - WeekStarting = current week + 1
    - WeekEnding = current week + N
    
-7. If year is mentioned, use it. Otherwise, use current year.
+7. If year is mentioned, use it. Otherwise, use current year (${currentYear}).
 
-8. If no time period is mentioned, return null for all fields.
+8. If NO time period is mentioned in the message, return null for all fields.
 
 User message: "${userMessage}"
 
@@ -118,16 +149,23 @@ Return ONLY a valid JSON object with actual week numbers (integers):
 {
   "WeekStarting": number or null,
   "WeekEnding": number or null,
-  "Year": number or null
+  "Year": number or null,
+  "hasDateHint": boolean
 }
 
 Examples:
-- "last 4 weeks" → {"WeekStarting": ${currentWeek - 4 + 1}, "WeekEnding": ${currentWeek}, "Year": ${currentYear}}
-- "last week" → {"WeekStarting": ${currentWeek - 1}, "WeekEnding": ${currentWeek - 1}, "Year": ${currentYear}}
-- "current week" → {"WeekStarting": ${currentWeek}, "WeekEnding": ${currentWeek}, "Year": ${currentYear}}
-- "this week" → {"WeekStarting": ${currentWeek}, "WeekEnding": ${currentWeek}, "Year": ${currentYear}}
-- "week 35" → {"WeekStarting": 35, "WeekEnding": 35, "Year": ${currentYear}}
-- "no time mentioned" → {"WeekStarting": null, "WeekEnding": null, "Year": null}
+- "last 4 weeks" → {"WeekStarting": ${currentWeek - 4}, "WeekEnding": ${
+		currentWeek - 1
+	}, "Year": ${currentYear}, "hasDateHint": true}
+- "last week" → {"WeekStarting": ${currentWeek - 1}, "WeekEnding": ${
+		currentWeek - 1
+	}, "Year": ${currentYear}, "hasDateHint": true}
+- "current week" → {"WeekStarting": ${currentWeek}, "WeekEnding": ${currentWeek}, "Year": ${currentYear}, "hasDateHint": true}
+- "this week" → {"WeekStarting": ${currentWeek}, "WeekEnding": ${currentWeek}, "Year": ${currentYear}, "hasDateHint": true}
+- "week 35" → {"WeekStarting": 35, "WeekEnding": 35, "Year": ${currentYear}, "hasDateHint": true}
+- "show me drivers" → {"WeekStarting": null, "WeekEnding": null, "Year": null, "hasDateHint": false}
+
+IMPORTANT: Only set hasDateHint to true if the user explicitly mentioned a time period.
 `;
 
 	try {
@@ -150,6 +188,7 @@ Examples:
 			WeekStarting: null,
 			WeekEnding: null,
 			Year: null,
+			hasDateHint: false,
 		};
 	}
 }
@@ -164,13 +203,12 @@ async function handleFromDateToDate(userMessage) {
 	console.log("User message:", userMessage);
 
 	// Extract week parameters using AI
-	const { WeekStarting, WeekEnding, Year } = await extractDateParamsFromOpenAI(userMessage);
+	const { WeekStarting, WeekEnding, Year, hasDateHint } = await extractDateParamsFromOpenAI(userMessage);
 
 	// If no date hints in message, use current week
-	if (WeekStarting === null || WeekEnding === null) {
+	if (!hasDateHint || WeekStarting === null || WeekEnding === null) {
 		console.log("📅 No date hints found - using current week");
 		const currentWeekDates = getCurrentWeekDates();
-		console.log("📅 Current week dates:", currentWeekDates);
 		return currentWeekDates;
 	}
 
@@ -183,10 +221,26 @@ async function handleFromDateToDate(userMessage) {
 
 	console.log("📅 Extracted dates:");
 	console.log("  - Week Range:", `Week ${WeekStarting} - Week ${WeekEnding}, ${year}`);
-	console.log("  - FromDate:", FromDate);
-	console.log("  - ToDate:", ToDate);
+	console.log("  - FromDate (Sunday):", FromDate);
+	console.log("  - ToDate (Saturday):", ToDate);
 
 	return { FromDate, ToDate };
+}
+
+/**
+ * Format string date to ISO format (YYYY-MM-DD)
+ */
+function formatToISODate(dateStr) {
+	if (!dateStr) return null;
+	try {
+		const d = new Date(dateStr);
+		if (!isNaN(d.getTime())) {
+			return d.toISOString().split("T")[0]; // 'YYYY-MM-DD'
+		}
+		return null;
+	} catch {
+		return null;
+	}
 }
 
 // ===== UPDATED API HANDLER =====
@@ -290,19 +344,6 @@ const GetDriverWeeklyWorkingHrListHandler = async (params, userMessage, session,
 		};
 	}
 };
-function formatToISODate(dateStr) {
-	if (!dateStr) return null;
-	try {
-		const d = new Date(dateStr);
-		if (!isNaN(d.getTime())) {
-			return d.toISOString().split("T")[0]; // 'YYYY-MM-DD'
-		}
-		return null;
-	} catch {
-		return null;
-	}
-}
-
 
 // ===== EXPORTS =====
 
@@ -311,8 +352,8 @@ module.exports = {
 	getStartDateOfWeek,
 	getEndDateOfWeek,
 	formatDate,
-    getCurrentWeekDates,
-    formatToISODate,
+	getCurrentWeekDates,
+	formatToISODate,
 	extractDateParamsFromOpenAI,
 	handleFromDateToDate,
 	GetDriverWeeklyWorkingHrListHandler,
