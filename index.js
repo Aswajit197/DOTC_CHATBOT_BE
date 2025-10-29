@@ -32,7 +32,7 @@ app.get("/", async (req, res) => {
 	res.send(`Server Running on ${PORT}....`);
 });
 app.get("/health", async (req, res) => {
-	res.send(`Server Running on ${PORT}....`);
+	res.send(`Server Running on ${PORT} , updated on 29/10/25....`);
 });
 
 app.listen(PORT, () => {
