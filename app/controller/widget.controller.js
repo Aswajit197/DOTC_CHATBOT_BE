@@ -189,8 +189,7 @@ widget.deleteWidget = async (req, res) => {
 widget.refreshWidget = async (req, res) => {
 	try {
 		const { widgetLastIntent, widgetLastParams, widgetLastResponse, widgetSampleJSON, _id } = req.body;
-
-		console.log("widgetLastIntent:", req.body);
+		console.log(widgetLastParams)
 
 		let allResults = [];
 

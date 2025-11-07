@@ -80,5 +80,25 @@
 		"name": "GetAllPreferenceHistoryForBackEnd",
 		"description": "This API should be used whenever the user asks about the history of driver preference changes, specifically which drivers modified their preferences, what type of preference was changed (e.g., day, shift, standby, OT), the old value, the new value, and the date of the change. It only returns approved preference change history. Use this API when the user asks questions like: “Which drivers have recently updated their day preferences?”, “Show me the preference change history for Alejandro Reyes”, “What was the old and new value when a driver changed their shift preference?”, “List all approved preference changes from last week”, or “Has anyone changed their OT or standby preference recently?”",
 		"requiredFields": ["ClientId"]
+	},
+	{
+		"name": "GetPreferenceValueList",
+		"description": "Returns the GetPreferenceValueList",
+		"requiredFields": []
+	},
+	{
+		"name": "GetLMDPLocationPreferenceList",
+		"description": "Returns the location preference list for all LMDPs/ drivers",
+		"requiredFields": ["DriverId", "ClientId"]
+	},
+	{
+		"name": "GetStandByPreferenceList",
+		"description": "This API returns the standby and OT preference list for drivers for the given client within the specified date range.",
+		"requiredFields": ["ClientId", "FromDate", "ToDate"]
+	},
+	{
+		"name": "GetRosterSlotPreferencesHistory",
+		"description": "Returns the roaster slot preference history",
+		"requiredFields": ["DriverId"]
 	}
 ]

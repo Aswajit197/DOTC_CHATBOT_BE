@@ -31,7 +31,7 @@ mongoose
 app.get("/", async (req, res) => {
 	res.send(`Server Running on ${PORT}....`);
 });
-app.get("/health", async (req, res) => {
+app.get("/chatapi/health", async (req, res) => {
 	res.send(`Server Running on ${PORT} , updated on 29/10/25....`);
 });
 

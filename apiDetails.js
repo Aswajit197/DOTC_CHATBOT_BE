@@ -56,9 +56,6 @@ module.exports = [
 						hours: item?.hours,
 					})) || [];
 
-				console.log("📋 Processed data length:", driversWeeklyWorkingHrList.length);
-				console.log("📋 Sample item:", driversWeeklyWorkingHrList[0]);
-
 				return await processIntentAndFormatResponse({
 					userMessage,
 					api: {
@@ -133,7 +130,6 @@ module.exports = [
 			}
 		},
 	},
-
 	// 2. GetDayFactor
 	{
 		name: "GetDayFactor",
@@ -206,6 +202,8 @@ module.exports = [
 		},
 
 		multiHandler: async (params, userMessage, session, onStream) => {
+
+			console.log(params,"params in handler")
 			if (!params?.ClientId) params.ClientId = 2;
 
 			try {
@@ -2377,6 +2375,448 @@ Respond in JSON only:
 				return {
 					error: true,
 					message: err.response?.data?.message || "Failed to fetch list of preference history drivers.",
+				};
+			}
+		},
+	},
+	// 17. GetPreferenceValueList
+	{
+		name: "GetPreferenceValueList",
+		description: "Returns the PreferenceValueList",
+		requiredFields: [],
+		exampleResponse: [
+			{
+				preferenceValueId: 1,
+				preferenceValue: 0,
+				preferenceText: "Do Not Assign",
+			},
+		],
+		followupItem: "preferenceText", // 🔹 What to track for follow-up queries
+		graphType: "stackedArea",
+
+		handler: async (params, userMessage, session, onStream, abortSignal, isContextual = false) => {
+			// 🔹 ADD contextEntities
+
+			if (abortSignal?.aborted) {
+				console.log("🚫 GetPreferenceValueList handler: Aborted before execution");
+				return { error: "Request aborted" };
+			}
+
+			try {
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetPreferenceValueList handler: Aborted before axios call");
+					return { error: "Request aborted" };
+				}
+
+				const { data } = await axios.get(`${API_BASE}/GetPreferenceValueList`);
+
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetPreferenceValueList handler: Aborted after axios call");
+					return { error: "Request aborted" };
+				}
+
+				const preferenceList =
+					data?.data?.map((item) => ({
+						preferenceValueId: item.preferenceValueId,
+						preferenceValue: item.preferenceValue,
+						preferenceText: item.preferenceText,
+					})) || [];
+
+				return await processIntentAndFormatResponse({
+					userMessage,
+					api: {
+						name: "GetPreferenceValueList",
+						description: "Returns  the GetPreferenceValueList",
+						isSuitableForGraph: true,
+					},
+					exampleResponse: [
+						{
+							preferenceValueId: 1,
+							preferenceValue: 0,
+							preferenceText: "Do Not Assign",
+						},
+					],
+					actualData: preferenceList,
+					params,
+					session,
+					onStream,
+					abortSignal,
+					isContextual, // 🔹 Pass this
+					followupItem: "preferenceText",
+				});
+			} catch (err) {
+				console.log(err, "error");
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetPreferenceValueList handler: Aborted during execution");
+					return { error: "Request aborted" };
+				}
+				return {
+					error: true,
+					message: err.response?.data?.message || "Failed to fetch GetPreferenceValueList data.",
+				};
+			}
+		},
+
+		multiHandler: async (params, userMessage, session, onStream) => {
+			try {
+				const { data } = await axios.get(`${API_BASE}/GetPreferenceValueList`);
+
+				const preferenceList =
+					data?.data?.map((item) => ({
+						preferenceValueId: item.preferenceValueId,
+						preferenceValue: item.preferenceValue,
+						preferenceText: item.preferenceText,
+					})) || [];
+
+				return { data: preferenceList };
+			} catch (err) {
+				return {
+					error: true,
+					message: err.response?.data?.message || "Failed to fetch preferenceList data.",
+				};
+			}
+		},
+	},
+	//18. GetLMDPLocationPreferenceList
+	{
+		name: "GetLMDPLocationPreferenceList",
+		description: "Returns the location preference list for all LMDPs/ drivers",
+		requiredFields: ["DriverId", "ClientId"],
+		exampleResponse: [
+			{
+				preference: 1,
+				locationID: 163,
+				locationName: "DBK1",
+				roasterSlotId: 412,
+				rosterSlotName: "7:15:00 AM",
+			},
+		],
+		followupItem: "roasterSlotId", // 🔹 What to track for follow-up queries
+		graphType: "line",
+
+		handler: async (params, userMessage, session, onStream, abortSignal, isContextual = false) => {
+			// 🔹 ADD contextEntities
+
+			if (abortSignal?.aborted) {
+				console.log("🚫 GetLMDPLocationPreferenceList handler: Aborted before execution");
+				return { error: "Request aborted" };
+			}
+
+			if (!params?.ClientId) params.ClientId = session.ClientId || 2;
+			if (!params?.DriverId) return { missingFields: ["DriverId"] };
+
+			try {
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetLMDPLocationPreferenceList handler: Aborted before axios call");
+					return { error: "Request aborted" };
+				}
+
+				const { data } = await axios.get(
+					`${API_BASE}/GetLMDPLocationPreferenceList?DriverId=${params.DriverId}&ClientId=${params.ClientId}`
+				);
+
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetLMDPLocationPreferenceList handler: Aborted after axios call");
+					return { error: "Request aborted" };
+				}
+
+				const locationPreferenceList =
+					data?.data?.map((item) => ({
+						preference: item.preference,
+						locationID: item.locationID,
+						locationName: item.locationName,
+						roasterSlotId: item.roasterSlotId,
+						rosterSlotName: item.rosterSlotName,
+					})) || [];
+
+				return await processIntentAndFormatResponse({
+					userMessage,
+					api: {
+						name: "GetLMDPLocationPreferenceList",
+						description: "Returns the location preference list for all LMDPs/ drivers",
+						isSuitableForGraph: true,
+					},
+					exampleResponse: [
+						{
+							preference: 1,
+							locationID: 163,
+							locationName: "DBK1",
+							roasterSlotId: 412,
+							rosterSlotName: "7:15:00 AM",
+						},
+					],
+					actualData: locationPreferenceList,
+					params,
+					session,
+					onStream,
+					abortSignal,
+					isContextual, // 🔹 Pass this
+					followupItem: "roasterSlotId",
+				});
+			} catch (err) {
+				console.log(err, "error");
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetLMDPLocationPreferenceList handler: Aborted during execution");
+					return { error: "Request aborted" };
+				}
+				return {
+					error: true,
+					message: err.response?.data?.message || "Failed to fetch GetLMDPLocationPreferenceList data.",
+				};
+			}
+		},
+
+		multiHandler: async (params, userMessage, session, onStream) => {
+			if (!params?.ClientId) params.ClientId = session.ClientId || 2;
+			if (!params?.DriverId) return { missingFields: ["DriverId"] };
+
+			try {
+				const { data } = await axios.get(
+					`${API_BASE}/GetLMDPLocationPreferenceList?DriverId=${params.DriverId}&ClientId=${params.ClientId}`
+				);
+
+				const locationPreferenceList =
+					data?.data?.map((item) => ({
+						preference: item.preference,
+						locationID: item.locationID,
+						locationName: item.locationName,
+						roasterSlotId: item.roasterSlotId,
+						rosterSlotName: item.rosterSlotName,
+					})) || [];
+
+				return { data: locationPreferenceList };
+			} catch (err) {
+				return {
+					error: true,
+					message: err.response?.data?.message || "Failed to fetch locationPreferenceList data.",
+				};
+			}
+		},
+	},
+	// 19. GetStandByPreferenceList
+	{
+		name: "GetStandByPreferenceList",
+		description:
+			"This API returns the standby and OT preference list for drivers for the given client within the specified date range.",
+		requiredFields: ["ClientId", "FromDate", "ToDate"],
+		followupItem: "driverId", // 🔹 What to track for follow-up queries
+		graphType: "line",
+		exampleResponse: [
+			{ driverId: 1482, standByPreference: 1, otPreference: 2 },
+			{ driverId: 1484, standByPreference: 2, otPreference: 1 },
+		],
+
+		handler: async (params, userMessage, session, onStream, abortSignal, isContextual = false) => {
+			// 🔹 ADD contextEntities
+			console.log("\n🔹 GetStandByPreferenceList Handler");
+
+			if (abortSignal?.aborted) {
+				console.log("🚫 GetStandByPreferenceList handler: Aborted before execution");
+				return { error: "Request aborted" };
+			}
+
+			if (!params?.ClientId) params.ClientId = session.ClientId || 2;
+			// Auto-extract dates if missing
+
+			try {
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetStandByPreferenceList handler: Aborted before axios call");
+					return { error: "Request aborted" };
+				}
+
+				const { data } = await axios.get(
+					`${API_BASE}/GetStandByPreferenceList?ClientId=${params.ClientId}&FromDate=${params.FromDate}&ToDate=${params.ToDate}`
+				);
+
+				console.log("📊 API Response length:", data?.data?.length);
+
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetStandByPreferenceList handler: Aborted after axios call");
+					return { error: "Request aborted" };
+				}
+
+				const standbyPreferenceList =
+					data?.data?.map((item) => ({
+						driverId: item?.driverId, // 🔹 CRITICAL: Must include driverId
+						standByPreference: item?.standByPreference,
+						otPreference: item?.otPreference,
+					})) || [];
+
+				return await processIntentAndFormatResponse({
+					userMessage,
+					api: {
+						name: "GetStandByPreferenceList",
+						description:
+							"This API returns the standby and OT preference list for drivers for the given client within the specified date range.",
+						isSuitableForGraph: true,
+					},
+					exampleResponse: [
+						{ driverId: 1482, standByPreference: 1, otPreference: 2 },
+						{ driverId: 1484, standByPreference: 2, otPreference: 1 },
+					],
+					actualData: standbyPreferenceList,
+					params,
+					session,
+					onStream,
+					abortSignal,
+					isContextual, // 🔹 Pass this
+					followupItem: "driverId", // 🔹 Pass this
+				});
+			} catch (err) {
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetStandByPreferenceList handler: Aborted during execution");
+					return { error: "Request aborted" };
+				}
+
+				return {
+					error: true,
+					message: err.response?.data?.message || "Failed to fetch drivers' standby preference list.",
+				};
+			}
+		},
+
+		multiHandler: async (params, userMessage, session, onStream, abortSignal) => {
+			if (abortSignal?.aborted) {
+				console.log("🚫 GetStandByPreferenceList multiHandler: Aborted before execution");
+				return { error: "Request aborted" };
+			}
+
+			if (!params?.ClientId) params.ClientId = 2;
+
+			try {
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetDriverWeeklyWorkingHrList multiHandler: Aborted before axios call");
+					return { error: "Request aborted" };
+				}
+
+				const { data } = await axios.get(`${API_BASE}/GetDriverWeeklyWorkingHrList?ClientId=${params.ClientId}`);
+
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetDriverWeeklyWorkingHrList multiHandler: Aborted after axios call");
+					return { error: "Request aborted" };
+				}
+
+				const standbyPreferenceList =
+					data?.data?.map((item) => ({
+						driverId: item?.driverId, // 🔹 CRITICAL: Must include driverId
+						standByPreference: item?.standByPreference,
+						otPreference: item?.otPreference,
+					})) || [];
+
+				return { data: standbyPreferenceList };
+			} catch (err) {
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetStandByPreferenceList multiHandler: Aborted during execution");
+					return { error: "Request aborted" };
+				}
+
+				return {
+					error: true,
+					message: err.response?.data?.message || "Failed to fetch drivers' standbyPreference list.",
+				};
+			}
+		},
+	},
+	//20. GetRosterSlotPreferencesHistory
+	{
+		name: "GetRosterSlotPreferencesHistory",
+		description: "Returns the roaster slot preference history",
+		requiredFields: ["DriverId"],
+		exampleResponse: [
+			{
+				driverId: 1482,
+				operationName: "DBK1 Morning",
+				waveTime: "06:45 AM",
+				status: "Denied",
+			},
+		],
+		followupItem: "driverId", // 🔹 What to track for follow-up queries
+		graphType: "",
+
+		handler: async (params, userMessage, session, onStream, abortSignal, isContextual = false) => {
+			// 🔹 ADD contextEntities
+
+			if (abortSignal?.aborted) {
+				console.log("🚫 GetRosterSlotPreferencesHistory handler: Aborted before execution");
+				return { error: "Request aborted" };
+			}
+			if (!params?.DriverId) return { missingFields: ["DriverId"] };
+
+			try {
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetRosterSlotPreferencesHistory handler: Aborted before axios call");
+					return { error: "Request aborted" };
+				}
+
+				const { data } = await axios.get(`${API_BASE}/GetRosterSlotPreferencesHistory?DriverId=${params.DriverId}`);
+
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetLMDPLocationPreferenceList handler: Aborted after axios call");
+					return { error: "Request aborted" };
+				}
+
+				const rosterSlotPreference =
+					data?.data?.map((item) => ({
+						driverId: item.driverId,
+						operationName: item.operationName,
+						waveTime: item.waveTime,
+						status: item.status,
+					})) || [];
+
+				return await processIntentAndFormatResponse({
+					userMessage,
+					api: {
+						name: "GetRosterSlotPreferencesHistory",
+						description: "Returns the roaster slot preference history",
+						isSuitableForGraph: false,
+					},
+					exampleResponse: [
+						{
+							driverId: 1482,
+							operationName: "DBK1 Morning",
+							waveTime: "06:45 AM",
+							status: "Denied",
+						},
+					],
+					actualData: rosterSlotPreference,
+					params,
+					session,
+					onStream,
+					abortSignal,
+					isContextual, // 🔹 Pass this
+					followupItem: "driverId",
+				});
+			} catch (err) {
+				console.log(err, "error");
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetRosterSlotPreferencesHistory handler: Aborted during execution");
+					return { error: "Request aborted" };
+				}
+				return {
+					error: true,
+					message: err.response?.data?.message || "Failed to fetch GetRosterSlotPreferencesHistory data.",
+				};
+			}
+		},
+
+		multiHandler: async (params, userMessage, session, onStream) => {
+			if (!params?.DriverId) return { missingFields: ["DriverId"] };
+
+			try {
+				const { data } = await axios.get(`${API_BASE}/GetRosterSlotPreferencesHistory?DriverId=${params.DriverId}`);
+
+				const rosterSlotPreference =
+					data?.data?.map((item) => ({
+						driverId: item.driverId,
+						operationName: item.operationName,
+						waveTime: item.waveTime,
+						status: item.status,
+					})) || [];
+				return { data: rosterSlotPreference };
+			} catch (err) {
+				return {
+					error: true,
+					message: err.response?.data?.message || "Failed to fetch GetRosterSlotPreferencesHistory data.",
 				};
 			}
 		},
