@@ -202,8 +202,7 @@ module.exports = [
 		},
 
 		multiHandler: async (params, userMessage, session, onStream) => {
-
-			console.log(params,"params in handler")
+			console.log(params, "params in handler");
 			if (!params?.ClientId) params.ClientId = 2;
 
 			try {
@@ -2813,6 +2812,126 @@ Respond in JSON only:
 						status: item.status,
 					})) || [];
 				return { data: rosterSlotPreference };
+			} catch (err) {
+				return {
+					error: true,
+					message: err.response?.data?.message || "Failed to fetch GetRosterSlotPreferencesHistory data.",
+				};
+			}
+		},
+	},
+	//21. GetShiftRequestHistroy
+	{
+		name: "GetShiftRequestHistroy",
+		description: "Returns the shift request history for a driver",
+		requiredFields: ["DriverId"],
+		exampleResponse: [
+			{
+				driverId: 1482,
+				responseDate: "2025-08-06T12:46:48.97",
+				deliveryDate: "2025-08-03T00:00:00",
+				arrivalLocationName: "Offsite Lot",
+				arrivalTime: "06:05 AM",
+				loadoutLocationName: "DBK1",
+				waveTime: "06:45 AM",
+				status: "Denied",
+			},
+		],
+		followupItem: "driverId", // 🔹 What to track for follow-up queries
+		graphType: "",
+
+		handler: async (params, userMessage, session, onStream, abortSignal, isContextual = false) => {
+			// 🔹 ADD contextEntities
+
+			if (abortSignal?.aborted) {
+				console.log("🚫 GetShiftRequestHistroy handler: Aborted before execution");
+				return { error: "Request aborted" };
+			}
+			if (!params?.DriverId) return { missingFields: ["DriverId"] };
+
+			try {
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetShiftRequestHistroy handler: Aborted before axios call");
+					return { error: "Request aborted" };
+				}
+
+				const { data } = await axios.get(`${API_BASE}/GetShiftRequestHistroy?DriverId=${params.DriverId}`);
+
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetShiftRequestHistroy handler: Aborted after axios call");
+					return { error: "Request aborted" };
+				}
+
+				const shiftRequestHistroy =
+					data?.data?.map((item) => ({
+						driverId: item.driverId,
+						responseDate: item.responseDate,
+						deliveryDate: item.deliveryDate,
+						arrivalLocationName: item.arrivalLocationName,
+						arrivalTime: item.arrivalTime,
+						loadoutLocationName: item.loadoutLocationName,
+						waveTime: item.waveTime,
+						status: item.status,
+					})) || [];
+
+				return await processIntentAndFormatResponse({
+					userMessage,
+					api: {
+						name: "GetShiftRequestHistroy",
+						description: "Returns the roaster slot preference history",
+						isSuitableForGraph: false,
+					},
+					exampleResponse: [
+						{
+							driverId: 1482,
+							responseDate: "2025-08-06T12:46:48.97",
+							deliveryDate: "2025-08-03T00:00:00",
+							arrivalLocationName: "Offsite Lot",
+							arrivalTime: "06:05 AM",
+							loadoutLocationName: "DBK1",
+							waveTime: "06:45 AM",
+							status: "Denied",
+						},
+					],
+					actualData: shiftRequestHistroy,
+					params,
+					session,
+					onStream,
+					abortSignal,
+					isContextual, // 🔹 Pass this
+					followupItem: "driverId",
+				});
+			} catch (err) {
+				console.log(err, "error");
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetShiftRequestHistroy handler: Aborted during execution");
+					return { error: "Request aborted" };
+				}
+				return {
+					error: true,
+					message: err.response?.data?.message || "Failed to fetch GetShiftRequestHistroy data.",
+				};
+			}
+		},
+
+		multiHandler: async (params, userMessage, session, onStream) => {
+			if (!params?.DriverId) return { missingFields: ["DriverId"] };
+
+			try {
+				const { data } = await axios.get(`${API_BASE}/GetRosterSlotPreferencesHistory?DriverId=${params.DriverId}`);
+
+				const shiftRequestHistroy =
+					data?.data?.map((item) => ({
+						driverId: item.driverId,
+						responseDate: item.responseDate,
+						deliveryDate: item.deliveryDate,
+						arrivalLocationName: item.arrivalLocationName,
+						arrivalTime: item.arrivalTime,
+						loadoutLocationName: item.loadoutLocationName,
+						waveTime: item.waveTime,
+						status: item.status,
+					})) || [];
+				return { data: shiftRequestHistroy };
 			} catch (err) {
 				return {
 					error: true,

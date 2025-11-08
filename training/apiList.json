@@ -35,7 +35,6 @@
 		"description": "Returns total hours scheduled (for each shift type) between weeks 25(start week number) and 33(end Week number) of all LMDPs broken down by shift type , list of drivers with their name and  shift type(like Parcel Van , Step Van , Walker ,Box Truck etc..) with hours like for a given range of week like 25 to 33",
 		"requiredFields": ["WeekStarting", "WeekEnding", "Year", "ClientId"]
 	},
-
 	{
 		"name": "GetTimeOffRequestForBackend",
 		"description": "Returns a list of driver's time-off requests, including details such as driver name, request dates, reason for leave, and the current status (approved, declined, or pending). This API helps track when drivers have requested time off and whether those requests were accepted or not. Example queries include: 'Which driver takes the most leaves?', 'Give me pending leave requests', 'Show me drivers time-off requests.",
@@ -99,6 +98,11 @@
 	{
 		"name": "GetRosterSlotPreferencesHistory",
 		"description": "Returns the roaster slot preference history",
+		"requiredFields": ["DriverId"]
+	},
+	{
+		"name": "GetShiftRequestHistroy",
+		"description": "Returns the shift request history for a driver",
 		"requiredFields": ["DriverId"]
 	}
 ]
