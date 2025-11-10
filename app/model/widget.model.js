@@ -4,6 +4,7 @@ const widgetSchema = new mongoose.Schema(
 		userId: { type: String, required: true },
 		ClientId: { type: String, required: true },
 		widgetName: { type: String },
+		widgetDescription: { type: String },
 		widgetType: { type: String, default: "bar" },
 		widgetLastIntent: { type: String },
 		widgetLastUserMessage: { type: String },

@@ -369,19 +369,23 @@ module.exports = [
 				console.log("🚫 GetLMDPDayPreferenceList handler: Aborted before execution");
 				return { error: "Request aborted" };
 			}
+			console.log(session)
 
 			if (!params?.ClientId) params.ClientId = session.ClientId || 2;
 			if (!params?.DriverId) return { missingFields: ["DriverId"] };
+			console.log(params,"params in handler")
 
 			try {
 				if (abortSignal?.aborted) {
 					console.log("🚫 GetLMDPDayPreferenceList handler: Aborted before axios call");
 					return { error: "Request aborted" };
 				}
+				console.log(`${API_BASE}/GetLMDPDayPreferenceList?DriverId=${params.DriverId}&ClientId=${params.ClientId}`);
 
 				const { data } = await axios.get(
 					`${API_BASE}/GetLMDPDayPreferenceList?DriverId=${params.DriverId}&ClientId=${params.ClientId}`
 				);
+				console.log(data)
 
 				if (abortSignal?.aborted) {
 					console.log("🚫 GetLMDPDayPreferenceList handler: Aborted after axios call");
@@ -1570,7 +1574,7 @@ Respond in JSON only:
 		description:
 			"provides the default weekly rules used by the scheduler when generating schedules, including maximum working hours, maximum consecutive days or hours allowed, standby shift limits, and tolerable or intolerable thresholds. Use this when the user asks about baseline scheduling rules, such as “What are the maximum weekly hours for drivers?”, “How many consecutive days can a driver work by default?”, or “What is the limit on standby shifts in a week?",
 		requiredFields: ["ClientId"],
-		graphType: "line",
+		graphType: "pie",
 		exampleResponse: {
 			maxHrs: 40,
 			maxConsecutiveDaysWork: 5,
@@ -1604,7 +1608,7 @@ Respond in JSON only:
 						name: "GetSchedAlignEngineWeeklySetting",
 						description:
 							"provides the default weekly rules used by the scheduler when generating schedules, including maximum working hours, maximum consecutive days or hours allowed, standby shift limits, and tolerable or intolerable thresholds. Use this when the user asks about baseline scheduling rules, such as “What are the maximum weekly hours for drivers?”, “How many consecutive days can a driver work by default?”, or “What is the limit on standby shifts in a week?",
-						isSuitableForGraph: false,
+						isSuitableForGraph: true,
 					},
 					exampleResponse: {
 						maxHrs: 40,

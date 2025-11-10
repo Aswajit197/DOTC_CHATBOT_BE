@@ -13,6 +13,7 @@ widget.addWidget = async (req, res) => {
 			userId,
 			ClientId,
 			widgetName,
+			widgetDescription,
 			widgetType,
 			widgetLastIntent,
 			widgetLastResponse,
@@ -31,6 +32,7 @@ widget.addWidget = async (req, res) => {
 			userId,
 			ClientId,
 			widgetName,
+			widgetDescription,
 			widgetType,
 			widgetLastIntent,
 			widgetLastResponse,
@@ -124,7 +126,6 @@ widget.refreshWidget = async (req, res) => {
 		// 🔹 Check if multi-intent
 		if (widgetLastIntent.includes(",")) {
 			const intents = widgetLastIntent.split(",").map((s) => s.trim());
-
 			for (const intent of intents) {
 				const matchedApi = apiListData.find((api) => api.name === intent);
 

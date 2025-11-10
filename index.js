@@ -28,11 +28,13 @@ mongoose
 	.then(() => console.log(`MongoDB connected `))
 	.catch((err) => console.error("MongoDB error:", err));
 
-app.get("/", async (req, res) => {
+app.get("/chatapi", async (req, res) => {
+	console.log("Health Check Endpoint Hit");
 	res.send(`Server Running on ${PORT}....`);
 });
 app.get("/chatapi/health", async (req, res) => {
-	res.send(`Server Running on ${PORT} , updated on 29/10/25....`);
+	console.log("Health Check Endpoint Hit");
+	res.send(`Server Running on ${PORT} , updated on 10/11/25....`);
 });
 
 app.listen(PORT, () => {
