@@ -81,7 +81,7 @@ Session context:
 - Last missing field bot message: ${session?.missingField?.lastMissingFieldBotMessage || "None"}
 - Last missing API intent: ${session?.missingField?.lastMissingApiIntent || "None"}
 - Last known missing fields: ${session?.missingField?.missingFields?.join(", ") || "None"}
-- Last known params: ${JSON.stringify(session?.missingField?.lastParams || {})}
+- Last known params: ${JSON.stringify(session?.missingField?.lastParams || "")}
 ${contextInfo}
 
 Current user message:
@@ -99,7 +99,7 @@ Instructions:
 ❌ DO NOT invent values based on previous queries
 
 ✅ ONLY extract if the user literally says it: "driver 1234", "station 5", "client 2"
-✅ Leave params empty "{}" if nothing is explicitly mentioned
+✅ Leave params empty "" if nothing is explicitly mentioned
 ✅ Missing field handling is done separately - your job is ONLY extraction
 
 **Examples:**
@@ -595,4 +595,3 @@ Your task:
 }
 
 module.exports = getIntentFromOpenAI;
-

@@ -104,5 +104,30 @@
 		"name": "GetShiftRequestHistroy",
 		"description": "Returns the shift request history for a driver",
 		"requiredFields": ["DriverId"]
+	},
+	{
+		"name": "GetLMDPShiftTypeList",
+		"description": "Returns shift types for particular LMDPs/ drivers",
+		"requiredFields": ["DriverId", "ClientId", "FromDate", "ToDate"]
+	},
+	{
+		"name": "GetPermissionsList",
+		"description": "Returns the permission list and category",
+		"requiredFields": []
+	},
+	{
+		"name": "GetPreferenceTypeList",
+		"description": "Returns the preference list ",
+		"requiredFields": []
+	},
+	{
+		"name": "GetPreferenceTypeList",
+		"description": "Returns the preference list ",
+		"requiredFields": []
+	},
+	{
+		"name": "GetAnalysisSettings",
+		"description": "Returns the analysis settings ",
+		"requiredFields": ["ClientId"]
 	}
 ]

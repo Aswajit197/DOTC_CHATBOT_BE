@@ -741,7 +741,7 @@ ${JSON.stringify(preCalculatedResults.result, null, 2)}
    - **Tables**: For comparisons, multiple attributes, calculated results
 	 - Use <thead> with <th> and <tbody> with <tr><td>
 	 - Make headers descriptive and user-friendly
-	 - DO NOT include ID fields (like driverId, id, shiftId, etc.) in the table
+	 - DO NOT include ID field (like driverId, ClientId) in the table
 	 - Only show meaningful fields (names, hours, dates, status, etc.)
    - **Lists**: For simple enumerations
    - **Paragraphs**: For descriptive content

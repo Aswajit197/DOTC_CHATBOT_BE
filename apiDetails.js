@@ -364,16 +364,17 @@ module.exports = [
 		],
 
 		handler: async (params, userMessage, session, onStream, abortSignal, isContextual = false) => {
+			console.log(params, "params in handler");
 			// 🔹 Check abort at start
 			if (abortSignal?.aborted) {
 				console.log("🚫 GetLMDPDayPreferenceList handler: Aborted before execution");
 				return { error: "Request aborted" };
 			}
-			console.log(session)
+			console.log(session.ClientId, "client id from session");
 
 			if (!params?.ClientId) params.ClientId = session.ClientId || 2;
 			if (!params?.DriverId) return { missingFields: ["DriverId"] };
-			console.log(params,"params in handler")
+			console.log(params, "params in handler");
 
 			try {
 				if (abortSignal?.aborted) {
@@ -385,7 +386,7 @@ module.exports = [
 				const { data } = await axios.get(
 					`${API_BASE}/GetLMDPDayPreferenceList?DriverId=${params.DriverId}&ClientId=${params.ClientId}`
 				);
-				console.log(data)
+				console.log(data);
 
 				if (abortSignal?.aborted) {
 					console.log("🚫 GetLMDPDayPreferenceList handler: Aborted after axios call");
@@ -603,114 +604,26 @@ module.exports = [
 		description:
 			"Retrieves the maximum qualification level of all drivers (also called LMDPs) for a specific ClientId within a specified weekly date range (FromDate to ToDate), based on a Sunday–Saturday week. This API should also be used when the user requests qualifications alongside other driver-related information (such as overtime preferences, shifts, or assignments), or when the query involves filtering drivers by qualification level (e.g., 'show drivers with qualification 3 and their OT preferences' or 'list all LMDPs above qualification 2'). It also supports queries for a single driver by name or for the full list of drivers.",
 		requiredFields: ["ClientId", "FromDate", "ToDate"],
-		exampleResponse: [{ driverName: "JORGE VALENCIA", qualification: 2 }],
-		followupItem: "qualification",
+		exampleResponse: [{ driverId: 1482, driverName: "JORGE VALENCIA", qualification: 2 }],
+		graphType: "line",
+		followupItem: "driverName",
 
 		handler: async (params, userMessage, session, onStream, abortSignal, isContextual = false) => {
-			console.log(onStream, "on stream on GetLMDPMaxQualificationsList");
-
+			// 🔹 Check abort at start
 			if (abortSignal?.aborted) {
 				console.log("🚫 GetLMDPMaxQualificationsList handler: Aborted before execution");
 				return { error: "Request aborted" };
 			}
 
-			const today = new Date();
-			const todayStr = today.toISOString().split("T")[0];
-
-			if (!params?.FromDate || !params?.ToDate) {
-				try {
-					const prompt = `
-You are a date extraction assistant.
-
-Today's date is ${todayStr}.
-If the user uses relative terms like "this week", "next Monday", or "yesterday", 
-you MUST calculate based on today's date.
-
-Rules:
-- A week starts on SUNDAY and ends on SATURDAY.
-- FromDate = the Sunday of the week containing the reference date.
-- ToDate = the Saturday of that week containing the reference date.
-
-Steps:
-1. Identify the reference date (either explicit or relative to today).
-2. Find the Sunday of that week (FromDate) and the Saturday of that week (ToDate).
-3. Output both in strict YYYY/MM/DD format.
-
-If no date is found, return null for both.
-
-User message: "${userMessage}"
-
-Respond in JSON only:
-{
-  "FromDate": "YYYY/MM/DD" or null,
-  "ToDate": "YYYY/MM/DD" or null
-}
-`;
-
-					const aiResp = await openai.chat.completions.create({
-						model: "gpt-4o-mini",
-						messages: [
-							{ role: "system", content: "You are a helpful assistant for parsing dates." },
-							{ role: "user", content: prompt },
-						],
-						temperature: 0,
-					});
-
-					if (abortSignal?.aborted) {
-						console.log("🚫 GetLMDPMaxQualificationsList handler: Aborted after OpenAI call");
-						return { error: "Request aborted" };
-					}
-
-					const dateResult = JSON.parse(aiResp.choices[0].message.content || "{}");
-
-					if (dateResult?.FromDate && dateResult?.ToDate) {
-						params.FromDate = dateResult.FromDate;
-						params.ToDate = dateResult.ToDate;
-					} else {
-						const dayOfWeek = today.getDay();
-						const sunday = new Date(today);
-						sunday.setDate(today.getDate() - dayOfWeek);
-						const saturday = new Date(sunday);
-						saturday.setDate(sunday.getDate() + 6);
-
-						const fmt = (d) =>
-							`${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}`;
-
-						params.FromDate = fmt(sunday);
-						params.ToDate = fmt(saturday);
-					}
-				} catch (err) {
-					console.error("Date parsing failed:", err);
-
-					const dayOfWeek = today.getDay();
-					const sunday = new Date(today);
-					sunday.setDate(today.getDate() - dayOfWeek);
-					const saturday = new Date(sunday);
-					saturday.setDate(sunday.getDate() + 6);
-
-					const fmt = (d) =>
-						`${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}`;
-
-					params.FromDate = fmt(sunday);
-					params.ToDate = fmt(saturday);
-				}
-			}
-
-			const missingFields = [];
 			if (!params?.ClientId) params.ClientId = session.ClientId || 2;
-			if (!params?.FromDate) missingFields.push("FromDate");
-			if (!params?.ToDate) missingFields.push("ToDate");
-
-			if (missingFields.length) {
-				return { missingFields };
-			}
+			if (!params?.FromDate) return { missingFields: ["FromDate"] };
+			if (!params?.ToDate) return { missingFields: ["ToDate"] };
 
 			try {
 				if (abortSignal?.aborted) {
 					console.log("🚫 GetLMDPMaxQualificationsList handler: Aborted before axios call");
 					return { error: "Request aborted" };
 				}
-
 				const { data } = await axios.get(
 					`${API_BASE}/GetLMDPMaxQualificationsList?ClientId=${params.ClientId}&FromDate=${params.FromDate}&ToDate=${params.ToDate}`
 				);
@@ -722,8 +635,9 @@ Respond in JSON only:
 
 				const DriversMaxQualificationList =
 					data?.data?.map((item) => ({
+						driverId: item.driverId,
 						driverName: item?.driverName,
-						qualification: item?.qualification,
+						preference: item?.preference,
 					})) || [];
 
 				return await processIntentAndFormatResponse({
@@ -731,17 +645,17 @@ Respond in JSON only:
 					api: {
 						name: "GetLMDPMaxQualificationsList",
 						description:
-							"Retrieves the qualifications of all drivers for a specific ClientId within a specified weekly date range (FromDate to ToDate). This is based on a Sunday–Saturday week.",
+							"Retrieves the maximum qualification level of all drivers (also called LMDPs) for a specific ClientId within a specified weekly date range (FromDate to ToDate), based on a Sunday–Saturday week. This API should also be used when the user requests qualifications alongside other driver-related information (such as overtime preferences, shifts, or assignments), or when the query involves filtering drivers by qualification level (e.g., 'show drivers with qualification 3 and their OT preferences' or 'list all LMDPs above qualification 2'). It also supports queries for a single driver by name or for the full list of drivers.",
 						isSuitableForGraph: true,
 					},
-					exampleResponse: [{ driverName: "JORGE VALENCIA", qualification: 2 }],
+					exampleResponse: [{ driverId: 1482, driverName: "JORGE VALENCIA", qualification: 2 }],
 					actualData: DriversMaxQualificationList,
 					params,
 					session,
 					onStream,
 					abortSignal,
 					isContextual, // 🔹 Pass this
-					followupItem: "qualification", // 🔹 Pass this
+					followupItem: "driverName", // 🔹 Pass this
 				});
 			} catch (err) {
 				if (abortSignal?.aborted) {
@@ -751,107 +665,21 @@ Respond in JSON only:
 
 				return {
 					error: true,
-					message: err.response?.data?.message || "Failed to fetch drivers MaxQualification list",
+					message: err.response?.data?.message || "Failed to fetch LMDPMaxQualificationsList preference list",
 				};
 			}
 		},
 
 		multiHandler: async (params, userMessage, session, onStream, abortSignal) => {
+			// 🔹 Check abort at start
 			if (abortSignal?.aborted) {
 				console.log("🚫 GetLMDPMaxQualificationsList multiHandler: Aborted before execution");
 				return { error: "Request aborted" };
 			}
 
-			const today = new Date();
-			const todayStr = today.toISOString().split("T")[0];
-
-			if (!params?.FromDate || !params?.ToDate) {
-				try {
-					const prompt = `
-You are a date extraction assistant.
-
-Today's date is ${todayStr}.
-If the user uses relative terms like "this week", "next Monday", or "yesterday", 
-you MUST calculate based on today's date.
-
-Rules:
-- A week starts on SUNDAY and ends on SATURDAY.
-- FromDate = the Sunday of the week containing the reference date.
-- ToDate = the Saturday of that week containing the reference date.
-
-Steps:
-1. Identify the reference date (either explicit or relative to today).
-2. Find the Sunday of that week (FromDate) and the Saturday of that week (ToDate).
-3. Output both in strict YYYY/MM/DD format.
-
-If no date is found, return null for both.
-
-User message: "${userMessage}"
-
-Respond in JSON only:
-{
-  "FromDate": "YYYY/MM/DD" or null,
-  "ToDate": "YYYY/MM/DD" or null
-}
-`;
-
-					const aiResp = await openai.chat.completions.create({
-						model: "gpt-4o-mini",
-						messages: [
-							{ role: "system", content: "You are a helpful assistant for parsing dates." },
-							{ role: "user", content: prompt },
-						],
-						temperature: 0,
-					});
-
-					if (abortSignal?.aborted) {
-						console.log("🚫 GetLMDPMaxQualificationsList multiHandler: Aborted after OpenAI call");
-						return { error: "Request aborted" };
-					}
-
-					const dateResult = JSON.parse(aiResp.choices[0].message.content || "{}");
-
-					if (dateResult?.FromDate && dateResult?.ToDate) {
-						params.FromDate = dateResult.FromDate;
-						params.ToDate = dateResult.ToDate;
-					} else {
-						const dayOfWeek = today.getDay();
-						const sunday = new Date(today);
-						sunday.setDate(today.getDate() - dayOfWeek);
-						const saturday = new Date(sunday);
-						saturday.setDate(sunday.getDate() + 6);
-
-						const fmt = (d) =>
-							`${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}`;
-
-						params.FromDate = fmt(sunday);
-						params.ToDate = fmt(saturday);
-					}
-				} catch (err) {
-					console.error("Date parsing failed:", err);
-
-					const dayOfWeek = today.getDay();
-					const sunday = new Date(today);
-					sunday.setDate(today.getDate() - dayOfWeek);
-					const saturday = new Date(sunday);
-					saturday.setDate(sunday.getDate() + 6);
-
-					const fmt = (d) =>
-						`${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}`;
-
-					params.FromDate = fmt(sunday);
-					params.ToDate = fmt(saturday);
-				}
-			}
-
-			const missingFields = [];
 			if (!params?.ClientId) params.ClientId = session.ClientId || 2;
-			if (!params?.FromDate) missingFields.push("FromDate");
-			if (!params?.ToDate) missingFields.push("ToDate");
-
-			if (missingFields.length) {
-				return { missingFields };
-			}
+			if (!params?.FromDate) return { missingFields: ["FromDate"] };
+			if (!params?.ToDate) return { missingFields: ["ToDate"] };
 
 			try {
 				if (abortSignal?.aborted) {
@@ -870,8 +698,9 @@ Respond in JSON only:
 
 				const DriversMaxQualificationList =
 					data?.data?.map((item) => ({
+						driverId: 1482,
 						driverName: item?.driverName,
-						qualification: item?.qualification,
+						preference: item?.preference,
 					})) || [];
 
 				return { data: DriversMaxQualificationList };
@@ -883,11 +712,301 @@ Respond in JSON only:
 
 				return {
 					error: true,
-					message: err.response?.data?.message || "Failed to fetch drivers MaxQualification list",
+					message: err.response?.data?.message || "Failed to fetch drivers OTP preference list",
 				};
 			}
 		},
 	},
+	// 	{
+	// 		name: "GetLMDPMaxQualificationsList",
+	// 		description:
+	// 			"Retrieves the maximum qualification level of all drivers (also called LMDPs) for a specific ClientId within a specified weekly date range (FromDate to ToDate), based on a Sunday–Saturday week. This API should also be used when the user requests qualifications alongside other driver-related information (such as overtime preferences, shifts, or assignments), or when the query involves filtering drivers by qualification level (e.g., 'show drivers with qualification 3 and their OT preferences' or 'list all LMDPs above qualification 2'). It also supports queries for a single driver by name or for the full list of drivers.",
+	// 		requiredFields: ["ClientId", "FromDate", "ToDate"],
+	// 		exampleResponse: [{ driverName: "JORGE VALENCIA", qualification: 2 }],
+	// 		followupItem: "qualification",
+
+	// 		handler: async (params, userMessage, session, onStream, abortSignal, isContextual = false) => {
+	// 			console.log(onStream, "on stream on GetLMDPMaxQualificationsList");
+
+	// 			if (abortSignal?.aborted) {
+	// 				console.log("🚫 GetLMDPMaxQualificationsList handler: Aborted before execution");
+	// 				return { error: "Request aborted" };
+	// 			}
+
+	// 			const today = new Date();
+	// 			const todayStr = today.toISOString().split("T")[0];
+
+	// 			if (!params?.FromDate || !params?.ToDate) {
+	// 				try {
+	// 					const prompt = `
+	// You are a date extraction assistant.
+
+	// Today's date is ${todayStr}.
+	// If the user uses relative terms like "this week", "next Monday", or "yesterday",
+	// you MUST calculate based on today's date.
+
+	// Rules:
+	// - A week starts on SUNDAY and ends on SATURDAY.
+	// - FromDate = the Sunday of the week containing the reference date.
+	// - ToDate = the Saturday of that week containing the reference date.
+
+	// Steps:
+	// 1. Identify the reference date (either explicit or relative to today).
+	// 2. Find the Sunday of that week (FromDate) and the Saturday of that week (ToDate).
+	// 3. Output both in strict YYYY/MM/DD format.
+
+	// If no date is found, return null for both.
+
+	// User message: "${userMessage}"
+
+	// Respond in JSON only:
+	// {
+	//   "FromDate": "YYYY/MM/DD" or null,
+	//   "ToDate": "YYYY/MM/DD" or null
+	// }
+	// `;
+
+	// 					const aiResp = await openai.chat.completions.create({
+	// 						model: "gpt-4o-mini",
+	// 						messages: [
+	// 							{ role: "system", content: "You are a helpful assistant for parsing dates." },
+	// 							{ role: "user", content: prompt },
+	// 						],
+	// 						temperature: 0,
+	// 					});
+
+	// 					if (abortSignal?.aborted) {
+	// 						console.log("🚫 GetLMDPMaxQualificationsList handler: Aborted after OpenAI call");
+	// 						return { error: "Request aborted" };
+	// 					}
+
+	// 					const dateResult = JSON.parse(aiResp.choices[0].message.content || "{}");
+
+	// 					if (dateResult?.FromDate && dateResult?.ToDate) {
+	// 						params.FromDate = dateResult.FromDate;
+	// 						params.ToDate = dateResult.ToDate;
+	// 					} else {
+	// 						const dayOfWeek = today.getDay();
+	// 						const sunday = new Date(today);
+	// 						sunday.setDate(today.getDate() - dayOfWeek);
+	// 						const saturday = new Date(sunday);
+	// 						saturday.setDate(sunday.getDate() + 6);
+
+	// 						const fmt = (d) =>
+	// 							`${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}`;
+
+	// 						params.FromDate = fmt(sunday);
+	// 						params.ToDate = fmt(saturday);
+	// 					}
+	// 				} catch (err) {
+	// 					console.error("Date parsing failed:", err);
+
+	// 					const dayOfWeek = today.getDay();
+	// 					const sunday = new Date(today);
+	// 					sunday.setDate(today.getDate() - dayOfWeek);
+	// 					const saturday = new Date(sunday);
+	// 					saturday.setDate(sunday.getDate() + 6);
+
+	// 					const fmt = (d) =>
+	// 						`${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}`;
+
+	// 					params.FromDate = fmt(sunday);
+	// 					params.ToDate = fmt(saturday);
+	// 				}
+	// 			}
+
+	// 			const missingFields = [];
+	// 			if (!params?.ClientId) params.ClientId = session.ClientId || 2;
+	// 			if (!params?.FromDate) missingFields.push("FromDate");
+	// 			if (!params?.ToDate) missingFields.push("ToDate");
+
+	// 			if (missingFields.length) {
+	// 				return { missingFields };
+	// 			}
+
+	// 			try {
+	// 				if (abortSignal?.aborted) {
+	// 					console.log("🚫 GetLMDPMaxQualificationsList handler: Aborted before axios call");
+	// 					return { error: "Request aborted" };
+	// 				}
+
+	// 				const { data } = await axios.get(
+	// 					`${API_BASE}/GetLMDPMaxQualificationsList?ClientId=${params.ClientId}&FromDate=${params.FromDate}&ToDate=${params.ToDate}`
+	// 				);
+
+	// 				if (abortSignal?.aborted) {
+	// 					console.log("🚫 GetLMDPMaxQualificationsList handler: Aborted after axios call");
+	// 					return { error: "Request aborted" };
+	// 				}
+
+	// 				const DriversMaxQualificationList =
+	// 					data?.data?.map((item) => ({
+	// 						driverName: item?.driverName,
+	// 						qualification: item?.qualification,
+	// 					})) || [];
+
+	// 				return await processIntentAndFormatResponse({
+	// 					userMessage,
+	// 					api: {
+	// 						name: "GetLMDPMaxQualificationsList",
+	// 						description:
+	// 							"Retrieves the qualifications of all drivers for a specific ClientId within a specified weekly date range (FromDate to ToDate). This is based on a Sunday–Saturday week.",
+	// 						isSuitableForGraph: true,
+	// 					},
+	// 					exampleResponse: [{ driverName: "JORGE VALENCIA", qualification: 2 }],
+	// 					actualData: DriversMaxQualificationList,
+	// 					params,
+	// 					session,
+	// 					onStream,
+	// 					abortSignal,
+	// 					isContextual, // 🔹 Pass this
+	// 					followupItem: "qualification", // 🔹 Pass this
+	// 				});
+	// 			} catch (err) {
+	// 				if (abortSignal?.aborted) {
+	// 					console.log("🚫 GetLMDPMaxQualificationsList handler: Aborted during execution");
+	// 					return { error: "Request aborted" };
+	// 				}
+
+	// 				return {
+	// 					error: true,
+	// 					message: err.response?.data?.message || "Failed to fetch drivers MaxQualification list",
+	// 				};
+	// 			}
+	// 		},
+
+	// 		multiHandler: async (params, userMessage, session, onStream, abortSignal) => {
+	// 			if (abortSignal?.aborted) {
+	// 				console.log("🚫 GetLMDPMaxQualificationsList multiHandler: Aborted before execution");
+	// 				return { error: "Request aborted" };
+	// 			}
+
+	// 			const today = new Date();
+	// 			const todayStr = today.toISOString().split("T")[0];
+
+	// 			if (!params?.FromDate || !params?.ToDate) {
+	// 				try {
+	// 					const prompt = `
+	// You are a date extraction assistant.
+
+	// Today's date is ${todayStr}.
+	// If the user uses relative terms like "this week", "next Monday", or "yesterday",
+	// you MUST calculate based on today's date.
+
+	// Rules:
+	// - A week starts on SUNDAY and ends on SATURDAY.
+	// - FromDate = the Sunday of the week containing the reference date.
+	// - ToDate = the Saturday of that week containing the reference date.
+
+	// Steps:
+	// 1. Identify the reference date (either explicit or relative to today).
+	// 2. Find the Sunday of that week (FromDate) and the Saturday of that week (ToDate).
+	// 3. Output both in strict YYYY/MM/DD format.
+
+	// If no date is found, return null for both.
+
+	// User message: "${userMessage}"
+
+	// Respond in JSON only:
+	// {
+	//   "FromDate": "YYYY/MM/DD" or null,
+	//   "ToDate": "YYYY/MM/DD" or null
+	// }
+	// `;
+
+	// 					const aiResp = await openai.chat.completions.create({
+	// 						model: "gpt-4o-mini",
+	// 						messages: [
+	// 							{ role: "system", content: "You are a helpful assistant for parsing dates." },
+	// 							{ role: "user", content: prompt },
+	// 						],
+	// 						temperature: 0,
+	// 					});
+
+	// 					if (abortSignal?.aborted) {
+	// 						console.log("🚫 GetLMDPMaxQualificationsList multiHandler: Aborted after OpenAI call");
+	// 						return { error: "Request aborted" };
+	// 					}
+
+	// 					const dateResult = JSON.parse(aiResp.choices[0].message.content || "{}");
+
+	// 					if (dateResult?.FromDate && dateResult?.ToDate) {
+	// 						params.FromDate = dateResult.FromDate;
+	// 						params.ToDate = dateResult.ToDate;
+	// 					} else {
+	// 						const dayOfWeek = today.getDay();
+	// 						const sunday = new Date(today);
+	// 						sunday.setDate(today.getDate() - dayOfWeek);
+	// 						const saturday = new Date(sunday);
+	// 						saturday.setDate(sunday.getDate() + 6);
+
+	// 						const fmt = (d) =>
+	// 							`${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}`;
+
+	// 						params.FromDate = fmt(sunday);
+	// 						params.ToDate = fmt(saturday);
+	// 					}
+	// 				} catch (err) {
+	// 					console.error("Date parsing failed:", err);
+
+	// 					const dayOfWeek = today.getDay();
+	// 					const sunday = new Date(today);
+	// 					sunday.setDate(today.getDate() - dayOfWeek);
+	// 					const saturday = new Date(sunday);
+	// 					saturday.setDate(sunday.getDate() + 6);
+
+	// 					const fmt = (d) =>
+	// 						`${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}`;
+
+	// 					params.FromDate = fmt(sunday);
+	// 					params.ToDate = fmt(saturday);
+	// 				}
+	// 			}
+
+	// 			const missingFields = [];
+	// 			if (!params?.ClientId) params.ClientId = session.ClientId || 2;
+	// 			if (!params?.FromDate) missingFields.push("FromDate");
+	// 			if (!params?.ToDate) missingFields.push("ToDate");
+
+	// 			if (missingFields.length) {
+	// 				return { missingFields };
+	// 			}
+
+	// 			try {
+	// 				if (abortSignal?.aborted) {
+	// 					console.log("🚫 GetLMDPMaxQualificationsList multiHandler: Aborted before axios call");
+	// 					return { error: "Request aborted" };
+	// 				}
+
+	// 				const { data } = await axios.get(
+	// 					`${API_BASE}/GetLMDPMaxQualificationsList?ClientId=${params.ClientId}&FromDate=${params.FromDate}&ToDate=${params.ToDate}`
+	// 				);
+
+	// 				if (abortSignal?.aborted) {
+	// 					console.log("🚫 GetLMDPMaxQualificationsList multiHandler: Aborted after axios call");
+	// 					return { error: "Request aborted" };
+	// 				}
+
+	// 				const DriversMaxQualificationList =
+	// 					data?.data?.map((item) => ({
+	// 						driverName: item?.driverName,
+	// 						qualification: item?.qualification,
+	// 					})) || [];
+
+	// 				return { data: DriversMaxQualificationList };
+	// 			} catch (err) {
+	// 				if (abortSignal?.aborted) {
+	// 					console.log("🚫 GetLMDPMaxQualificationsList multiHandler: Aborted during execution");
+	// 					return { error: "Request aborted" };
+	// 				}
+
+	// 				return {
+	// 					error: true,
+	// 					message: err.response?.data?.message || "Failed to fetch drivers MaxQualification list",
+	// 				};
+	// 			}
+	// 		},
+	// 	},
 	//7.GetBlobShiftDriverData
 	{
 		name: "GetBlobShiftDriverData",
@@ -2514,6 +2633,8 @@ Respond in JSON only:
 					return { error: "Request aborted" };
 				}
 
+				console.log(`${API_BASE}/GetLMDPLocationPreferenceList?DriverId=${params.DriverId}&ClientId=${params.ClientId}`);
+
 				const { data } = await axios.get(
 					`${API_BASE}/GetLMDPLocationPreferenceList?DriverId=${params.DriverId}&ClientId=${params.ClientId}`
 				);
@@ -2940,6 +3061,424 @@ Respond in JSON only:
 				return {
 					error: true,
 					message: err.response?.data?.message || "Failed to fetch GetRosterSlotPreferencesHistory data.",
+				};
+			}
+		},
+	},
+	//22. GetLMDPShiftTypeList
+	{
+		name: "GetLMDPShiftTypeList",
+		description: "Returns shift types for particular LMDPs/ drivers",
+		requiredFields: ["DriverId", "ClientId", "FromDate", "ToDate"],
+		exampleResponse: [
+			{
+				shiftName: "Parcel Van",
+				shiftType: 240,
+				hoursPerShift: 10,
+				qualification: 0,
+				preference: 2,
+			},
+		],
+		followupItem: "shiftName",
+		graphType: "line",
+
+		handler: async (params, userMessage, session, onStream, abortSignal, isContextual = false) => {
+			// 🔹 ADD contextEntities
+
+			if (abortSignal?.aborted) {
+				console.log("🚫 GetLMDPShiftTypeList handler: Aborted before execution");
+				return { error: "Request aborted" };
+			}
+
+			if (!params?.ClientId) params.ClientId = session.ClientId || 2;
+			if (!params?.DriverId) return { missingFields: ["DriverId"] };
+			if (!params?.FromDate) return { missingFields: ["FromDate"] };
+			if (!params?.ToDate) return { missingFields: ["ToDate"] };
+
+			try {
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetLMDPShiftTypeList handler: Aborted before axios call");
+					return { error: "Request aborted" };
+				}
+
+				const { data } = await axios.get(
+					`${API_BASE}/GetLMDPShiftTypeList?DriverId=${params.DriverId}&ClientId=${params.ClientId}`
+				);
+
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetLMDPShiftTypeList handler: Aborted after axios call");
+					return { error: "Request aborted" };
+				}
+
+				const shiftTypeList =
+					data?.data?.map((item) => ({
+						shiftName: item.shiftName,
+						shiftType: item.shiftType,
+						hoursPerShift: item.hoursPerShift,
+						qualification: item.qualification,
+						preference: item.preference,
+					})) || [];
+
+				return await processIntentAndFormatResponse({
+					userMessage,
+					api: {
+						name: "GetLMDPShiftTypeList",
+						description: "Returns shift types for particular LMDPs/ drivers",
+						isSuitableForGraph: true,
+					},
+					exampleResponse: [
+						{
+							shiftName: "Parcel Van",
+							shiftType: 240,
+							hoursPerShift: 10,
+							qualification: 0,
+							preference: 2,
+						},
+					],
+					actualData: shiftTypeList,
+					params,
+					session,
+					onStream,
+					abortSignal,
+					isContextual, // 🔹 Pass this
+					followupItem: "roasterSlotId",
+				});
+			} catch (err) {
+				console.log(err, "error");
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetLMDPShiftTypeList handler: Aborted during execution");
+					return { error: "Request aborted" };
+				}
+				return {
+					error: true,
+					message: err.response?.data?.message || "Failed to fetch GetLMDPShiftTypeList data.",
+				};
+			}
+		},
+
+		multiHandler: async (params, userMessage, session, onStream) => {
+			if (!params?.ClientId) params.ClientId = session.ClientId || 2;
+			if (!params?.DriverId) return { missingFields: ["DriverId"] };
+			if (!params?.FromDate) return { missingFields: ["FromDate"] };
+			if (!params?.ToDate) return { missingFields: ["ToDate"] };
+
+			try {
+				const { data } = await axios.get(
+					`${API_BASE}/GetLMDPShiftTypeList?DriverId=${params.DriverId}&ClientId=${params.ClientId}`
+				);
+
+				const locationPreferenceList =
+					data?.data?.map((item) => ({
+						shiftName: item.shiftName,
+						shiftType: item.shiftType,
+						hoursPerShift: item.hoursPerShift,
+						qualification: item.qualification,
+						preference: item.preference,
+					})) || [];
+
+				return { data: locationPreferenceList };
+			} catch (err) {
+				return {
+					error: true,
+					message: err.response?.data?.message || "Failed to fetch LMDPShiftTypeList data.",
+				};
+			}
+		},
+	},
+	//23. GetPermissionsList
+	{
+		name: "GetPermissionsList",
+		description: "Returns the permission list and category",
+		requiredFields: [],
+		exampleResponse: [
+			{
+				permissionId: 1,
+				permission: "Can run analysis modules",
+				permissionCategory: "Analysis",
+			},
+		],
+		followupItem: "",
+		graphType: "",
+
+		handler: async (params, userMessage, session, onStream, abortSignal, isContextual = false) => {
+			// 🔹 ADD contextEntities
+
+			if (abortSignal?.aborted) {
+				console.log("🚫 GetPermissionsList handler: Aborted before execution");
+				return { error: "Request aborted" };
+			}
+
+			try {
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetPermissionsList handler: Aborted before axios call");
+					return { error: "Request aborted" };
+				}
+
+				const { data } = await axios.get(`${API_BASE}/GetPermissionsList`);
+
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetPermissionsList handler: Aborted after axios call");
+					return { error: "Request aborted" };
+				}
+
+				const permissionList =
+					data?.data?.map((item) => ({
+						permissionId: item.permissionId,
+						permission: item.permission,
+						permissionCategory: item.permissionCategory,
+					})) || [];
+
+				return await processIntentAndFormatResponse({
+					userMessage,
+					api: {
+						name: "GetPermissionsList",
+						description: "Returns the permission list and category",
+						isSuitableForGraph: false,
+					},
+					exampleResponse: [
+						{
+							permissionId: 1,
+							permission: "Can run analysis modules",
+							permissionCategory: "Analysis",
+						},
+					],
+					actualData: permissionList,
+					params,
+					session,
+					onStream,
+					abortSignal,
+					isContextual,
+					followupItem: "z",
+				});
+			} catch (err) {
+				console.log(err, "error");
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetPermissionsList handler: Aborted during execution");
+					return { error: "Request aborted" };
+				}
+				return {
+					error: true,
+					message: err.response?.data?.message || "Failed to fetch GetPermissionsList data.",
+				};
+			}
+		},
+
+		multiHandler: async (params, userMessage, session, onStream) => {
+			try {
+				const { data } = await axios.get(`${API_BASE}/GetPermissionsList`);
+
+				const permissionList =
+					data?.data?.map((item) => ({
+						shiftName: item.shiftName,
+						shiftType: item.shiftType,
+						hoursPerShift: item.hoursPerShift,
+						qualification: item.qualification,
+						preference: item.preference,
+					})) || [];
+
+				return { data: permissionList };
+			} catch (err) {
+				return {
+					error: true,
+					message: err.response?.data?.message || "Failed to fetch GetPermissionsList data.",
+				};
+			}
+		},
+	},
+	//24. GetPreferenceTypeList
+	{
+		name: "GetPreferenceTypeList",
+		description: "Returns the preference list ",
+		requiredFields: [],
+		exampleResponse: [
+			{
+				preferenceTypeID: 2,
+				preferenceType: "Day",
+			},
+		],
+		followupItem: "GetPreferenceTypeList",
+		graphType: "",
+
+		handler: async (params, userMessage, session, onStream, abortSignal, isContextual = false) => {
+			// 🔹 ADD contextEntities
+
+			if (abortSignal?.aborted) {
+				console.log("🚫 GetPreferenceTypeList handler: Aborted before execution");
+				return { error: "Request aborted" };
+			}
+
+			try {
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetPreferenceTypeList handler: Aborted before axios call");
+					return { error: "Request aborted" };
+				}
+
+				const { data } = await axios.get(`${API_BASE}/GetPreferenceTypeList`);
+
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetPreferenceTypeList handler: Aborted after axios call");
+					return { error: "Request aborted" };
+				}
+
+				const preferenceType =
+					data?.data?.map((item) => ({
+						preferenceTypeID: item.preferenceTypeID,
+						preferenceType: item.preferenceType,
+					})) || [];
+
+				return await processIntentAndFormatResponse({
+					userMessage,
+					api: {
+						name: "GetPreferenceTypeList",
+						description: "Returns the preference list ",
+						isSuitableForGraph: false,
+					},
+					exampleResponse: [
+						{
+							preferenceTypeID: 2,
+							preferenceType: "Day",
+						},
+					],
+					actualData: preferenceType,
+					params,
+					session,
+					onStream,
+					abortSignal,
+					isContextual,
+					followupItem: "",
+				});
+			} catch (err) {
+				console.log(err, "error");
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetPreferenceTypeList handler: Aborted during execution");
+					return { error: "Request aborted" };
+				}
+				return {
+					error: true,
+					message: err.response?.data?.message || "Failed to fetch GetPreferenceTypeList data.",
+				};
+			}
+		},
+
+		multiHandler: async (params, userMessage, session, onStream) => {
+			try {
+				const { data } = await axios.get(`${API_BASE}/GetPreferenceTypeList`);
+
+				const permissionList =
+					data?.data?.map((item) => ({
+						preferenceTypeID: item.preferenceTypeID,
+						preferenceType: item.preferenceType,
+					})) || [];
+
+				return { data: permissionList };
+			} catch (err) {
+				return {
+					error: true,
+					message: err.response?.data?.message || "Failed to fetch GetPreferenceTypeList data.",
+				};
+			}
+		},
+	},
+	//25. GetAnalysisSettings
+	{
+		name: "GetAnalysisSettings",
+		description: "Returns the analysis settings ",
+		requiredFields: [],
+		exampleResponse: [
+			{
+				permitEligibilityChange: true,
+				analysisSettingsId: 1,
+				oneToTwo: true,
+				twoToThree: true,
+				oneToThree: true,
+			},
+		],
+		followupItem: "",
+		graphType: "",
+
+		handler: async (params, userMessage, session, onStream, abortSignal, isContextual = false) => {
+			// 🔹 ADD contextEntities
+
+			if (abortSignal?.aborted) {
+				console.log("🚫 GetAnalysisSettings handler: Aborted before execution");
+				return { error: "Request aborted" };
+			}
+			if (!params?.ClientId) params.ClientId = session.ClientId || 2;
+
+			try {
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetAnalysisSettings handler: Aborted before axios call");
+					return { error: "Request aborted" };
+				}
+
+				const { data } = await axios.get(`${API_BASE}/GetAnalysisSettings?ClientId=${params.ClientId}`);
+
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetAnalysisSettings handler: Aborted after axios call");
+					return { error: "Request aborted" };
+				}
+
+				const analysisSettings =
+					data?.data?.map((item) => ({
+						permitEligibilityChange: item.permitEligibilityChange,
+						analysisSettingsId: item.analysisSettingsId,
+						oneToTwo: item.oneToTwo,
+						twoToThree: item.twoToThree,
+						oneToThree: item.oneToThree,
+					})) || [];
+
+				return await processIntentAndFormatResponse({
+					userMessage,
+					api: {
+						name: "GetAnalysisSettings",
+						description: "Returns the analysis settings",
+						isSuitableForGraph: false,
+					},
+					exampleResponse: [
+						{
+							permitEligibilityChange: true,
+							analysisSettingsId: 1,
+							oneToTwo: true,
+							twoToThree: true,
+							oneToThree: true,
+						},
+					],
+					actualData: analysisSettings,
+					params,
+					session,
+					onStream,
+					abortSignal,
+					isContextual,
+					followupItem: "",
+				});
+			} catch (err) {
+				console.log(err, "error");
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetAnalysisSettings handler: Aborted during execution");
+					return { error: "Request aborted" };
+				}
+				return {
+					error: true,
+					message: err.response?.data?.message || "Failed to fetch GetAnalysisSettings data.",
+				};
+			}
+		},
+
+		multiHandler: async (params, userMessage, session, onStream) => {
+			try {
+				const { data } = await axios.get(`${API_BASE}/GetAnalysisSettings?ClientId=${params.ClientId}`);
+
+				const permissionList =
+					data?.data?.map((item) => ({
+						preferenceTypeID: 2,
+						preferenceType: "Day",
+					})) || [];
+
+				return { data: permissionList };
+			} catch (err) {
+				return {
+					error: true,
+					message: err.response?.data?.message || "Failed to fetch GetAnalysisSettings data.",
 				};
 			}
 		},
