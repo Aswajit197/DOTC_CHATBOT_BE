@@ -635,7 +635,6 @@ const processIntentAndFormatResponse = async ({
 							},
 						}
 					);
-					
 
 					console.log("✅ No matches response sent");
 					console.log("========================================\n");
@@ -741,8 +740,8 @@ ${JSON.stringify(preCalculatedResults.result, null, 2)}
    - **Tables**: For comparisons, multiple attributes, calculated results
 	 - Use <thead> with <th> and <tbody> with <tr><td>
 	 - Make headers descriptive and user-friendly
-	 - DO NOT include ID field (like driverId, ClientId) in the table
-	 - Only show meaningful fields (names, hours, dates, status, etc.)
+	 - DO NOT include ID field driverId, ClientId in the table
+	 - Only show meaningful fields 
    - **Lists**: For simple enumerations
    - **Paragraphs**: For descriptive content
 6. **Structure your response**:
@@ -780,7 +779,7 @@ After your response, add this hidden meta tag with the ACTUAL ${followupItem} va
 ### Output Format
 - Output ONLY valid HTML
 - No markdown, JSON, or code blocks
-- No ID fields in visible content (tables, lists)
+- No ID fields (driverId ,ClientId , StationId) in visible content in table
 - End with: ###END###
 
 Generate the response now:

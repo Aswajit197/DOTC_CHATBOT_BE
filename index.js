@@ -37,6 +37,34 @@ app.get("/chatapi/health", async (req, res) => {
 	res.send(`Server Running on ${PORT} , updated on 10/11/25....`);
 });
 
+app.get("/chatapi/health/mongo", async (req, res) => {
+	try {
+		const state = mongoose.connection.readyState;
+
+		// 0 = disconnected, 1 = connected, 2 = connecting, 3 = disconnecting
+		const states = {
+			0: "Disconnected",
+			1: "Connected",
+			2: "Connecting",
+			3: "Disconnecting",
+		};
+
+		res.json({
+			mongoStatus: states[state],
+			code: state,
+			success: state === 1,
+		});
+	} catch (err) {
+		console.error("Mongo Health Error:", err);
+		res.status(500).json({
+			mongoStatus: "Error",
+			error: err.message,
+			success: false,
+		});
+	}
+});
+
+
 app.listen(PORT, () => {
 	console.log(`🤖 Server running at port ${PORT}`);
 });

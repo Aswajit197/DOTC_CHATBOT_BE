@@ -637,7 +637,7 @@ module.exports = [
 					data?.data?.map((item) => ({
 						driverId: item.driverId,
 						driverName: item?.driverName,
-						preference: item?.preference,
+						qualification: item?.qualification,
 					})) || [];
 
 				return await processIntentAndFormatResponse({
@@ -700,7 +700,7 @@ module.exports = [
 					data?.data?.map((item) => ({
 						driverId: 1482,
 						driverName: item?.driverName,
-						preference: item?.preference,
+						qualification: item?.qualification,
 					})) || [];
 
 				return { data: DriversMaxQualificationList };
@@ -717,296 +717,6 @@ module.exports = [
 			}
 		},
 	},
-	// 	{
-	// 		name: "GetLMDPMaxQualificationsList",
-	// 		description:
-	// 			"Retrieves the maximum qualification level of all drivers (also called LMDPs) for a specific ClientId within a specified weekly date range (FromDate to ToDate), based on a Sunday–Saturday week. This API should also be used when the user requests qualifications alongside other driver-related information (such as overtime preferences, shifts, or assignments), or when the query involves filtering drivers by qualification level (e.g., 'show drivers with qualification 3 and their OT preferences' or 'list all LMDPs above qualification 2'). It also supports queries for a single driver by name or for the full list of drivers.",
-	// 		requiredFields: ["ClientId", "FromDate", "ToDate"],
-	// 		exampleResponse: [{ driverName: "JORGE VALENCIA", qualification: 2 }],
-	// 		followupItem: "qualification",
-
-	// 		handler: async (params, userMessage, session, onStream, abortSignal, isContextual = false) => {
-	// 			console.log(onStream, "on stream on GetLMDPMaxQualificationsList");
-
-	// 			if (abortSignal?.aborted) {
-	// 				console.log("🚫 GetLMDPMaxQualificationsList handler: Aborted before execution");
-	// 				return { error: "Request aborted" };
-	// 			}
-
-	// 			const today = new Date();
-	// 			const todayStr = today.toISOString().split("T")[0];
-
-	// 			if (!params?.FromDate || !params?.ToDate) {
-	// 				try {
-	// 					const prompt = `
-	// You are a date extraction assistant.
-
-	// Today's date is ${todayStr}.
-	// If the user uses relative terms like "this week", "next Monday", or "yesterday",
-	// you MUST calculate based on today's date.
-
-	// Rules:
-	// - A week starts on SUNDAY and ends on SATURDAY.
-	// - FromDate = the Sunday of the week containing the reference date.
-	// - ToDate = the Saturday of that week containing the reference date.
-
-	// Steps:
-	// 1. Identify the reference date (either explicit or relative to today).
-	// 2. Find the Sunday of that week (FromDate) and the Saturday of that week (ToDate).
-	// 3. Output both in strict YYYY/MM/DD format.
-
-	// If no date is found, return null for both.
-
-	// User message: "${userMessage}"
-
-	// Respond in JSON only:
-	// {
-	//   "FromDate": "YYYY/MM/DD" or null,
-	//   "ToDate": "YYYY/MM/DD" or null
-	// }
-	// `;
-
-	// 					const aiResp = await openai.chat.completions.create({
-	// 						model: "gpt-4o-mini",
-	// 						messages: [
-	// 							{ role: "system", content: "You are a helpful assistant for parsing dates." },
-	// 							{ role: "user", content: prompt },
-	// 						],
-	// 						temperature: 0,
-	// 					});
-
-	// 					if (abortSignal?.aborted) {
-	// 						console.log("🚫 GetLMDPMaxQualificationsList handler: Aborted after OpenAI call");
-	// 						return { error: "Request aborted" };
-	// 					}
-
-	// 					const dateResult = JSON.parse(aiResp.choices[0].message.content || "{}");
-
-	// 					if (dateResult?.FromDate && dateResult?.ToDate) {
-	// 						params.FromDate = dateResult.FromDate;
-	// 						params.ToDate = dateResult.ToDate;
-	// 					} else {
-	// 						const dayOfWeek = today.getDay();
-	// 						const sunday = new Date(today);
-	// 						sunday.setDate(today.getDate() - dayOfWeek);
-	// 						const saturday = new Date(sunday);
-	// 						saturday.setDate(sunday.getDate() + 6);
-
-	// 						const fmt = (d) =>
-	// 							`${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}`;
-
-	// 						params.FromDate = fmt(sunday);
-	// 						params.ToDate = fmt(saturday);
-	// 					}
-	// 				} catch (err) {
-	// 					console.error("Date parsing failed:", err);
-
-	// 					const dayOfWeek = today.getDay();
-	// 					const sunday = new Date(today);
-	// 					sunday.setDate(today.getDate() - dayOfWeek);
-	// 					const saturday = new Date(sunday);
-	// 					saturday.setDate(sunday.getDate() + 6);
-
-	// 					const fmt = (d) =>
-	// 						`${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}`;
-
-	// 					params.FromDate = fmt(sunday);
-	// 					params.ToDate = fmt(saturday);
-	// 				}
-	// 			}
-
-	// 			const missingFields = [];
-	// 			if (!params?.ClientId) params.ClientId = session.ClientId || 2;
-	// 			if (!params?.FromDate) missingFields.push("FromDate");
-	// 			if (!params?.ToDate) missingFields.push("ToDate");
-
-	// 			if (missingFields.length) {
-	// 				return { missingFields };
-	// 			}
-
-	// 			try {
-	// 				if (abortSignal?.aborted) {
-	// 					console.log("🚫 GetLMDPMaxQualificationsList handler: Aborted before axios call");
-	// 					return { error: "Request aborted" };
-	// 				}
-
-	// 				const { data } = await axios.get(
-	// 					`${API_BASE}/GetLMDPMaxQualificationsList?ClientId=${params.ClientId}&FromDate=${params.FromDate}&ToDate=${params.ToDate}`
-	// 				);
-
-	// 				if (abortSignal?.aborted) {
-	// 					console.log("🚫 GetLMDPMaxQualificationsList handler: Aborted after axios call");
-	// 					return { error: "Request aborted" };
-	// 				}
-
-	// 				const DriversMaxQualificationList =
-	// 					data?.data?.map((item) => ({
-	// 						driverName: item?.driverName,
-	// 						qualification: item?.qualification,
-	// 					})) || [];
-
-	// 				return await processIntentAndFormatResponse({
-	// 					userMessage,
-	// 					api: {
-	// 						name: "GetLMDPMaxQualificationsList",
-	// 						description:
-	// 							"Retrieves the qualifications of all drivers for a specific ClientId within a specified weekly date range (FromDate to ToDate). This is based on a Sunday–Saturday week.",
-	// 						isSuitableForGraph: true,
-	// 					},
-	// 					exampleResponse: [{ driverName: "JORGE VALENCIA", qualification: 2 }],
-	// 					actualData: DriversMaxQualificationList,
-	// 					params,
-	// 					session,
-	// 					onStream,
-	// 					abortSignal,
-	// 					isContextual, // 🔹 Pass this
-	// 					followupItem: "qualification", // 🔹 Pass this
-	// 				});
-	// 			} catch (err) {
-	// 				if (abortSignal?.aborted) {
-	// 					console.log("🚫 GetLMDPMaxQualificationsList handler: Aborted during execution");
-	// 					return { error: "Request aborted" };
-	// 				}
-
-	// 				return {
-	// 					error: true,
-	// 					message: err.response?.data?.message || "Failed to fetch drivers MaxQualification list",
-	// 				};
-	// 			}
-	// 		},
-
-	// 		multiHandler: async (params, userMessage, session, onStream, abortSignal) => {
-	// 			if (abortSignal?.aborted) {
-	// 				console.log("🚫 GetLMDPMaxQualificationsList multiHandler: Aborted before execution");
-	// 				return { error: "Request aborted" };
-	// 			}
-
-	// 			const today = new Date();
-	// 			const todayStr = today.toISOString().split("T")[0];
-
-	// 			if (!params?.FromDate || !params?.ToDate) {
-	// 				try {
-	// 					const prompt = `
-	// You are a date extraction assistant.
-
-	// Today's date is ${todayStr}.
-	// If the user uses relative terms like "this week", "next Monday", or "yesterday",
-	// you MUST calculate based on today's date.
-
-	// Rules:
-	// - A week starts on SUNDAY and ends on SATURDAY.
-	// - FromDate = the Sunday of the week containing the reference date.
-	// - ToDate = the Saturday of that week containing the reference date.
-
-	// Steps:
-	// 1. Identify the reference date (either explicit or relative to today).
-	// 2. Find the Sunday of that week (FromDate) and the Saturday of that week (ToDate).
-	// 3. Output both in strict YYYY/MM/DD format.
-
-	// If no date is found, return null for both.
-
-	// User message: "${userMessage}"
-
-	// Respond in JSON only:
-	// {
-	//   "FromDate": "YYYY/MM/DD" or null,
-	//   "ToDate": "YYYY/MM/DD" or null
-	// }
-	// `;
-
-	// 					const aiResp = await openai.chat.completions.create({
-	// 						model: "gpt-4o-mini",
-	// 						messages: [
-	// 							{ role: "system", content: "You are a helpful assistant for parsing dates." },
-	// 							{ role: "user", content: prompt },
-	// 						],
-	// 						temperature: 0,
-	// 					});
-
-	// 					if (abortSignal?.aborted) {
-	// 						console.log("🚫 GetLMDPMaxQualificationsList multiHandler: Aborted after OpenAI call");
-	// 						return { error: "Request aborted" };
-	// 					}
-
-	// 					const dateResult = JSON.parse(aiResp.choices[0].message.content || "{}");
-
-	// 					if (dateResult?.FromDate && dateResult?.ToDate) {
-	// 						params.FromDate = dateResult.FromDate;
-	// 						params.ToDate = dateResult.ToDate;
-	// 					} else {
-	// 						const dayOfWeek = today.getDay();
-	// 						const sunday = new Date(today);
-	// 						sunday.setDate(today.getDate() - dayOfWeek);
-	// 						const saturday = new Date(sunday);
-	// 						saturday.setDate(sunday.getDate() + 6);
-
-	// 						const fmt = (d) =>
-	// 							`${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}`;
-
-	// 						params.FromDate = fmt(sunday);
-	// 						params.ToDate = fmt(saturday);
-	// 					}
-	// 				} catch (err) {
-	// 					console.error("Date parsing failed:", err);
-
-	// 					const dayOfWeek = today.getDay();
-	// 					const sunday = new Date(today);
-	// 					sunday.setDate(today.getDate() - dayOfWeek);
-	// 					const saturday = new Date(sunday);
-	// 					saturday.setDate(sunday.getDate() + 6);
-
-	// 					const fmt = (d) =>
-	// 						`${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}`;
-
-	// 					params.FromDate = fmt(sunday);
-	// 					params.ToDate = fmt(saturday);
-	// 				}
-	// 			}
-
-	// 			const missingFields = [];
-	// 			if (!params?.ClientId) params.ClientId = session.ClientId || 2;
-	// 			if (!params?.FromDate) missingFields.push("FromDate");
-	// 			if (!params?.ToDate) missingFields.push("ToDate");
-
-	// 			if (missingFields.length) {
-	// 				return { missingFields };
-	// 			}
-
-	// 			try {
-	// 				if (abortSignal?.aborted) {
-	// 					console.log("🚫 GetLMDPMaxQualificationsList multiHandler: Aborted before axios call");
-	// 					return { error: "Request aborted" };
-	// 				}
-
-	// 				const { data } = await axios.get(
-	// 					`${API_BASE}/GetLMDPMaxQualificationsList?ClientId=${params.ClientId}&FromDate=${params.FromDate}&ToDate=${params.ToDate}`
-	// 				);
-
-	// 				if (abortSignal?.aborted) {
-	// 					console.log("🚫 GetLMDPMaxQualificationsList multiHandler: Aborted after axios call");
-	// 					return { error: "Request aborted" };
-	// 				}
-
-	// 				const DriversMaxQualificationList =
-	// 					data?.data?.map((item) => ({
-	// 						driverName: item?.driverName,
-	// 						qualification: item?.qualification,
-	// 					})) || [];
-
-	// 				return { data: DriversMaxQualificationList };
-	// 			} catch (err) {
-	// 				if (abortSignal?.aborted) {
-	// 					console.log("🚫 GetLMDPMaxQualificationsList multiHandler: Aborted during execution");
-	// 					return { error: "Request aborted" };
-	// 				}
-
-	// 				return {
-	// 					error: true,
-	// 					message: err.response?.data?.message || "Failed to fetch drivers MaxQualification list",
-	// 				};
-	// 			}
-	// 		},
-	// 	},
 	//7.GetBlobShiftDriverData
 	{
 		name: "GetBlobShiftDriverData",
@@ -1860,102 +1570,33 @@ module.exports = [
 			},
 			active: 1,
 		},
-		followupItem: "shifts",
+		graphType: "line",
+		followupItem: "",
+
 		handler: async (params, userMessage, session, onStream, abortSignal, isContextual = false) => {
-			// If FromDate/ToDate missing
-			if (!params?.FromDate || !params?.ToDate) {
-				const today = new Date();
-				const todayStr = today.toISOString().split("T")[0]; // YYYY-MM-DD
-
-				try {
-					const prompt = `
-You are a date extraction assistant.
-
-Today's date is ${todayStr}.
-If the user uses relative terms like "this week", "next Monday", or "yesterday", 
-you MUST calculate based on today's date.
-
-Rules:
-- A week starts on SUNDAY and ends on SATURDAY.
-- FromDate = the Sunday of the week containing the reference date.
-- ToDate = the Saturday of the week containing the reference date.
-
-Steps:
-1. Identify the reference date (either explicit or relative to today).
-2. Find the Sunday of that week (FromDate) and the Saturday of that week (ToDate).
-3. Output both in strict YYYY/MM/DD format.
-
-If no date is found, return null for both.
-
-User message: "${userMessage}"
-
-Respond in JSON only:
-{
-  "FromDate": "YYYY/MM/DD" or null,
-  "ToDate": "YYYY/MM/DD" or null
-}
-`;
-
-					const aiResp = await openai.chat.completions.create({
-						model: "gpt-4o-mini",
-						messages: [
-							{ role: "system", content: "You are a helpful assistant for parsing dates." },
-							{ role: "user", content: prompt },
-						],
-						temperature: 0,
-					});
-
-					const dateResult = JSON.parse(aiResp.choices[0].message.content || "{}");
-
-					if (dateResult?.FromDate && dateResult?.ToDate) {
-						params.FromDate = dateResult.FromDate;
-						params.ToDate = dateResult.ToDate;
-					} else {
-						// 🛠 No date found → default to current week Sunday–Saturday
-						const dayOfWeek = today.getDay(); // 0=Sunday
-						const sunday = new Date(today);
-						sunday.setDate(today.getDate() - dayOfWeek);
-						const saturday = new Date(sunday);
-						saturday.setDate(sunday.getDate() + 6);
-
-						const fmt = (d) =>
-							`${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}`;
-
-						params.FromDate = fmt(sunday);
-						params.ToDate = fmt(saturday);
-					}
-				} catch (err) {
-					console.error("Date parsing failed:", err);
-
-					// 🛠 On error → default to current week Sunday–Saturday
-					const dayOfWeek = today.getDay();
-					const sunday = new Date(today);
-					sunday.setDate(today.getDate() - dayOfWeek);
-					const saturday = new Date(sunday);
-					saturday.setDate(sunday.getDate() + 6);
-
-					const fmt = (d) =>
-						`${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}`;
-
-					params.FromDate = fmt(sunday);
-					params.ToDate = fmt(saturday);
-				}
+			// 🔹 Check abort at start
+			if (abortSignal?.aborted) {
+				console.log("🚫 GetOperationListForBackEnd handler: Aborted before execution");
+				return { error: "Request aborted" };
 			}
 
-			// 3️⃣ Final param validation
-			const missingFields = [];
 			if (!params?.ClientId) params.ClientId = session.ClientId || 2;
-			if (!params?.FromDate) missingFields.push("FromDate");
-			if (!params?.ToDate) missingFields.push("ToDate");
-
-			if (missingFields.length) {
-				return { missingFields };
-			}
+			if (!params?.FromDate) return { missingFields: ["FromDate"] };
+			if (!params?.ToDate) return { missingFields: ["ToDate"] };
 
 			try {
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetOperationListForBackEnd handler: Aborted before axios call");
+					return { error: "Request aborted" };
+				}
 				const { data } = await axios.get(
 					`${API_BASE}/GetOperationListForBackEnd?ClientId=${params.ClientId}&FromDate=${params.FromDate}&ToDate=${params.ToDate}`
 				);
+
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetOperationListForBackEnd handler: Aborted after axios call");
+					return { error: "Request aborted" };
+				}
 
 				const operationData =
 					data?.data?.map((item) => ({
@@ -1974,6 +1615,7 @@ Respond in JSON only:
 						name: "GetOperationListForBackEnd",
 						description:
 							"This API should be used whenever the user asks about the details of operations created by the manager. It provides a complete breakdown of an operation including whether it is active or inactive, the number and types of shifts (with their hours, qualifications, and colors), the locations assigned to the operation (with address and type), the wave times scheduled, and the arrival information such as reporting location and buffer time. Use this API when the user asks questions like: “What operations are currently active or inactive?”, “How many shifts are available in DBK1 Morning?”, “What shift types exist under an operation?”, “What locations are linked to a particular operation?”, “What wave times are scheduled for DBK1 Morning?”, or “Where should drivers report for this operation and how much time before shift?”.",
+						isSuitableForGraph: true,
 					},
 					exampleResponse: {
 						shifts: [
@@ -2055,110 +1697,48 @@ Respond in JSON only:
 					params,
 					session,
 					onStream,
+					abortSignal,
 					isContextual, // 🔹 Pass this
-					followupItem: "shifts", // 🔹 Pass this
+					followupItem: "", // 🔹 Pass this
 				});
 			} catch (err) {
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetOperationListForBackEnd handler: Aborted during execution");
+					return { error: "Request aborted" };
+				}
+
 				return {
 					error: true,
-					message: err.response?.data?.message || "Failed to fetch list of drivers associated with a client.",
+					message: err.response?.data?.message || "Failed to fetch GetOperationListForBackEnd preference list",
 				};
 			}
 		},
-		multiHandler: async (params, userMessage, session, onStream) => {
-			// If FromDate/ToDate missing
-			if (!params?.FromDate || !params?.ToDate) {
-				const today = new Date();
-				const todayStr = today.toISOString().split("T")[0]; // YYYY-MM-DD
 
-				try {
-					const prompt = `
-You are a date extraction assistant.
-
-Today's date is ${todayStr}.
-If the user uses relative terms like "this week", "next Monday", or "yesterday", 
-you MUST calculate based on today's date.
-
-Rules:
-- A week starts on SUNDAY and ends on SATURDAY.
-- FromDate = the Sunday of the week containing the reference date.
-- ToDate = the Saturday of the week containing the reference date.
-
-Steps:
-1. Identify the reference date (either explicit or relative to today).
-2. Find the Sunday of that week (FromDate) and the Saturday of that week (ToDate).
-3. Output both in strict YYYY/MM/DD format.
-
-If no date is found, return null for both.
-
-User message: "${userMessage}"
-
-Respond in JSON only:
-{
-  "FromDate": "YYYY/MM/DD" or null,
-  "ToDate": "YYYY/MM/DD" or null
-}
-`;
-					const aiResp = await openai.chat.completions.create({
-						model: "gpt-4o-mini",
-						messages: [
-							{ role: "system", content: "You are a helpful assistant for parsing dates." },
-							{ role: "user", content: prompt },
-						],
-						temperature: 0,
-					});
-
-					const dateResult = JSON.parse(aiResp.choices[0].message.content || "{}");
-
-					if (dateResult?.FromDate && dateResult?.ToDate) {
-						params.FromDate = dateResult.FromDate;
-						params.ToDate = dateResult.ToDate;
-					} else {
-						// 🛠 No date found → default to current week Sunday–Saturday
-						const dayOfWeek = today.getDay(); // 0=Sunday
-						const sunday = new Date(today);
-						sunday.setDate(today.getDate() - dayOfWeek);
-						const saturday = new Date(sunday);
-						saturday.setDate(sunday.getDate() + 6);
-
-						const fmt = (d) =>
-							`${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}`;
-
-						params.FromDate = fmt(sunday);
-						params.ToDate = fmt(saturday);
-					}
-				} catch (err) {
-					console.error("Date parsing failed:", err);
-
-					// 🛠 On error → default to current week Sunday–Saturday
-					const dayOfWeek = today.getDay();
-					const sunday = new Date(today);
-					sunday.setDate(today.getDate() - dayOfWeek);
-					const saturday = new Date(sunday);
-					saturday.setDate(sunday.getDate() + 6);
-
-					const fmt = (d) =>
-						`${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}`;
-
-					params.FromDate = fmt(sunday);
-					params.ToDate = fmt(saturday);
-				}
+		multiHandler: async (params, userMessage, session, onStream, abortSignal) => {
+			// 🔹 Check abort at start
+			if (abortSignal?.aborted) {
+				console.log("🚫 GetOperationListForBackEnd multiHandler: Aborted before execution");
+				return { error: "Request aborted" };
 			}
 
-			// 3️⃣ Final param validation
-			const missingFields = [];
 			if (!params?.ClientId) params.ClientId = session.ClientId || 2;
-			if (!params?.FromDate) missingFields.push("FromDate");
-			if (!params?.ToDate) missingFields.push("ToDate");
-
-			if (missingFields.length) {
-				return { missingFields };
-			}
+			if (!params?.FromDate) return { missingFields: ["FromDate"] };
+			if (!params?.ToDate) return { missingFields: ["ToDate"] };
 
 			try {
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetOperationListForBackEnd multiHandler: Aborted before axios call");
+					return { error: "Request aborted" };
+				}
+
 				const { data } = await axios.get(
 					`${API_BASE}/GetOperationListForBackEnd?ClientId=${params.ClientId}&FromDate=${params.FromDate}&ToDate=${params.ToDate}`
 				);
+
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetOperationListForBackEnd multiHandler: Aborted after axios call");
+					return { error: "Request aborted" };
+				}
 
 				const operationData =
 					data?.data?.map((item) => ({
@@ -2173,14 +1753,18 @@ Respond in JSON only:
 
 				return { data: operationData };
 			} catch (err) {
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetOperationListForBackEnd multiHandler: Aborted during execution");
+					return { error: "Request aborted" };
+				}
+
 				return {
 					error: true,
-					message: err.response?.data?.message || "Failed to fetch list of drivers associated with a client.",
+					message: err.response?.data?.message || "Failed to fetch OperationListForBackEnd",
 				};
 			}
 		},
 	},
-
 	//15.GetOpenShiftForBackEnd
 	{
 		name: "GetOpenShiftForBackEnd",
