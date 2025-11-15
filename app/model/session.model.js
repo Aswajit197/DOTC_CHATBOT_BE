@@ -12,6 +12,11 @@ const sessionSchema = new mongoose.Schema(
 				message: String,
 				chatType: String,
 				data: { type: mongoose.Schema.Types.Mixed },
+				context: {
+					lastIntent: { type: String },
+					lastParams: { type: mongoose.Schema.Types.Mixed },
+					lastResponseMessage: { type: mongoose.Schema.Types.Mixed }
+				},
 				graphContents: {
 					lastGraphPrompt: { type: String },
 					lastGraphResponse: { type: String },

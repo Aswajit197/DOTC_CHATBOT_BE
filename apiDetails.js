@@ -1,9 +1,5 @@
 const axios = require("axios");
 const processIntentAndFormatResponse = require("./app/utils/ProcessIntentAndFormatResponse");
-const { OpenAI } = require("openai");
-const { handleFromDateToDate } = require("./app/utils/dateParamsHandler");
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
 const API_BASE = process.env.API_BASE_URL;
 
 module.exports = [

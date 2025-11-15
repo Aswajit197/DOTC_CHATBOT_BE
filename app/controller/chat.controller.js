@@ -115,6 +115,8 @@ chat.sendMessage = async (req, res) => {
 			abortSignal: internalAbortController.signal,
 		});
 
+		console.log(intentResult, "Intent Result");
+
 		if (isAborted) {
 			console.log("⚠️ Request aborted after intent processing");
 			return;
@@ -260,14 +262,13 @@ chat.sendMessage = async (req, res) => {
 					context: {
 						lastIntent: intentResult?.api?.name,
 						lastParams: intentResult?.params,
-						wasContextual: !!intentResult?.contextEntities, // 🔹 Track if it was contextual
+						lastResponseMessage: intentResult?.formattedReply,
 					},
 					timestamp: new Date(),
 				};
 
 				session.history.push(botHistoryEntry);
 				await session.save();
-
 				console.log("✅ Response sent and context saved successfully");
 			} catch (writeError) {
 				console.log("🚫 Failed to write final response - user aborted:", writeError.message);
