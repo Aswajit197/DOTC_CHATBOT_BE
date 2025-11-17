@@ -14,7 +14,6 @@ async function getGraphJsonFromLastResponse(userMessage, session, { onStream } =
 		if (session.lastSuccessIntent) {
 			const matchedApi = apiListData.find((api) => api.name === session.lastSuccessIntent);
 
-			console.log(matchedApi);
 			if (matchedApi?.exampleResponse) {
 				exampleResponse = matchedApi.exampleResponse;
 			}

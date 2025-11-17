@@ -584,6 +584,7 @@ Your task:
 			api: matchedApi,
 			params,
 			formattedReply: apiResponse?.userReply,
+			userMessage
 		};
 	} catch (err) {
 		if (err.name === "AbortError" || abortSignal?.aborted) {

@@ -115,8 +115,6 @@ chat.sendMessage = async (req, res) => {
 			abortSignal: internalAbortController.signal,
 		});
 
-		console.log(intentResult, "Intent Result");
-
 		if (isAborted) {
 			console.log("⚠️ Request aborted after intent processing");
 			return;
@@ -261,6 +259,7 @@ chat.sendMessage = async (req, res) => {
 					message: intentResult.formattedReply,
 					context: {
 						lastIntent: intentResult?.api?.name,
+						lastUserMessage:intentResult?.userMessage,
 						lastParams: intentResult?.params,
 						lastResponseMessage: intentResult?.formattedReply,
 					},
@@ -378,3 +377,15 @@ chat.getSessionsByUserId = async (req, res) => {
 };
 
 module.exports = chat;
+
+
+
+
+
+
+
+
+
+
+
+

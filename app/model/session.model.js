@@ -14,8 +14,9 @@ const sessionSchema = new mongoose.Schema(
 				data: { type: mongoose.Schema.Types.Mixed },
 				context: {
 					lastIntent: { type: String },
+					lastUserMessage: { type: String },
 					lastParams: { type: mongoose.Schema.Types.Mixed },
-					lastResponseMessage: { type: mongoose.Schema.Types.Mixed }
+					lastResponseMessage: { type: mongoose.Schema.Types.Mixed },
 				},
 				graphContents: {
 					lastGraphPrompt: { type: String },
@@ -27,13 +28,11 @@ const sessionSchema = new mongoose.Schema(
 				timestamp: Date,
 			},
 		],
-
 		lastResponseMessage: { type: String },
 		lastSuccessUserMessage: { type: String },
 		lastSuccessIntent: { type: String },
 		lastSuccessApiResponse: { type: mongoose.Schema.Types.Mixed },
 		lastSuccessParams: { type: mongoose.Schema.Types.Mixed },
-
 		// 🔹 ROLLING CONTEXT HISTORY - Last 5 queries
 		contextHistory: [
 			{

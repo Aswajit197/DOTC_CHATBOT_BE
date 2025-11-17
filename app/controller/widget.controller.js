@@ -3,6 +3,54 @@ const apiListData = require("../../apiDetails");
 const { OpenAI } = require("openai");
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
+async function extractJsonFromTable(htmlString, intent) {
+	try {
+		let exampleResponse = null;
+
+		// If this API has a sample response → follow its structure
+		if (intent) {
+			const matchedApi = apiListData.find((api) => api.name === intent);
+			if (matchedApi?.exampleResponse) {
+				exampleResponse = matchedApi.exampleResponse;
+			}
+		}
+
+		let systemPrompt = `
+You convert HTML table or list content into a JSON array.
+Rules:
+- Output ONLY valid JSON.
+- Detect table headers to form keys.
+- Each row becomes an object.
+- Convert number-like strings to numbers (e.g. "40 hours" → 40).
+`;
+
+		if (exampleResponse) {
+			systemPrompt += `
+Follow this exact JSON structure when creating keys:
+${JSON.stringify(exampleResponse, null, 2)}
+`;
+		}
+
+		// Call OpenAI
+		const response = await openai.chat.completions.create({
+			model: "gpt-3.5-turbo",
+			messages: [
+				{ role: "system", content: systemPrompt },
+				{ role: "user", content: htmlString },
+			],
+			temperature: 0,
+		});
+
+		let raw = response.choices[0].message.content.trim();
+
+		// Parse JSON safely
+		return JSON.parse(raw);
+	} catch (err) {
+		console.error("extractJsonFromTable error:", err);
+		return null;
+	}
+}
+
 // Chat Controller
 const widget = {};
 
@@ -51,6 +99,63 @@ widget.addWidget = async (req, res) => {
 	} catch (err) {
 		console.error("Error creating widget:", err);
 		res.status(500).json({ error: "Widget creation failed", details: err.message });
+	}
+};
+
+widget.addTableWidget = async (req, res) => {
+	try {
+		const {
+			userId,
+			ClientId,
+			widgetName,
+			widgetDescription,
+			widgetLastIntent,
+			widgetLastResponse, // <-- Contains table HTML
+			widgetLastUserMessage,
+			widgetLastParams,
+		} = req.body;
+
+		console.log(req.body, "request body for table widget");
+
+		if (!userId || !ClientId) {
+			return res.status(400).json({ error: "userId and ClientId are required" });
+		}
+
+		// 1️⃣ Extract JSON from table HTML
+		const parsedJSON = await extractJsonFromTable(widgetLastResponse, widgetLastIntent);
+
+		if (!parsedJSON) {
+			return res.status(500).json({
+				error: "Failed to extract JSON from HTML table.",
+			});
+		}
+
+		// 2️⃣ Save the new widget
+		const newWidget = new Widget({
+			userId,
+			ClientId,
+			widgetName,
+			widgetDescription,
+			widgetType: "table",
+			widgetLastIntent,
+			widgetLastResponse,
+			widgetLastUserMessage,
+			widgetLastParams,
+			widgetSampleJSON: parsedJSON, // ← extracted JSON saved
+		});
+
+		const savedWidget = await newWidget.save();
+
+		res.status(201).json({
+			message: "Table widget created successfully",
+			data: savedWidget,
+		});
+	} catch (err) {
+		console.error("Error creating table widget:", err);
+		res.status(500).json({
+			error: "Table widget creation failed",
+			details: err.message,
+		});
 	}
 };
 
@@ -143,7 +248,6 @@ widget.refreshWidget = async (req, res) => {
 		} else {
 			// 🔹 Single intent
 			const matchedApi = apiListData.find((api) => api.name === widgetLastIntent);
-
 			if (!matchedApi) {
 				return res.status(400).json({ error: "No matching API found for the given intent." });
 			}
@@ -155,7 +259,6 @@ widget.refreshWidget = async (req, res) => {
 				exampleResponse: matchedApi.exampleResponse,
 			});
 		}
-
 		// 🔹 Build system prompt
 		let systemPrompt = `
 You are an assistant that converts raw API response data into a structured JSON array format.
@@ -174,7 +277,6 @@ User message: "${widgetLastResponse}"
 Raw API data (from ${allResults.length} intent${allResults.length > 1 ? "s" : ""}):
 ${JSON.stringify(allResults, null, 2)}
 `;
-
 		// 🔹 OpenAI call
 		const completion = await openai.chat.completions.create({
 			model: "gpt-3.5-turbo",
