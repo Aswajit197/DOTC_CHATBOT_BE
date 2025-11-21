@@ -263,6 +263,7 @@ chat.sendMessage = async (req, res) => {
 						lastUserMessage:intentResult?.userMessage,
 						lastParams: intentResult?.params,
 						lastResponseMessage: intentResult?.formattedReply,
+						//lastFilterParams:intentResult.        //want to update here if available else null
 					},
 					timestamp: new Date(),
 				};

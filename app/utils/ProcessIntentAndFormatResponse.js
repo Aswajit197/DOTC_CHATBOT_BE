@@ -344,7 +344,6 @@ const processIntentAndFormatResponse = async ({
 
 			return { userReply: htmlMessage, params, api };
 		}
-
 		// ============================================================
 		// CONTEXTUAL FILTERING
 		// ============================================================
@@ -458,6 +457,7 @@ const processIntentAndFormatResponse = async ({
 		// ============================================================
 		// BUILD PROMPT FOR AI RESPONSE GENERATION
 		// ============================================================
+
 		const prompt = `
 You are a smart assistant processing structured API data and answering user questions.
 
@@ -578,7 +578,6 @@ After your response, add this hidden meta tag with the ACTUAL ${followupItem} va
 
 Generate the response now:
 `;
-
 		// ============================================================
 		// STREAM AI RESPONSE
 		// ============================================================

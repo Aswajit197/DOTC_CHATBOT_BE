@@ -16,6 +16,7 @@ const sessionSchema = new mongoose.Schema(
 					lastIntent: { type: String },
 					lastUserMessage: { type: String },
 					lastParams: { type: mongoose.Schema.Types.Mixed },
+					lastFilterParams: { type: mongoose.Schema.Types.Mixed },
 					lastResponseMessage: { type: mongoose.Schema.Types.Mixed },
 				},
 				graphContents: {

@@ -517,6 +517,7 @@ module.exports = [
 						name: "GetDriverOTPreferenceList",
 						description: "Returns OTP preference for each driver",
 						isSuitableForGraph: true,
+						optionalFilteredField:["DriverId"]
 					},
 					exampleResponse: [
 						{
