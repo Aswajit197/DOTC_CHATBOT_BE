@@ -3,16 +3,8 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const Session = require("../model/session.model");
 const { getNestedValue, performCalculations } = require("../utils/calculations.util");
 
-// ==================================================================================
-// AI-POWERED INTENT DETECTION
-// ==================================================================================
-/**
- * Analyzes user message to determine if calculation is needed
- * @param {string} userMessage - The user's query
- * @param {Array|Object} apiData - The API response data
- * @param {string} apiDescription - Description of the API
- * @returns {Object} Analysis result with calculation intent
- */
+// ===== AI-POWERED INTENT DETECTION =====
+
 async function detectCalculationIntent(userMessage, apiData, apiDescription) {
 	try {
 		const dataSample = Array.isArray(apiData) ? apiData.slice(0, 3) : apiData;
@@ -91,14 +83,8 @@ Provide your analysis in JSON format.`,
 	}
 }
 
-// ==================================================================================
-// DATA VALIDATION HELPERS
-// ==================================================================================
-/**
- * Checks if data is empty or null
- * @param {*} data - Data to check
- * @returns {boolean} True if data is empty
- */
+// ===== DATA VALIDATION HELPERS =====
+
 function isEmptyData(data) {
 	if (data === null || data === undefined) return true;
 	if (typeof data === "string" && data.trim() === "") return true;
@@ -107,13 +93,6 @@ function isEmptyData(data) {
 	return false;
 }
 
-/**
- * Generates a friendly message for empty data scenarios
- * @param {string} userMessage - The user's query
- * @param {string} apiName - Name of the API
- * @param {string} apiDescription - Description of the API
- * @returns {string} Friendly error message
- */
 async function generateEmptyDataMessage(userMessage, apiName, apiDescription) {
 	try {
 		const prompt = `The user asked: "${userMessage}"
@@ -145,24 +124,11 @@ Output ONLY the message text, no JSON or formatting.`;
 	}
 }
 
-// ==================================================================================
-// CONTEXTUAL FILTERING
-// ==================================================================================
-/**
- * Filters data based on contextual information from previous queries
- * @param {Array} actualData - The data to filter
- * @param {Object} contextInfo - Context from previous query
- * @returns {Object} Filtered data with match statistics
- */
+// ===== CONTEXTUAL FILTERING =====
+
 function applyContextualFilter(actualData, contextInfo) {
-	// No context available - return original data
 	if (!contextInfo || !contextInfo.entityData || !contextInfo.entityFieldName) {
-		return {
-			filteredData: actualData,
-			matchCount: 0,
-			contextField: null,
-			contextValues: [],
-		};
+		return { filteredData: actualData, matchCount: 0, contextField: null, contextValues: [] };
 	}
 
 	const { entityData, entityFieldName } = contextInfo;
@@ -172,21 +138,13 @@ function applyContextualFilter(actualData, contextInfo) {
 	console.log("  - Context values count:", entityData.length);
 	console.log("  - Data to filter:", Array.isArray(actualData) ? actualData.length : "N/A");
 
-	// Can only filter arrays
 	if (!Array.isArray(actualData)) {
 		console.log("  ⚠️ Data is not an array, cannot filter");
-		return {
-			filteredData: actualData,
-			matchCount: 0,
-			contextField: entityFieldName,
-			contextValues: entityData,
-		};
+		return { filteredData: actualData, matchCount: 0, contextField: entityFieldName, contextValues: entityData };
 	}
 
-	// Normalize context values for comparison
 	const normalizedContextValues = entityData.map((v) => String(v).toLowerCase().trim());
 
-	// Filter data to only include items matching context
 	const filteredData = actualData.filter((item) => {
 		if (!item || typeof item !== "object") return false;
 
@@ -215,13 +173,6 @@ function applyContextualFilter(actualData, contextInfo) {
 	};
 }
 
-/**
- * Generates a message when no matches are found in contextual filtering
- * @param {string} userMessage - The user's query
- * @param {Object} contextInfo - Context from previous query
- * @param {string} apiName - Name of the API
- * @returns {string} Friendly message explaining no matches
- */
 async function generateNoMatchesMessage(userMessage, contextInfo, apiName) {
 	try {
 		const prompt = `The user asked a follow-up question: "${userMessage}"
@@ -259,24 +210,8 @@ Output ONLY the message text, no JSON or formatting.`;
 	}
 }
 
-// ==================================================================================
-// MAIN PROCESSING FUNCTION
-// ==================================================================================
-/**
- * Main function to process intent and format response with streaming support
- * @param {Object} options - Configuration object
- * @param {string} options.userMessage - User's query
- * @param {Object} options.api - API configuration
- * @param {Object} options.exampleResponse - Example API response
- * @param {Array|Object} options.actualData - Actual API response data
- * @param {Object} options.params - Query parameters
- * @param {Object} options.session - User session
- * @param {Function} options.onStream - Streaming callback
- * @param {AbortSignal} options.abortSignal - Abort signal for cancellation
- * @param {boolean} options.isContextual - Whether this is a contextual query
- * @param {string} options.followupItem - Field name for follow-up tracking
- * @returns {Object} Formatted response with HTML
- */
+// ===== MAIN PROCESSING FUNCTION =====
+
 const processIntentAndFormatResponse = async ({
 	userMessage,
 	api,
@@ -293,9 +228,6 @@ const processIntentAndFormatResponse = async ({
 	console.log(actualData, "actualData");
 
 	try {
-		// ============================================================
-		// INITIALIZATION & LOGGING
-		// ============================================================
 		console.log("\n========================================");
 		console.log("🚀 PROCESS INTENT (ROLLING CONTEXT)");
 		console.log("========================================");
@@ -306,9 +238,7 @@ const processIntentAndFormatResponse = async ({
 		console.log("Follow-up item:", followupItem);
 		console.log("Context history length:", session.contextHistory?.length || 0);
 
-		// ============================================================
-		// EMPTY DATA HANDLING (NON-CONTEXTUAL)
-		// ============================================================
+		// 🔹 CHECK FOR EMPTY DATA FIRST (non-contextual)
 		if (!isContextual && isEmptyData(actualData)) {
 			console.log("\n⚠️ EMPTY DATA DETECTED (non-contextual)");
 			const emptyMessage = await generateEmptyDataMessage(userMessage, api.name, api.description);
@@ -327,7 +257,6 @@ const processIntentAndFormatResponse = async ({
 </div>
 			`.trim();
 
-			// Save empty response to session
 			await Session.updateOne(
 				{ _id: session._id },
 				{
@@ -345,15 +274,12 @@ const processIntentAndFormatResponse = async ({
 			return { userReply: htmlMessage, params, api };
 		}
 
-		// ============================================================
-		// CONTEXTUAL FILTERING
-		// ============================================================
+		// 🔹 Get context information if contextual query
 		let contextInfo = null;
 		let contextSummary = null;
 		let filteredResult = null;
 
 		if (isContextual) {
-			// Get most recent context from session
 			const recentContext = session.getMostRecentContext();
 			contextSummary = session.getContextSummary();
 
@@ -362,7 +288,6 @@ const processIntentAndFormatResponse = async ({
 			console.log(contextSummary);
 
 			if (recentContext) {
-				// Extract context information
 				contextInfo = {
 					entityData: recentContext.entityData,
 					entityFieldName: recentContext.entityFieldName,
@@ -378,7 +303,7 @@ const processIntentAndFormatResponse = async ({
 				console.log("  - Count:", contextInfo.entityCount);
 				console.log("  - Sample:", contextInfo.entityData);
 
-				// Apply contextual filter to data
+				// 🔹 APPLY CONTEXTUAL FILTER
 				filteredResult = applyContextualFilter(actualData, contextInfo);
 
 				console.log("\n📊 FILTER RESULTS:");
@@ -386,7 +311,7 @@ const processIntentAndFormatResponse = async ({
 				console.log("  - Matched items:", filteredResult.matchCount);
 				console.log("  - Context expected:", contextInfo.entityCount);
 
-				// Handle case where no matches found
+				// 🔹 Handle NO MATCHES case
 				if (filteredResult.matchCount === 0) {
 					console.log("\n❌ NO MATCHES FOUND");
 					console.log("  - None of the context items found in current data");
@@ -409,7 +334,6 @@ const processIntentAndFormatResponse = async ({
 </div>
 					`.trim();
 
-					// Save no-match response to session
 					await Session.updateOne(
 						{ _id: session._id },
 						{
@@ -430,34 +354,25 @@ const processIntentAndFormatResponse = async ({
 					return { userReply: htmlMessage, params, api };
 				}
 
-				// Update actualData with filtered results
+				// 🔹 Update actualData with filtered data
 				actualData = filteredResult.filteredData;
 
 				console.log("\n✅ USING FILTERED DATA");
 				console.log("  - Filtered to:", actualData.length, "items");
 			}
 		}
-
-		// ============================================================
-		// AI INTENT DETECTION
-		// ============================================================
+		// AI intent detection
 		console.log("\n🤖 Starting AI intent detection...");
 		const calculationIntent = await detectCalculationIntent(userMessage, actualData, api?.description);
-
 		if (abortSignal?.aborted) return { error: "Request aborted" };
 
-		// ============================================================
-		// PRE-CALCULATION
-		// ============================================================
+		// Pre-calculate if needed
 		let preCalculatedResults = null;
 		if (calculationIntent.needsCalculation && calculationIntent.calculationType !== "none") {
 			console.log("📊 Pre-calculation triggered...");
 			preCalculatedResults = performCalculations(actualData, calculationIntent);
 		}
-
-		// ============================================================
-		// BUILD PROMPT FOR AI RESPONSE GENERATION
-		// ============================================================
+		// 🔹 Build enhanced prompt with rolling context
 		const prompt = `
 You are a smart assistant processing structured API data and answering user questions.
 
@@ -532,24 +447,24 @@ ${JSON.stringify(preCalculatedResults.result, null, 2)}
 4. **Work ONLY with the ${actualData?.length || 0} items provided** - do not add extras
 5. **Choose the best format**:
    - **Tables**: For comparisons, multiple attributes, calculated results
-     - Use <thead> with <th> and <tbody> with <tr><td>
-     - Make headers descriptive and user-friendly
-     - DO NOT include ID field driverId, ClientId in the table
-     - Only show meaningful fields 
+	 - Use <thead> with <th> and <tbody> with <tr><td>
+	 - Make headers descriptive and user-friendly
+	 - DO NOT include ID field driverId, ClientId in the table
+	 - Only show meaningful fields 
    - **Lists**: For simple enumerations
    - **Paragraphs**: For descriptive content
 6. **Structure your response**:
    - Introductory <p> sentence ${contextInfo && filteredResult ? `mentioning the ${filteredResult.matchCount} matches` : ""}
    - Main content (table/list/paragraph)
    - <div class="summary"> with:
-     * Exact counts (no vague terms)
-     * ${
-				contextInfo && filteredResult && filteredResult.matchCount < contextInfo.entityCount
-					? `Mention: "${contextInfo.entityCount - filteredResult.matchCount} had no data"`
-					: ""
-			}
-     * 2-3 key insights
-     * Statistics from pre-calculated results if available
+	 * Exact counts (no vague terms)
+	 * ${
+			contextInfo && filteredResult && filteredResult.matchCount < contextInfo.entityCount
+				? `Mention: "${contextInfo.entityCount - filteredResult.matchCount} had no data"`
+				: ""
+		}
+	 * 2-3 key insights
+	 * Statistics from pre-calculated results if available
 7. **Format dates** in readable format (e.g., "January 15, 2025" not "2025-01-15")
 
 ${
@@ -573,15 +488,12 @@ After your response, add this hidden meta tag with the ACTUAL ${followupItem} va
 ### Output Format
 - Output ONLY valid HTML
 - No markdown, JSON, or code blocks
-- No ID fields (driverId, ClientId, StationId) in visible content in table
+- No ID fields (driverId ,ClientId , StationId) in visible content in table
 - End with: ###END###
 
 Generate the response now:
 `;
-
-		// ============================================================
-		// STREAM AI RESPONSE
-		// ============================================================
+		// Stream response
 		console.log("\n📤 Streaming response...");
 		const completion = await openai.chat.completions.create({
 			model: "gpt-4o-mini",
@@ -590,7 +502,6 @@ Generate the response now:
 			stream: true,
 		});
 
-		// Process streaming chunks
 		for await (const chunk of completion) {
 			if (abortSignal?.aborted) return { error: "Request aborted" };
 
@@ -600,12 +511,10 @@ Generate the response now:
 			fullText += delta;
 			if (fullText.includes("###END###")) break;
 
-			// Clean and stream to client
 			const cleaned = delta.replace(/###\s*END\s*###/gi, "");
 			if (cleaned && onStream) {
 				const toStream = cleaned.replace(/<meta[^>]*>/g, "");
 				if (toStream) {
-					// Format text (add spaces between camelCase, etc.)
 					const formatted = toStream
 						.replace(/([a-z])([A-Z])/g, "$1 $2")
 						.replace(/(\d)([A-Za-z])/g, "$1 $2")
@@ -620,9 +529,7 @@ Generate the response now:
 
 		if (abortSignal?.aborted) return { error: "Request aborted" };
 
-		// ============================================================
-		// PARSE DISPLAYED ITEMS FROM META TAG
-		// ============================================================
+		// 🔹 Parse displayed items from meta tag
 		console.log("\n📊 Parsing displayed items...");
 		const metaMatch = finalReply.match(/<meta\s+name="displayed-items"\s+content='([^']+)'\s*\/?>/);
 
@@ -640,12 +547,10 @@ Generate the response now:
 			console.log("  - No meta tag found");
 		}
 
-		// Remove meta tag from final response
+		// Remove meta tag from response
 		const cleanReply = finalReply.replace(/<meta[^>]*>/g, "");
 
-		// ============================================================
-		// SAVE SESSION
-		// ============================================================
+		// Save session
 		console.log("\n💾 Saving session...");
 		await Session.updateOne(
 			{ _id: session._id },
@@ -661,13 +566,10 @@ Generate the response now:
 			}
 		);
 
-		// ============================================================
-		// ADD TO CONTEXT HISTORY (NON-CONTEXTUAL QUERIES ONLY)
-		// ============================================================
+		// 🔹 Add to rolling context history (only for non-contextual queries)
 		if (!isContextual && displayedInfo && displayedInfo.field && displayedInfo.values && displayedInfo.values.length > 0) {
 			console.log("\n🔄 Adding to context history...");
 
-			// Determine entity type from API name
 			let entityType = "items";
 			if (api.name.toLowerCase().includes("driver")) entityType = "drivers";
 			else if (api.name.toLowerCase().includes("shift")) entityType = "shifts";
@@ -677,7 +579,7 @@ Generate the response now:
 			await session.addToContextHistory(api?.name, displayedInfo.values, displayedInfo.field, entityType, userMessage);
 			await session.save();
 		} else if (!isContextual && followupItem) {
-			// Fallback: Try to extract context from HTML response
+			// First query - try to extract from response
 			console.log("\n🔄 First query - attempting to extract context...");
 
 			try {
@@ -704,7 +606,6 @@ Do not include any explanation, just the JSON array.`;
 				if (Array.isArray(extractedValues) && extractedValues.length > 0) {
 					console.log("  - Extracted:", extractedValues.length, "items");
 
-					// Determine entity type from API name
 					let entityType = "items";
 					if (api.name.toLowerCase().includes("driver")) entityType = "drivers";
 					else if (api.name.toLowerCase().includes("shift")) entityType = "shifts";
@@ -727,9 +628,6 @@ Do not include any explanation, just the JSON array.`;
 			api,
 		};
 	} catch (err) {
-		// ============================================================
-		// ERROR HANDLING
-		// ============================================================
 		if (abortSignal?.aborted) return { error: "Request aborted" };
 
 		console.error("❌ Error:", err.message);

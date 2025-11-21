@@ -360,29 +360,24 @@ module.exports = [
 		],
 
 		handler: async (params, userMessage, session, onStream, abortSignal, isContextual = false) => {
-			console.log(params, "params in handler");
 			// 🔹 Check abort at start
 			if (abortSignal?.aborted) {
 				console.log("🚫 GetLMDPDayPreferenceList handler: Aborted before execution");
 				return { error: "Request aborted" };
 			}
-			console.log(session.ClientId, "client id from session");
 
 			if (!params?.ClientId) params.ClientId = session.ClientId || 2;
 			if (!params?.DriverId) return { missingFields: ["DriverId"] };
-			console.log(params, "params in handler");
 
 			try {
 				if (abortSignal?.aborted) {
 					console.log("🚫 GetLMDPDayPreferenceList handler: Aborted before axios call");
 					return { error: "Request aborted" };
 				}
-				console.log(`${API_BASE}/GetLMDPDayPreferenceList?DriverId=${params.DriverId}&ClientId=${params.ClientId}`);
 
 				const { data } = await axios.get(
 					`${API_BASE}/GetLMDPDayPreferenceList?DriverId=${params.DriverId}&ClientId=${params.ClientId}`
 				);
-				console.log(data);
 
 				if (abortSignal?.aborted) {
 					console.log("🚫 GetLMDPDayPreferenceList handler: Aborted after axios call");
@@ -484,8 +479,8 @@ module.exports = [
 		description:
 			"Retrieves each driver's OT (Overtime Preference) settings for a given StationId. This does NOT include qualifications or weekly date ranges — only the preference values.",
 		requiredFields: ["ClientId"],
-		exampleResponse: [{ driverName: "JORGE VALENCIA", preference: 2 }],
-		graphType: "area",
+		exampleResponse: [{ driverId: 1482, driverName: "JORGE VALENCIA", preference: 2 }],
+		graphType: "bar",
 		followupItem: "driverId",
 
 		handler: async (params, userMessage, session, onStream, abortSignal, isContextual = false) => {
@@ -575,6 +570,7 @@ module.exports = [
 
 				const DriversOTPPreferenceList =
 					data?.data?.map((item) => ({
+						driverId: item?.driverId,
 						driverName: item?.driverName,
 						preference: item?.preference,
 					})) || [];
@@ -602,7 +598,7 @@ module.exports = [
 		requiredFields: ["ClientId", "FromDate", "ToDate"],
 		exampleResponse: [{ driverId: 1482, driverName: "JORGE VALENCIA", qualification: 2 }],
 		graphType: "line",
-		followupItem: "driverName",
+		followupItem: "driverId",
 
 		handler: async (params, userMessage, session, onStream, abortSignal, isContextual = false) => {
 			// 🔹 Check abort at start
@@ -651,7 +647,7 @@ module.exports = [
 					onStream,
 					abortSignal,
 					isContextual, // 🔹 Pass this
-					followupItem: "driverName", // 🔹 Pass this
+					followupItem: "driverId", // 🔹 Pass this
 				});
 			} catch (err) {
 				if (abortSignal?.aborted) {

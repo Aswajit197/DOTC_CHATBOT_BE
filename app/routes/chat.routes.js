@@ -6,4 +6,5 @@ module.exports = (router) => {
 	router.post("/chat", chatController.sendMessage);
 	router.post("/chat/stop", chatController.stopMessage);
 	router.post("/chat/session", chatController.createSession);
+	router.put("/chat/session/refresh", chatController.refreshDriverList);
 };

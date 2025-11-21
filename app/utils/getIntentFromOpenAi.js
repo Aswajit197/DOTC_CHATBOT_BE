@@ -281,6 +281,7 @@ Important:
 	}
 
 	let extracted;
+	console.log(extracted,"extracted in getIntentFrom Open AI Function")
 	try {
 		extracted = JSON.parse(completion.choices[0].message.content.trim());
 	} catch (err) {

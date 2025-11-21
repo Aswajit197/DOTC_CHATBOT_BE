@@ -227,7 +227,6 @@ widget.refreshWidget = async (req, res) => {
 	try {
 		const { widgetLastIntent, widgetLastParams, widgetLastResponse, widgetSampleJSON, _id } = req.body;
 		let allResults = [];
-
 		// 🔹 Check if multi-intent
 		if (widgetLastIntent.includes(",")) {
 			const intents = widgetLastIntent.split(",").map((s) => s.trim());

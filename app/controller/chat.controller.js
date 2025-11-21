@@ -2,6 +2,7 @@ const getIntentFromOpenAI = require("../utils/getIntentFromOpenAi");
 const Session = require("../model/session.model");
 const { OpenAI } = require("openai");
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const API_BASE = process.env.API_BASE_URL;
 
 // Chat Controller
 const chat = {};
@@ -321,14 +322,65 @@ chat.stopMessage = async (req, res) => {
 };
 
 // 🔹 Create Session Controller
+// chat.createSession = async (req, res) => {
+// 	try {
+// 		let { clientId, userId } = req.body;
+
+// 		if (!clientId || !userId) {
+// 			return res.status(400).json({ error: "clientId, and userId are required." });
+// 		}
+// 		// Greeting message
+// 		const greetingMessage = {
+// 			sender: "bot",
+// 			message: `Hi! 👋 I'm your SchedAI assistant. Ask me anything related to your tasks, drivers, or station work and I’ll help you out!`,
+// 			context: {
+// 				lastParams: { StationId: clientId, ClientId: clientId },
+// 			},
+// 			timestamp: new Date(),
+// 		};
+
+// 		// Create new session
+// 		const session = await Session.create({
+// 			ClientId: clientId,
+// 			StationId: clientId,
+// 			userId,
+// 			sessionName: "New Chat",
+// 			history: [greetingMessage],
+// 		});
+
+// 		res.json({ message: "Session created successfully", session });
+// 	} catch (err) {
+// 		console.error("Error creating chat session:", err);
+// 		res.status(500).json({ err, error: "Chat session creation failed" });
+// 	}
+// };
+// 🔹 Create Session Controller
 chat.createSession = async (req, res) => {
 	try {
 		let { clientId, userId } = req.body;
 
 		if (!clientId || !userId) {
-			return res.status(400).json({ error: "clientId, and userId are required." });
+			return res.status(400).json({ error: "clientId and userId are required." });
 		}
-		// Greeting message
+
+		// 1️⃣ First fetch drivers
+		let driverList = [];
+		try {
+			const driverResponse = await axios.get(
+				`${API_BASE}/GetDriverByClientId?ClientId=${clientId}`
+			);
+
+			if (driverResponse?.data?.status === "success") {
+				driverList = driverResponse.data.data.map((d) => ({
+					driverId: d.driverId || d.DriverId,
+					driverName: d.driverName || d.DriverName,
+				}));
+			}
+		} catch (err) {
+			console.error("Driver fetch error:", err.message);
+		}
+
+		// 2️⃣ Greeting message
 		const greetingMessage = {
 			sender: "bot",
 			message: `Hi! 👋 I'm your SchedAI assistant. Ask me anything related to your tasks, drivers, or station work and I’ll help you out!`,
@@ -338,19 +390,28 @@ chat.createSession = async (req, res) => {
 			timestamp: new Date(),
 		};
 
-		// Create new session
+		// 3️⃣ Create session + store drivers
 		const session = await Session.create({
 			ClientId: clientId,
 			StationId: clientId,
 			userId,
 			sessionName: "New Chat",
 			history: [greetingMessage],
+			lmdpLists: driverList,
 		});
 
-		res.json({ message: "Session created successfully", session });
+		// 4️⃣ Auto-refresh if needed (future visits)
+		if (session.isDriverListExpired()) {
+			await session.refreshDriverList(API_BASE);
+		}
+
+		return res.json({
+			message: "Session created successfully",
+			session,
+		});
 	} catch (err) {
 		console.error("Error creating chat session:", err);
-		res.status(500).json({ err, error: "Chat session creation failed" });
+		return res.status(500).json({ error: "Chat session creation failed", details: err.message });
 	}
 };
 
@@ -373,6 +434,57 @@ chat.getSessionsByUserId = async (req, res) => {
 	} catch (err) {
 		console.error("Error fetching sessions:", err);
 		res.status(500).json({ err, error: "Failed to fetch sessions" });
+	}
+};
+
+chat.refreshDriverList = async (req, res) => {
+	try {
+		const { sessionId } = req.body;
+
+		if (!sessionId) {
+			return res.status(400).json({ error: "sessionId is required" });
+		}
+
+		// 1️⃣ Fetch the session
+		const session = await Session.findById(sessionId);
+		if (!session) {
+			return res.status(404).json({ error: "Session not found" });
+		}
+
+		const clientId = session.ClientId;
+		if (!clientId) {
+			return res.status(400).json({ error: "Session has no ClientId" });
+		}
+
+		// 2️⃣ Refresh drivers once (not per session)
+		const result = await session.refreshDriverList(API_BASE);
+
+		if (!result.success) {
+			return res.status(500).json({
+				message: "Driver refresh failed",
+				error: result.error,
+			});
+		}
+
+		// 3️⃣ Update all sessions with same ClientId
+		await Session.updateMany(
+			{ ClientId: clientId },
+			{
+				$set: {
+					lmdpLists: session.lmdpLists,
+					updatedAt: new Date(),
+				},
+			}
+		);
+
+		return res.json({
+			message: "Driver list refreshed for all sessions with same ClientId",
+			totalDrivers: result.count,
+			lmdpLists: session.lmdpLists,
+		});
+	} catch (err) {
+		console.error("Manual driver refresh error:", err);
+		return res.status(500).json({ error: "Failed to refresh driver list" });
 	}
 };
 

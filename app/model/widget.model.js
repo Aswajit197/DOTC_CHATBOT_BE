@@ -10,6 +10,7 @@ const widgetSchema = new mongoose.Schema(
 		widgetLastUserMessage: { type: String },
 		widgetLastResponse: { type: mongoose.Schema.Types.Mixed },
 		widgetLastParams: { type: mongoose.Schema.Types.Mixed },
+		widgetOptionalParams: { type: mongoose.Schema.Types.Mixed },
 		widgetSampleJSON: { type: mongoose.Schema.Types.Mixed },
 	},
 	{ timestamps: true }

@@ -45,7 +45,12 @@ const sessionSchema = new mongoose.Schema(
 				timestamp: { type: Date, default: Date.now },
 			},
 		],
-
+		lmdpLists: [
+			{
+				driverId: { type: Number },
+				driverName: { type: String },
+			},
+		],
 		missingField: {
 			lastMissingFieldBotMessage: { type: String },
 			lastMissingApiIntent: { type: String },
@@ -136,6 +141,38 @@ sessionSchema.methods.clearOldContexts = function (olderThanMinutes = 30) {
 
 	const cutoffTime = new Date(Date.now() - olderThanMinutes * 60 * 1000);
 	this.contextHistory = this.contextHistory.filter((ctx) => new Date(ctx.timestamp) > cutoffTime);
+};
+
+// ⏳ Check if driver list is older than 24 hours
+sessionSchema.methods.isDriverListExpired = function () {
+	if (!this.updatedAt) return true; // first-time safety
+	const lastUpdated = new Date(this.updatedAt).getTime();
+	const now = Date.now();
+	const hoursDiff = (now - lastUpdated) / (1000 * 60 * 60);
+	return hoursDiff >= 24;
+};
+
+// 🔄 Refresh driver list
+sessionSchema.methods.refreshDriverList = async function (apiBaseUrl) {
+	try {
+		const axios = require("axios");
+		const response = await axios.get(
+			`${apiBaseUrl}/GetDriverByClientId?ClientId=${this.ClientId}`
+		);
+
+		if (response?.data && Array.isArray(response.data.data)) {
+			this.lmdpLists = response.data.data.map((driver) => ({
+				driverId: driver.driverId || driver.DriverId,
+				driverName: driver.firstName + " " + driver.lastName,
+			}));
+			await this.save();
+			return { success: true, count: this.lmdpLists.length };
+		}
+
+		return { success: false, error: "Invalid driver response" };
+	} catch (err) {
+		return { success: false, error: err.message };
+	}
 };
 
 module.exports = mongoose.model("Session", sessionSchema);

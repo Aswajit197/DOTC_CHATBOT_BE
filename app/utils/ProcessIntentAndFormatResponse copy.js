@@ -511,7 +511,6 @@ const processIntentAndFormatResponse = async ({
 	followupItem = null,
 }) => {
 	let fullText = "";
-	console.log(actualData, "actualData");
 
 	try {
 		console.log("\n========================================");
