@@ -415,6 +415,7 @@ Your task:
 				api: matchedApi,
 				params,
 				formattedReply: apiResponse?.userReply,
+				filterParams: apiResponse?.filterParams,
 			};
 		} catch (err) {
 			if (err.name === "AbortError" || abortSignal?.aborted) {
@@ -585,7 +586,8 @@ Your task:
 			api: matchedApi,
 			params,
 			formattedReply: apiResponse?.userReply,
-			userMessage
+			userMessage,
+			filterParams: apiResponse?.filterParams,
 		};
 	} catch (err) {
 		if (err.name === "AbortError" || abortSignal?.aborted) {

@@ -6,6 +6,13 @@ const { getNestedValue, performCalculations } = require("../utils/calculations.u
 // ==================================================================================
 // AI-POWERED INTENT DETECTION
 // ==================================================================================
+/**
+ * Analyzes user message to determine if calculation is needed
+ * @param {string} userMessage - The user's query
+ * @param {Array|Object} apiData - The API response data
+ * @param {string} apiDescription - Description of the API
+ * @returns {Object} Analysis result with calculation intent
+ */
 async function detectCalculationIntent(userMessage, apiData, apiDescription) {
 	try {
 		const dataSample = Array.isArray(apiData) ? apiData.slice(0, 3) : apiData;
@@ -87,6 +94,11 @@ Provide your analysis in JSON format.`,
 // ==================================================================================
 // DATA VALIDATION HELPERS
 // ==================================================================================
+/**
+ * Checks if data is empty or null
+ * @param {*} data - Data to check
+ * @returns {boolean} True if data is empty
+ */
 function isEmptyData(data) {
 	if (data === null || data === undefined) return true;
 	if (typeof data === "string" && data.trim() === "") return true;
@@ -95,6 +107,13 @@ function isEmptyData(data) {
 	return false;
 }
 
+/**
+ * Generates a friendly message for empty data scenarios
+ * @param {string} userMessage - The user's query
+ * @param {string} apiName - Name of the API
+ * @param {string} apiDescription - Description of the API
+ * @returns {string} Friendly error message
+ */
 async function generateEmptyDataMessage(userMessage, apiName, apiDescription) {
 	try {
 		const prompt = `The user asked: "${userMessage}"
@@ -129,7 +148,14 @@ Output ONLY the message text, no JSON or formatting.`;
 // ==================================================================================
 // CONTEXTUAL FILTERING
 // ==================================================================================
+/**
+ * Filters data based on contextual information from previous queries
+ * @param {Array} actualData - The data to filter
+ * @param {Object} contextInfo - Context from previous query
+ * @returns {Object} Filtered data with match statistics
+ */
 function applyContextualFilter(actualData, contextInfo) {
+	// No context available - return original data
 	if (!contextInfo || !contextInfo.entityData || !contextInfo.entityFieldName) {
 		return {
 			filteredData: actualData,
@@ -146,6 +172,7 @@ function applyContextualFilter(actualData, contextInfo) {
 	console.log("  - Context values count:", entityData.length);
 	console.log("  - Data to filter:", Array.isArray(actualData) ? actualData.length : "N/A");
 
+	// Can only filter arrays
 	if (!Array.isArray(actualData)) {
 		console.log("  ⚠️ Data is not an array, cannot filter");
 		return {
@@ -156,8 +183,10 @@ function applyContextualFilter(actualData, contextInfo) {
 		};
 	}
 
+	// Normalize context values for comparison
 	const normalizedContextValues = entityData.map((v) => String(v).toLowerCase().trim());
 
+	// Filter data to only include items matching context
 	const filteredData = actualData.filter((item) => {
 		if (!item || typeof item !== "object") return false;
 
@@ -186,6 +215,13 @@ function applyContextualFilter(actualData, contextInfo) {
 	};
 }
 
+/**
+ * Generates a message when no matches are found in contextual filtering
+ * @param {string} userMessage - The user's query
+ * @param {Object} contextInfo - Context from previous query
+ * @param {string} apiName - Name of the API
+ * @returns {string} Friendly message explaining no matches
+ */
 async function generateNoMatchesMessage(userMessage, contextInfo, apiName) {
 	try {
 		const prompt = `The user asked a follow-up question: "${userMessage}"
@@ -226,6 +262,21 @@ Output ONLY the message text, no JSON or formatting.`;
 // ==================================================================================
 // MAIN PROCESSING FUNCTION
 // ==================================================================================
+/**
+ * Main function to process intent and format response with streaming support
+ * @param {Object} options - Configuration object
+ * @param {string} options.userMessage - User's query
+ * @param {Object} options.api - API configuration
+ * @param {Object} options.exampleResponse - Example API response
+ * @param {Array|Object} options.actualData - Actual API response data
+ * @param {Object} options.params - Query parameters
+ * @param {Object} options.session - User session
+ * @param {Function} options.onStream - Streaming callback
+ * @param {AbortSignal} options.abortSignal - Abort signal for cancellation
+ * @param {boolean} options.isContextual - Whether this is a contextual query
+ * @param {string} options.followupItem - Field name for follow-up tracking
+ * @returns {Object} Formatted response with HTML
+ */
 const processIntentAndFormatResponse = async ({
 	userMessage,
 	api,
@@ -239,6 +290,7 @@ const processIntentAndFormatResponse = async ({
 	followupItem = null,
 }) => {
 	let fullText = "";
+	console.log(actualData, "actualData");
 
 	try {
 		// ============================================================
@@ -252,7 +304,7 @@ const processIntentAndFormatResponse = async ({
 		console.log("Actual data length:", Array.isArray(actualData) ? actualData.length : "N/A");
 		console.log("Is contextual:", isContextual);
 		console.log("Follow-up item:", followupItem);
-		console.log("Optional filtered fields:", api.optionalFilteredField || "none");
+		console.log("Context history length:", session.contextHistory?.length || 0);
 
 		// ============================================================
 		// EMPTY DATA HANDLING (NON-CONTEXTUAL)
@@ -275,6 +327,7 @@ const processIntentAndFormatResponse = async ({
 </div>
 			`.trim();
 
+			// Save empty response to session
 			await Session.updateOne(
 				{ _id: session._id },
 				{
@@ -291,7 +344,6 @@ const processIntentAndFormatResponse = async ({
 
 			return { userReply: htmlMessage, params, api };
 		}
-
 		// ============================================================
 		// CONTEXTUAL FILTERING
 		// ============================================================
@@ -300,6 +352,7 @@ const processIntentAndFormatResponse = async ({
 		let filteredResult = null;
 
 		if (isContextual) {
+			// Get most recent context from session
 			const recentContext = session.getMostRecentContext();
 			contextSummary = session.getContextSummary();
 
@@ -308,6 +361,7 @@ const processIntentAndFormatResponse = async ({
 			console.log(contextSummary);
 
 			if (recentContext) {
+				// Extract context information
 				contextInfo = {
 					entityData: recentContext.entityData,
 					entityFieldName: recentContext.entityFieldName,
@@ -317,10 +371,25 @@ const processIntentAndFormatResponse = async ({
 					entityCount: recentContext.entityCount,
 				};
 
+				console.log("\n🎯 Using Most Recent Context:");
+				console.log("  - Type:", contextInfo.entityType);
+				console.log("  - Field:", contextInfo.entityFieldName);
+				console.log("  - Count:", contextInfo.entityCount);
+				console.log("  - Sample:", contextInfo.entityData);
+
+				// Apply contextual filter to data
 				filteredResult = applyContextualFilter(actualData, contextInfo);
 
+				console.log("\n📊 FILTER RESULTS:");
+				console.log("  - Original data count:", filteredResult.originalCount);
+				console.log("  - Matched items:", filteredResult.matchCount);
+				console.log("  - Context expected:", contextInfo.entityCount);
+
+				// Handle case where no matches found
 				if (filteredResult.matchCount === 0) {
 					console.log("\n❌ NO MATCHES FOUND");
+					console.log("  - None of the context items found in current data");
+
 					const noMatchMessage = await generateNoMatchesMessage(userMessage, contextInfo, api.name);
 
 					const htmlMessage = `
@@ -334,10 +403,12 @@ const processIntentAndFormatResponse = async ({
 			<li>Matches found: 0</li>
 			<li>Total items in ${api.name}: ${filteredResult.originalCount}</li>
 		</ul>
+		<p><em>Tip: Try asking about different ${contextInfo.entityType} or adjusting your time period.</em></p>
 	</div>
 </div>
 					`.trim();
 
+					// Save no-match response to session
 					await Session.updateOne(
 						{ _id: session._id },
 						{
@@ -352,22 +423,31 @@ const processIntentAndFormatResponse = async ({
 						}
 					);
 
+					console.log("✅ No matches response sent");
+					console.log("========================================\n");
+
 					return { userReply: htmlMessage, params, api };
 				}
 
+				// Update actualData with filtered results
 				actualData = filteredResult.filteredData;
-				console.log("\n✅ USING FILTERED DATA - Filtered to:", actualData.length, "items");
+
+				console.log("\n✅ USING FILTERED DATA");
+				console.log("  - Filtered to:", actualData.length, "items");
 			}
 		}
 
 		// ============================================================
-		// AI INTENT DETECTION & PRE-CALCULATION
+		// AI INTENT DETECTION
 		// ============================================================
 		console.log("\n🤖 Starting AI intent detection...");
 		const calculationIntent = await detectCalculationIntent(userMessage, actualData, api?.description);
 
 		if (abortSignal?.aborted) return { error: "Request aborted" };
 
+		// ============================================================
+		// PRE-CALCULATION
+		// ============================================================
 		let preCalculatedResults = null;
 		if (calculationIntent.needsCalculation && calculationIntent.calculationType !== "none") {
 			console.log("📊 Pre-calculation triggered...");
@@ -377,6 +457,7 @@ const processIntentAndFormatResponse = async ({
 		// ============================================================
 		// BUILD PROMPT FOR AI RESPONSE GENERATION
 		// ============================================================
+
 		const prompt = `
 You are a smart assistant processing structured API data and answering user questions.
 
@@ -385,24 +466,35 @@ API Name: ${api.name}
 API Description: ${api.description}
 User Message: "${userMessage}"
 Query Parameters: ${JSON.stringify(params, null, 2)}
-${api.optionalFilteredField ? `Optional Filterable Fields: ${api.optionalFilteredField.join(", ")}` : ""}
 
 ${
 	isContextual && contextSummary
 		? `
 ### 🎯 CONTEXTUAL QUERY WITH FILTERING APPLIED
 
-**Context History:**
+**IMPORTANT:** The user asked a follow-up question about items from their previous query.
+
+**Context History (Most Recent First):**
 ${contextSummary}
 
+**FILTERING APPLIED:**
 ${
 	contextInfo && filteredResult
 		? `
-**FILTERING APPLIED:**
 - Previous query: "${contextInfo.entityUserMessage}"
 - Referenced ${contextInfo.entityType}: ${contextInfo.entityCount} items
+- Field used for filtering: ${contextInfo.entityFieldName}
 - **MATCHES FOUND: ${filteredResult.matchCount} out of ${contextInfo.entityCount}**
 - Original data before filtering: ${filteredResult.originalCount} items
+
+**CRITICAL INSTRUCTIONS:**
+1. The data below is ALREADY FILTERED to only include the ${filteredResult.matchCount} matching ${contextInfo.entityType}
+2. DO NOT try to show more than ${filteredResult.matchCount} items
+3. Acknowledge the context: "For the ${filteredResult.matchCount} ${contextInfo.entityType} from your previous query..."
+4. If ${filteredResult.matchCount} < ${contextInfo.entityCount}, mention: "${
+				contextInfo.entityCount - filteredResult.matchCount
+		  } of them had no data for this request"
+5. NEVER add items not in the filtered data below
 `
 		: ""
 }
@@ -410,7 +502,7 @@ ${
 		: ""
 }
 
-### Available Data (${actualData?.length || 0} items)
+### Available Data (Filtered to: ${actualData?.length || 0} items)
 ${JSON.stringify(actualData, null, 2)}
 
 ${
@@ -427,18 +519,38 @@ ${JSON.stringify(preCalculatedResults.result, null, 2)}
 
 ### Your Task
 1. **Understand the user's intent** from their message
-2. **Process the data** to answer the question
-3. ${preCalculatedResults ? "**Use the pre-calculated results above**" : "Process the data as needed"}
-4. **Work ONLY with the ${actualData?.length || 0} items provided**
+2. ${
+			contextInfo && filteredResult
+				? `**Acknowledge the context**: Mention the ${filteredResult.matchCount} ${contextInfo.entityType} found (out of ${contextInfo.entityCount} requested)`
+				: "**Process the data** to answer the question"
+		}
+3. ${
+			preCalculatedResults
+				? "**Use the pre-calculated results above** - they are accurate and complete"
+				: "**Process the data** as needed"
+		}
+4. **Work ONLY with the ${actualData?.length || 0} items provided** - do not add extras
 5. **Choose the best format**:
    - **Tables**: For comparisons, multiple attributes, calculated results
+     - Use <thead> with <th> and <tbody> with <tr><td>
+     - Make headers descriptive and user-friendly
+     - DO NOT include ID field driverId, ClientId in the table
+     - Only show meaningful fields 
    - **Lists**: For simple enumerations
    - **Paragraphs**: For descriptive content
 6. **Structure your response**:
-   - Introductory <p> sentence
+   - Introductory <p> sentence ${contextInfo && filteredResult ? `mentioning the ${filteredResult.matchCount} matches` : ""}
    - Main content (table/list/paragraph)
-   - <div class="summary"> with key insights
-7. **Format dates** in readable format (e.g., "January 15, 2025")
+   - <div class="summary"> with:
+     * Exact counts (no vague terms)
+     * ${
+				contextInfo && filteredResult && filteredResult.matchCount < contextInfo.entityCount
+					? `Mention: "${contextInfo.entityCount - filteredResult.matchCount} had no data"`
+					: ""
+			}
+     * 2-3 key insights
+     * Statistics from pre-calculated results if available
+7. **Format dates** in readable format (e.g., "January 15, 2025" not "2025-01-15")
 
 ${
 	api?.isSuitableForGraph
@@ -450,40 +562,22 @@ ${
 }
 
 ### CRITICAL: Track What You Display
-After your response, add this hidden meta tag with tracking information:
-
-<meta name="displayed-items" content='{"field":"${followupItem}","values":[...], "filterParams": {...}}' />
+After your response, add this hidden meta tag with the ACTUAL ${followupItem} values you displayed:
+<meta name="displayed-items" content='{"field":"${followupItem}","values":[...]}' />
 
 **Instructions for meta tag:**
-1. **field**: "${followupItem}"
-2. **values**: Array of ALL ${followupItem} values you actually displayed
-3. **filterParams**: ${
-			api.optionalFilteredField && api.optionalFilteredField.length > 0
-				? `
-   - If user asked for SPECIFIC items (e.g., "for Gerald Olson", "driver 1482"):
-     Extract the ID and set: {"${api.optionalFilteredField[0]}": 1482}
-   - If user asked for ALL items or general query:
-     Set to null
-   
-   **Examples:**
-   - "Show OT preference for Gerald Olson" → filterParams: {"DriverId": 1482}
-   - "Show all drivers' preferences" → filterParams: null
-   - "Give me drivers" → filterParams: null
-   `
-				: "null"
-		}
-
-**Important:** Use exact field names: ${api.optionalFilteredField ? api.optionalFilteredField.join(", ") : "none"}
+- Extract the ${followupItem} values from the items you actually displayed
+- Include ALL items you showed
+- Use exact values from the data
 
 ### Output Format
 - Output ONLY valid HTML
 - No markdown, JSON, or code blocks
-- No ID fields (driverId, ClientId, StationId) in visible table content unless explicitly mentioned in user message
+- No ID fields (driverId, ClientId, StationId) in visible content in table
 - End with: ###END###
 
 Generate the response now:
 `;
-
 		// ============================================================
 		// STREAM AI RESPONSE
 		// ============================================================
@@ -495,6 +589,7 @@ Generate the response now:
 			stream: true,
 		});
 
+		// Process streaming chunks
 		for await (const chunk of completion) {
 			if (abortSignal?.aborted) return { error: "Request aborted" };
 
@@ -504,10 +599,12 @@ Generate the response now:
 			fullText += delta;
 			if (fullText.includes("###END###")) break;
 
+			// Clean and stream to client
 			const cleaned = delta.replace(/###\s*END\s*###/gi, "");
 			if (cleaned && onStream) {
 				const toStream = cleaned.replace(/<meta[^>]*>/g, "");
 				if (toStream) {
+					// Format text (add spaces between camelCase, etc.)
 					const formatted = toStream
 						.replace(/([a-z])([A-Z])/g, "$1 $2")
 						.replace(/(\d)([A-Za-z])/g, "$1 $2")
@@ -523,67 +620,23 @@ Generate the response now:
 		if (abortSignal?.aborted) return { error: "Request aborted" };
 
 		// ============================================================
-		// PARSE DISPLAYED ITEMS & FILTER PARAMS FROM META TAG
+		// PARSE DISPLAYED ITEMS FROM META TAG
 		// ============================================================
-		console.log("\n📊 Parsing displayed items and filter params...");
+		console.log("\n📊 Parsing displayed items...");
 		const metaMatch = finalReply.match(/<meta\s+name="displayed-items"\s+content='([^']+)'\s*\/?>/);
 
 		let displayedInfo = null;
-		let extractedFilterParams = null;
-
 		if (metaMatch) {
 			try {
 				displayedInfo = JSON.parse(metaMatch[1]);
 				console.log("  - Field:", displayedInfo.field);
 				console.log("  - Count:", displayedInfo.values?.length);
 				console.log("  - Sample:", displayedInfo.values?.slice(0, 5));
-
-				// 🔹 Extract filter params from meta tag
-				if (displayedInfo.filterParams) {
-					extractedFilterParams = displayedInfo.filterParams;
-					console.log("  ✅ Extracted filter params:", extractedFilterParams);
-				} else {
-					console.log("  ℹ️ No specific filters detected (showing all items)");
-				}
 			} catch (e) {
-				console.log("  - Failed to parse meta tag:", e.message);
+				console.log("  - Failed to parse meta tag");
 			}
 		} else {
 			console.log("  - No meta tag found");
-
-			// 🔹 FALLBACK: Try to detect filters from user message
-			if (!isContextual && api.optionalFilteredField && api.optionalFilteredField.length > 0) {
-				console.log("\n🔍 Fallback: Attempting to extract filter params from user message...");
-
-				// Check for specific name patterns (e.g., "for Gerald Olson")
-				const forPattern = /for\s+([a-z]+\s+[a-z]+)/i;
-				const forMatch = userMessage.match(forPattern);
-
-				if (forMatch) {
-					const nameQuery = forMatch[1];
-					console.log("  - Detected name reference:", nameQuery);
-
-					// Try to find matching driver in actualData
-					const matchedItem = actualData.find((item) => {
-						const driverName = item.driverName?.toLowerCase() || "";
-						return driverName.includes(nameQuery.toLowerCase());
-					});
-
-					if (matchedItem && api.optionalFilteredField.includes("DriverId")) {
-						extractedFilterParams = { DriverId: matchedItem.driverId };
-						console.log("  ✅ Matched driver:", matchedItem.driverName, "ID:", matchedItem.driverId);
-					}
-				}
-
-				// Check for specific ID patterns (e.g., "driver 1482")
-				const idPattern = /driver\s+(\d+)/i;
-				const idMatch = userMessage.match(idPattern);
-
-				if (idMatch && api.optionalFilteredField.includes("DriverId")) {
-					extractedFilterParams = { DriverId: parseInt(idMatch[1]) };
-					console.log("  ✅ Extracted driver ID from message:", extractedFilterParams.DriverId);
-				}
-			}
 		}
 
 		// Remove meta tag from final response
@@ -613,6 +666,7 @@ Generate the response now:
 		if (!isContextual && displayedInfo && displayedInfo.field && displayedInfo.values && displayedInfo.values.length > 0) {
 			console.log("\n🔄 Adding to context history...");
 
+			// Determine entity type from API name
 			let entityType = "items";
 			if (api.name.toLowerCase().includes("driver")) entityType = "drivers";
 			else if (api.name.toLowerCase().includes("shift")) entityType = "shifts";
@@ -622,6 +676,7 @@ Generate the response now:
 			await session.addToContextHistory(api?.name, displayedInfo.values, displayedInfo.field, entityType, userMessage);
 			await session.save();
 		} else if (!isContextual && followupItem) {
+			// Fallback: Try to extract context from HTML response
 			console.log("\n🔄 First query - attempting to extract context...");
 
 			try {
@@ -648,6 +703,7 @@ Do not include any explanation, just the JSON array.`;
 				if (Array.isArray(extractedValues) && extractedValues.length > 0) {
 					console.log("  - Extracted:", extractedValues.length, "items");
 
+					// Determine entity type from API name
 					let entityType = "items";
 					if (api.name.toLowerCase().includes("driver")) entityType = "drivers";
 					else if (api.name.toLowerCase().includes("shift")) entityType = "shifts";
@@ -664,14 +720,15 @@ Do not include any explanation, just the JSON array.`;
 		console.log("✅ Response generation complete");
 		console.log("========================================\n");
 
-		// 🔹 RETURN WITH FILTER PARAMS
 		return {
 			userReply: cleanReply,
 			params,
 			api,
-			filterParams: extractedFilterParams, // 🔹 NEW: Return extracted filter params
 		};
 	} catch (err) {
+		// ============================================================
+		// ERROR HANDLING
+		// ============================================================
 		if (abortSignal?.aborted) return { error: "Request aborted" };
 
 		console.error("❌ Error:", err.message);

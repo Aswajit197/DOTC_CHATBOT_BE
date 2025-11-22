@@ -260,10 +260,10 @@ chat.sendMessage = async (req, res) => {
 					message: intentResult.formattedReply,
 					context: {
 						lastIntent: intentResult?.api?.name,
-						lastUserMessage:intentResult?.userMessage,
+						lastUserMessage: intentResult?.userMessage,
 						lastParams: intentResult?.params,
 						lastResponseMessage: intentResult?.formattedReply,
-						//lastFilterParams:intentResult.        //want to update here if available else null
+						lastFilterParams: intentResult?.filterParams || null,
 					},
 					timestamp: new Date(),
 				};
