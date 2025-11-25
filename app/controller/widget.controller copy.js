@@ -227,38 +227,21 @@ widget.deleteWidget = async (req, res) => {
 
 widget.refreshWidget = async (req, res) => {
 	try {
-		console.log("=== REFRESH WIDGET START ===");
-		console.log("Request Body:", JSON.stringify(req.body, null, 2));
-
+		console.log(req.body);
 		const { widgetLastIntent, widgetLastParams, widgetLastResponse, widgetSampleJSON, _id, widgetLastFilterParams } = req.body;
-
-		console.log("📋 Extracted Parameters:");
-		console.log("  - Intent:", widgetLastIntent);
-		console.log("  - Filter Params:", JSON.stringify(widgetLastFilterParams, null, 2));
-		console.log("  - Has Filters:", !!(widgetLastFilterParams && Object.keys(widgetLastFilterParams).length > 0));
-
 		let allResults = [];
+
 		// 🔹 Check if multi-intent
 		if (widgetLastIntent.includes(",")) {
-			console.log("🔀 Multi-intent detected");
 			const intents = widgetLastIntent.split(",").map((s) => s.trim());
-			console.log("  Intents:", intents);
-
 			for (const intent of intents) {
 				const matchedApi = apiListData.find((api) => api.name === intent);
 
 				if (!matchedApi) {
-					console.error(`❌ No API found for intent: ${intent}`);
 					return res.status(400).json({ error: `No matching API found for intent: ${intent}` });
 				}
 
-				console.log(`  ✅ Calling API for: ${intent}`);
 				const apiResponse = await matchedApi.multiHandler(widgetLastParams);
-				console.log(`  📊 API Response for ${intent}:`, {
-					dataLength: apiResponse?.data?.length || 0,
-					sample: apiResponse?.data?.[0] || null,
-				});
-
 				allResults.push({
 					api: intent,
 					rawData: apiResponse?.data || [],
@@ -267,33 +250,18 @@ widget.refreshWidget = async (req, res) => {
 			}
 		} else {
 			// 🔹 Single intent
-			console.log("🎯 Single intent detected:", widgetLastIntent);
 			const matchedApi = apiListData.find((api) => api.name === widgetLastIntent);
-
 			if (!matchedApi) {
-				console.error("❌ No matching API found for intent:", widgetLastIntent);
 				return res.status(400).json({ error: "No matching API found for the given intent." });
 			}
 
-			console.log("  ✅ Calling API for:", widgetLastIntent);
 			const apiResponse = await matchedApi.multiHandler(widgetLastParams);
-			console.log("  📊 API Response:", {
-				dataLength: apiResponse?.data?.length || 0,
-				sample: apiResponse?.data?.[0] || null,
-			});
-
 			allResults.push({
 				api: widgetLastIntent,
 				rawData: apiResponse?.data || [],
 				exampleResponse: matchedApi.exampleResponse,
 			});
 		}
-
-		console.log("\n📦 All Results Summary:");
-		console.log("  Total APIs called:", allResults.length);
-		allResults.forEach((result, idx) => {
-			console.log(`  [${idx}] ${result.api}: ${result.rawData.length} records`);
-		});
 
 		// 🔹 Build system prompt with stronger filtering emphasis
 		let systemPrompt = `
@@ -315,18 +283,14 @@ ${JSON.stringify(widgetSampleJSON, null, 2)}
 
 		// 🔹 Build user prompt with explicit filtering steps
 		let userPrompt = "";
-		const hasFilters = widgetLastFilterParams && Object.keys(widgetLastFilterParams).length > 0;
 
-		console.log("\n🤖 Preparing OpenAI Request:");
-		console.log("  Filtering Mode:", hasFilters ? "ACTIVE" : "INACTIVE");
-
-		if (hasFilters) {
-			console.log("  🔍 Active Filters:", JSON.stringify(widgetLastFilterParams, null, 2));
-
+		if (widgetLastFilterParams && Object.keys(widgetLastFilterParams).length > 0) {
 			userPrompt = `
 FILTERING MODE: ACTIVE
+
 Step 1: MANDATORY - Apply these filters to the raw data:
 ${JSON.stringify(widgetLastFilterParams, null, 2)}
+
 Step 2: Format ONLY the filtered results to match the target JSON structure.
 
 Context:
@@ -341,8 +305,6 @@ CRITICAL: If driverId filter is ${widgetLastFilterParams.driverId}, you MUST onl
 			} exactly. Ignore all other records.
 `;
 		} else {
-			console.log("  ℹ️ No filters - formatting all data");
-
 			userPrompt = `
 Format all the raw API data to match the target JSON structure.
 
@@ -354,12 +316,7 @@ ${JSON.stringify(allResults, null, 2)}
 `;
 		}
 
-		console.log("  📝 User Prompt Length:", userPrompt.length, "characters");
-
 		// 🔹 OpenAI call
-		console.log("\n⏳ Calling OpenAI API...");
-		const startTime = Date.now();
-
 		const completion = await openai.chat.completions.create({
 			model: "gpt-3.5-turbo",
 			messages: [
@@ -370,98 +327,39 @@ ${JSON.stringify(allResults, null, 2)}
 			max_tokens: 2000,
 		});
 
-		const elapsed = Date.now() - startTime;
-		console.log(`✅ OpenAI Response received in ${elapsed}ms`);
-		console.log("  Token Usage:", completion.usage);
-		console.log("  Raw Response Preview:", completion.choices[0].message.content.substring(0, 200) + "...");
-
 		let structuredJson;
 		try {
 			const content = completion.choices[0].message.content.trim();
 			// Remove potential markdown code blocks
 			const cleanContent = content.replace(/```json\n?/g, "").replace(/```\n?/g, "");
-
-			console.log("\n🔄 Parsing OpenAI JSON response...");
 			structuredJson = JSON.parse(cleanContent);
-			console.log("✅ JSON Parsed Successfully");
-			console.log("  Result Type:", Array.isArray(structuredJson) ? "Array" : typeof structuredJson);
-			console.log("  Result Length:", Array.isArray(structuredJson) ? structuredJson.length : "N/A");
-
-			if (hasFilters && Array.isArray(structuredJson)) {
-				console.log("\n🔍 Validating Filter Application:");
-				console.log("  Expected Filter:", widgetLastFilterParams);
-				console.log("  Records Returned:", structuredJson.length);
-
-				if (structuredJson.length > 0) {
-					console.log("  First Record Sample:", JSON.stringify(structuredJson[0], null, 2));
-
-					// Check if filter was actually applied
-					if (widgetLastFilterParams.driverId) {
-						const matchingRecords = structuredJson.filter((record) => {
-							const recordDriverId = record.driverId || record.DriverId || record.driver_id || record.id;
-							return recordDriverId == widgetLastFilterParams.driverId;
-						});
-
-						console.log(`  ✓ Records matching driverId ${widgetLastFilterParams.driverId}:`, matchingRecords.length);
-
-						if (matchingRecords.length !== structuredJson.length) {
-							console.warn("  ⚠️ WARNING: Filter may not have been applied correctly!");
-							console.warn(
-								`  Expected all ${structuredJson.length} records to match driverId ${widgetLastFilterParams.driverId}`
-							);
-						} else {
-							console.log("  ✅ Filter validation passed!");
-						}
-					}
-				} else {
-					console.log("  ⚠️ Empty result - no matching records found");
-				}
-			}
 		} catch (err) {
-			console.error("❌ Failed to parse OpenAI JSON:", err);
+			console.error("Failed to parse OpenAI JSON:", err);
 			console.error("Raw response:", completion.choices[0].message.content);
 			return res.status(500).json({ error: "OpenAI returned invalid JSON." });
 		}
 
-		console.log("\n📊 Structured JSON:", JSON.stringify(structuredJson, null, 2));
+		console.log(structuredJson, "structured json");
 
 		// 🔹 Get widget from DB (without updating)
-		console.log("\n🔍 Fetching widget from DB:", _id);
 		const widget = await Widget.findById(_id);
 
 		if (!widget) {
-			console.error("❌ Widget not found:", _id);
 			return res.status(404).json({ error: "Widget not found." });
 		}
 
-		console.log("✅ Widget found:", widget._id);
-
 		// 🔹 Send response with refreshed data (not saved to DB)
-		console.log("\n📤 Sending response...");
-		const response = {
+		res.status(200).json({
 			message: "Widget refreshed successfully.",
 			widget: {
 				...widget.toObject(),
 				widgetSampleJSON: structuredJson, // Send refreshed data without saving
 			},
-		};
-
-		console.log("  Response includes:", {
-			widgetId: widget._id,
-			dataRecords: Array.isArray(structuredJson) ? structuredJson.length : "N/A",
-			filtersApplied: widgetLastFilterParams || "None",
 		});
-
-		console.log("=== REFRESH WIDGET SUCCESS ===\n");
-
-		res.status(200).json(response);
 	} catch (err) {
-		console.error("\n❌ === REFRESH WIDGET ERROR ===");
-		console.error("Error:", err);
-		console.error("Stack:", err.stack);
-		console.error("=================================\n");
-
+		console.error("Error refreshing widget:", err);
 		res.status(500).json({ error: "Widget refresh failed", details: err.message });
 	}
 };
+
 module.exports = widget;

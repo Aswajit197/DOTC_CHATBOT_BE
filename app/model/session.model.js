@@ -23,6 +23,7 @@ const sessionSchema = new mongoose.Schema(
 					lastGraphPrompt: { type: String },
 					lastGraphResponse: { type: String },
 					lastGraphParams: { type: mongoose.Schema.Types.Mixed },
+					lastGraphFilterParams: { type: mongoose.Schema.Types.Mixed },
 					lastIntentType: { type: String, enum: ["single", "multi"], default: "single" },
 					graphType: { type: String, default: "bar" },
 				},
