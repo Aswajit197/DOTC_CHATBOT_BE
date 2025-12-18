@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const API_BASE = process.env.API_BASE_URL;
 
 const sessionSchema = new mongoose.Schema(
 	{
@@ -155,12 +156,10 @@ sessionSchema.methods.isDriverListExpired = function () {
 };
 
 // 🔄 Refresh driver list
-sessionSchema.methods.refreshDriverList = async function (apiBaseUrl) {
+sessionSchema.methods.refreshDriverList = async function () {
 	try {
 		const axios = require("axios");
-		const response = await axios.get(
-			`${apiBaseUrl}/GetDriverByClientId?ClientId=${this.ClientId}`
-		);
+		const response = await axios.get(`${API_BASE}/GetDriverByClientId?ClientId=${this.ClientId}`);
 
 		if (response?.data && Array.isArray(response.data.data)) {
 			this.lmdpLists = response.data.data.map((driver) => ({

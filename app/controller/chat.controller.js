@@ -3,10 +3,10 @@ const Session = require("../model/session.model");
 const { OpenAI } = require("openai");
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const API_BASE = process.env.API_BASE_URL;
+const axios = require("axios");
 
 // Chat Controller
 const chat = {};
-
 // 🔹 Send Message Controller
 chat.sendMessage = async (req, res) => {
 	let isAborted = false;
@@ -288,7 +288,6 @@ chat.sendMessage = async (req, res) => {
 		}
 	}
 };
-
 // 🆕 NEW: Add this to your routes - Stop endpoint
 chat.stopMessage = async (req, res) => {
 	try {
@@ -321,40 +320,6 @@ chat.stopMessage = async (req, res) => {
 		res.status(500).json({ error: "Internal server error" });
 	}
 };
-
-// 🔹 Create Session Controller
-// chat.createSession = async (req, res) => {
-// 	try {
-// 		let { clientId, userId } = req.body;
-
-// 		if (!clientId || !userId) {
-// 			return res.status(400).json({ error: "clientId, and userId are required." });
-// 		}
-// 		// Greeting message
-// 		const greetingMessage = {
-// 			sender: "bot",
-// 			message: `Hi! 👋 I'm your SchedAI assistant. Ask me anything related to your tasks, drivers, or station work and I’ll help you out!`,
-// 			context: {
-// 				lastParams: { StationId: clientId, ClientId: clientId },
-// 			},
-// 			timestamp: new Date(),
-// 		};
-
-// 		// Create new session
-// 		const session = await Session.create({
-// 			ClientId: clientId,
-// 			StationId: clientId,
-// 			userId,
-// 			sessionName: "New Chat",
-// 			history: [greetingMessage],
-// 		});
-
-// 		res.json({ message: "Session created successfully", session });
-// 	} catch (err) {
-// 		console.error("Error creating chat session:", err);
-// 		res.status(500).json({ err, error: "Chat session creation failed" });
-// 	}
-// };
 // 🔹 Create Session Controller
 chat.createSession = async (req, res) => {
 	try {
@@ -367,11 +332,8 @@ chat.createSession = async (req, res) => {
 		// 1️⃣ First fetch drivers
 		let driverList = [];
 		try {
-			const driverResponse = await axios.get(
-				`${API_BASE}/GetDriverByClientId?ClientId=${clientId}`
-			);
-
-			if (driverResponse?.data?.status === "success") {
+			const driverResponse = await axios.get(`${API_BASE}/GetDriverByClientId?ClientId=${clientId}`);
+			if (driverResponse?.data) {
 				driverList = driverResponse.data.data.map((d) => ({
 					driverId: d.driverId || d.DriverId,
 					driverName: d.driverName || d.DriverName,
@@ -384,7 +346,7 @@ chat.createSession = async (req, res) => {
 		// 2️⃣ Greeting message
 		const greetingMessage = {
 			sender: "bot",
-			message: `Hi! 👋 I'm your SchedAI assistant. Ask me anything related to your tasks, drivers, or station work and I’ll help you out!`,
+			message: `Hi! 👋 I'm your SchedAI assistant. Ask me anything related to your tasks, drivers, or station work and I'll help you out!`,
 			context: {
 				lastParams: { StationId: clientId, ClientId: clientId },
 			},
@@ -401,10 +363,19 @@ chat.createSession = async (req, res) => {
 			lmdpLists: driverList,
 		});
 
-		// 4️⃣ Auto-refresh if needed (future visits)
-		if (session.isDriverListExpired()) {
-			await session.refreshDriverList(API_BASE);
-		}
+		// 4️⃣ 🔹 UPDATE ALL SESSIONS WITH SAME ClientId
+		// This ensures all sessions for this client have the latest driver list
+		await Session.updateMany(
+			{ ClientId: clientId },
+			{
+				$set: {
+					lmdpLists: driverList,
+					updatedAt: new Date(),
+				},
+			}
+		);
+
+		console.log(`✅ Session created and driver list updated for all ClientId: ${clientId} sessions`);
 
 		return res.json({
 			message: "Session created successfully",
@@ -412,7 +383,10 @@ chat.createSession = async (req, res) => {
 		});
 	} catch (err) {
 		console.error("Error creating chat session:", err);
-		return res.status(500).json({ error: "Chat session creation failed", details: err.message });
+		return res.status(500).json({
+			error: "Chat session creation failed",
+			details: err.message,
+		});
 	}
 };
 
@@ -458,7 +432,7 @@ chat.refreshDriverList = async (req, res) => {
 		}
 
 		// 2️⃣ Refresh drivers once (not per session)
-		const result = await session.refreshDriverList(API_BASE);
+		const result = await session.refreshDriverList();
 
 		if (!result.success) {
 			return res.status(500).json({
@@ -467,8 +441,8 @@ chat.refreshDriverList = async (req, res) => {
 			});
 		}
 
-		// 3️⃣ Update all sessions with same ClientId
-		await Session.updateMany(
+		// 3️⃣ 🔹 UPDATE ALL SESSIONS WITH SAME ClientId
+		const updateResult = await Session.updateMany(
 			{ ClientId: clientId },
 			{
 				$set: {
@@ -478,9 +452,12 @@ chat.refreshDriverList = async (req, res) => {
 			}
 		);
 
+		console.log(`✅ Updated ${updateResult.modifiedCount} sessions for ClientId: ${clientId}`);
+
 		return res.json({
 			message: "Driver list refreshed for all sessions with same ClientId",
 			totalDrivers: result.count,
+			sessionsUpdated: updateResult.modifiedCount,
 			lmdpLists: session.lmdpLists,
 		});
 	} catch (err) {
@@ -489,16 +466,5 @@ chat.refreshDriverList = async (req, res) => {
 	}
 };
 
+
 module.exports = chat;
-
-
-
-
-
-
-
-
-
-
-
-

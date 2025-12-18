@@ -1,0 +1,151 @@
+// ============================================
+// SETUP: Install node-cron
+// npm install node-cron
+// ============================================
+
+const cron = require("node-cron");
+const axios = require("axios");
+const Session = require("../model/session.model"); // Adjust path as needed
+
+const API_BASE = process.env.API_BASE_URL;
+
+// 🔹 AUTOMATED LMDP REFRESH - Runs every 24 hours
+const startLmdpAutoRefresh = () => {
+	// Run at 2 AM every day
+	cron.schedule("0 2 * * *", async () => {
+		console.log("\n========================================");
+		console.log("🔄 STARTING AUTOMATED LMDP REFRESH");
+		console.log(`Scheduled at: ${new Date().toLocaleString()}`);
+		console.log("========================================");
+
+		try {
+			// 1️⃣ Find all unique ClientIds
+			const uniqueClientIds = await Session.distinct("ClientId");
+			console.log(`Found ${uniqueClientIds.length} unique ClientIds`);
+
+			let successCount = 0;
+			let errorCount = 0;
+
+			// 2️⃣ Loop through each unique ClientId
+			for (const clientId of uniqueClientIds) {
+				try {
+					console.log(`\n📍 Processing ClientId: ${clientId}`);
+
+					// 3️⃣ Fetch fresh driver list from API
+					const response = await axios.get(`${API_BASE}/GetDriverByClientId?ClientId=${clientId}`);
+
+					if (!response?.data || !Array.isArray(response.data.data)) {
+						console.error(`⚠️ Invalid response for ClientId: ${clientId}`);
+						errorCount++;
+						continue;
+					}
+
+					// 4️⃣ Format driver list
+					const updatedDriverList = response.data.data.map((driver) => ({
+						driverId: driver.driverId || driver.DriverId,
+						driverName: driver.firstName + " " + driver.lastName,
+					}));
+
+					console.log(`✅ Fetched ${updatedDriverList.length} drivers`);
+
+					// 5️⃣ Update ALL sessions with this ClientId
+					const updateResult = await Session.updateMany(
+						{ ClientId: clientId },
+						{
+							$set: {
+								lmdpLists: updatedDriverList,
+								updatedAt: new Date(),
+							},
+						}
+					);
+
+					console.log(`✅ Updated ${updateResult.modifiedCount} sessions for ClientId: ${clientId}`);
+					successCount++;
+				} catch (err) {
+					console.error(`❌ Error processing ClientId ${clientId}:`, err.message);
+					errorCount++;
+				}
+			}
+
+			console.log("\n========================================");
+			console.log("✅ AUTOMATED REFRESH COMPLETED");
+			console.log(`Success: ${successCount}, Errors: ${errorCount}`);
+			console.log("========================================\n");
+		} catch (err) {
+			console.error("❌ FATAL ERROR in automated refresh:", err);
+		}
+	});
+
+	console.log("✅ LMDP Auto-refresh scheduler started (runs daily at 2 AM)");
+};
+
+// 🔹 ALTERNATIVE: Manual trigger with interval (if cron doesn't work)
+const startLmdpAutoRefreshWithInterval = (intervalHours = 24) => {
+	// const intervalMs = intervalHours * 60 * 60 * 1000;
+	const intervalMs= 5 * 60 * 1000;  //5 minute for testing
+
+	setInterval(async () => {
+		console.log("\n========================================");
+		console.log("🔄 STARTING AUTOMATED LMDP REFRESH (Interval-based)");
+		console.log(`Next refresh in ${intervalHours} hours`);
+		console.log("========================================");
+
+		try {
+			const uniqueClientIds = await Session.distinct("ClientId");
+			console.log(`Found ${uniqueClientIds.length} unique ClientIds`);
+
+			let successCount = 0;
+			let errorCount = 0;
+
+			for (const clientId of uniqueClientIds) {
+				try {
+					console.log(`\n📍 Processing ClientId: ${clientId}`);
+
+					const response = await axios.get(`${API_BASE}/GetDriverByClientId?ClientId=${clientId}`);
+
+					if (!response?.data || !Array.isArray(response.data.data)) {
+						console.error(`⚠️ Invalid response for ClientId: ${clientId}`);
+						errorCount++;
+						continue;
+					}
+
+					const updatedDriverList = response.data.data.map((driver) => ({
+						driverId: driver.driverId || driver.DriverId,
+						driverName: driver.firstName + " " + driver.lastName,
+					}));
+
+					const updateResult = await Session.updateMany(
+						{ ClientId: clientId },
+						{
+							$set: {
+								lmdpLists: updatedDriverList,
+								updatedAt: new Date(),
+							},
+						}
+					);
+
+					console.log(`✅ Updated ${updateResult.modifiedCount} sessions for ClientId: ${clientId}`);
+					successCount++;
+				} catch (err) {
+					console.error(`❌ Error processing ClientId ${clientId}:`, err.message);
+					errorCount++;
+				}
+			}
+
+			console.log("\n========================================");
+			console.log("✅ AUTOMATED REFRESH COMPLETED");
+			console.log(`Success: ${successCount}, Errors: ${errorCount}`);
+			console.log("========================================\n");
+		} catch (err) {
+			console.error("❌ FATAL ERROR in automated refresh:", err);
+		}
+	}, intervalMs);
+
+	console.log(`✅ LMDP Auto-refresh scheduler started (runs every ${intervalHours} hours)`);
+};
+
+// 🔹 Export both functions
+module.exports = {
+	startLmdpAutoRefresh, // Uses cron (preferred)
+	startLmdpAutoRefreshWithInterval, // Uses setInterval (fallback)
+};

@@ -5,6 +5,7 @@ const cors = require("cors");
 const mongoose = require("mongoose");
 const path = require("path");
 const fs = require("fs");
+const { startLmdpAutoRefresh, startLmdpAutoRefreshWithInterval } = require("./app/schedulers/lmdpScheduler");
 const router = express.Router();
 const app = express();
 const PORT = process.env.PORT;
@@ -27,6 +28,14 @@ mongoose
 	.connect(process.env.MONGO_URL)
 	.then(() => console.log(`MongoDB connected `))
 	.catch((err) => console.error("MongoDB error:", err));
+
+
+// ============================================
+// START AUTOMATED LMDP REFRESH
+// ============================================
+mongoose.connection.once("open", () => {
+	startLmdpAutoRefresh();
+});
 
 app.get("/chatapi", async (req, res) => {
 	console.log("Health Check Endpoint Hit");

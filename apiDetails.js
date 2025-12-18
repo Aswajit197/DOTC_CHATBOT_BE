@@ -26,7 +26,6 @@ module.exports = [
 			}
 
 			if (!params?.ClientId) params.ClientId = session.ClientId || 2;
-			// Auto-extract dates if missing
 
 			try {
 				if (abortSignal?.aborted) {
@@ -47,7 +46,7 @@ module.exports = [
 
 				const driversWeeklyWorkingHrList =
 					data?.data?.map((item) => ({
-						driverId: item?.driverId, // 🔹 CRITICAL: Must include driverId
+						driverId: item?.driverId,
 						driverName: item?.driverName,
 						hours: item?.hours,
 					})) || [];
@@ -517,7 +516,7 @@ module.exports = [
 						name: "GetDriverOTPreferenceList",
 						description: "Returns OTP preference for each driver",
 						isSuitableForGraph: true,
-						optionalFilteredField:["DriverId"]
+						optionalFilteredField: ["DriverId"],
 					},
 					exampleResponse: [
 						{
@@ -590,12 +589,12 @@ module.exports = [
 			}
 		},
 	},
-
+	// show drivers with qualification 3 and their OT preferences  //multi-intent example
 	//6. GetLMDPMaxQualificationsList
 	{
 		name: "GetLMDPMaxQualificationsList",
 		description:
-			"Retrieves the maximum qualification level of all drivers (also called LMDPs) for a specific ClientId within a specified weekly date range (FromDate to ToDate), based on a Sunday–Saturday week. This API should also be used when the user requests qualifications alongside other driver-related information (such as overtime preferences, shifts, or assignments), or when the query involves filtering drivers by qualification level (e.g., 'show drivers with qualification 3 and their OT preferences' or 'list all LMDPs above qualification 2'). It also supports queries for a single driver by name or for the full list of drivers.",
+			"Retrieves the maximum qualification level of all drivers (also called LMDPs) for a specific ClientId within a specified weekly date range (FromDate to ToDate), based on a Sunday–Saturday week. This API should also be used when the user requests qualifications alongside other driver-related information (such as overtime preferences, shifts, or assignments), or when the query involves filtering drivers by qualification level (e.g., 'show drivers with qualification 3' or 'list all LMDPs above qualification 2'). It also supports queries for a single driver by name or for the full list of drivers.",
 		requiredFields: ["ClientId", "FromDate", "ToDate"],
 		exampleResponse: [{ driverId: 1482, driverName: "JORGE VALENCIA", qualification: 2 }],
 		graphType: "line",
@@ -882,10 +881,21 @@ module.exports = [
 		],
 		followupItem: "driverId",
 		handler: async (params, userMessage, session, onStream, abortSignal, isContextual = false) => {
+			if (abortSignal?.aborted) {
+				console.log("🚫 GetTimeOffRequestForBackend handler: Aborted before execution");
+				return { error: "Request aborted" };
+			}
+
 			if (!params?.ClientId) params.ClientId = session.ClientId || 2;
 
 			try {
-				const { data } = await axios.get(`${API_BASE}/GetTimeOffRequestForBackend?ClientId=${params?.ClientId}`);
+				const { data } = await axios.get(`${API_BASE}/GetTimeOffRequestForBackend?ClientId=${params.ClientId}`);
+
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetTimeOffRequestForBackend handler: Aborted after axios call");
+					return { error: "Request aborted" };
+				}
+
 				const driversOffRequestList =
 					data?.data?.map((item) => ({
 						driverId: item?.driverId,
@@ -900,8 +910,7 @@ module.exports = [
 					userMessage,
 					api: {
 						name: "GetTimeOffRequestForBackend",
-						description:
-							"returns list of driver's time-off requests, including details such as driver name, request dates, reason for leave, and the current status (approved, declined, or pending). It is used to check when drivers have requested time off and whether those requests were accepted or not.",
+						description: "Returns list of driver's time-off requests including dates, reason, and approval status.",
 						isSuitableForGraph: false,
 					},
 					exampleResponse: [
@@ -918,21 +927,39 @@ module.exports = [
 					params,
 					session,
 					onStream,
-					isContextual, // 🔹 Pass this
-					followupItem: "driverId", // 🔹 Pass this
+					abortSignal, // 🔹 pass abortSignal
+					isContextual,
+					followupItem: "driverId",
 				});
 			} catch (err) {
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetTimeOffRequestForBackend handler: Aborted during execution");
+					return { error: "Request aborted" };
+				}
+
 				return {
 					error: true,
 					message: err.response?.data?.message || "Failed to fetch drivers' time-off requests list.",
 				};
 			}
 		},
-		multiHandler: async (params, userMessage, session, onStream) => {
+
+		multiHandler: async (params, userMessage, session, onStream, abortSignal) => {
+			if (abortSignal?.aborted) {
+				console.log("🚫 GetTimeOffRequestForBackend multiHandler: Aborted before execution");
+				return { error: "Request aborted" };
+			}
+
 			if (!params?.ClientId) params.ClientId = session.ClientId || 2;
 
 			try {
-				const { data } = await axios.get(`${API_BASE}/GetTimeOffRequestForBackend?ClientId=${params?.ClientId}`);
+				const { data } = await axios.get(`${API_BASE}/GetTimeOffRequestForBackend?ClientId=${params.ClientId}`);
+
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetTimeOffRequestForBackend multiHandler: Aborted after axios call");
+					return { error: "Request aborted" };
+				}
+
 				const driversOffRequestList =
 					data?.data?.map((item) => ({
 						driverName: item?.driverName,
@@ -944,6 +971,11 @@ module.exports = [
 
 				return { data: driversOffRequestList };
 			} catch (err) {
+				if (abortSignal?.aborted) {
+					console.log("🚫 GetTimeOffRequestForBackend multiHandler: Aborted during execution");
+					return { error: "Request aborted" };
+				}
+
 				return {
 					error: true,
 					message: err.response?.data?.message || "Failed to fetch drivers' time-off requests list.",
@@ -1086,17 +1118,15 @@ module.exports = [
 		description:
 			"Returns the default scheduling and permission settings defined by the manager. It includes rules such as the maximum allowed unavailable days, maximum time-off length, whether weekend availability is required, and permissions for approving neutral or open shift requests. This API is used to understand the scheduling policies and restrictions that apply to drivers.",
 		requiredFields: ["ClientId"],
-		exampleResponse: [
-			{
-				maxDaysUnavailable: 2,
-				requireWeekendDay: false,
-				maxTimeOffLength: 2,
-				approveNeutralRequests: true,
-				requireOpenShiftApproval: false,
-				canCreateLDMPGroups: false,
-				chatResponsesVisible: false,
-			},
-		],
+		exampleResponse: {
+			maxDaysUnavailable: 2,
+			requireWeekendDay: false,
+			maxTimeOffLength: 2,
+			approveNeutralRequests: true,
+			requireOpenShiftApproval: false,
+			canCreateLDMPGroups: false,
+			chatResponsesVisible: false,
+		},
 		followupItem: "maxDaysUnavailable",
 
 		handler: async (params, userMessage, session, onStream, abortSignal, isContextual = false) => {
@@ -1104,6 +1134,8 @@ module.exports = [
 				console.log("🚫 GetSchedAlignEngineLMDPPermissions handler: Aborted before execution");
 				return { error: "Request aborted" };
 			}
+			console.log(params);
+			console.log(params.clientId);
 
 			if (!params?.ClientId) params.ClientId = session.ClientId || 2;
 
@@ -1112,22 +1144,25 @@ module.exports = [
 				console.log(url);
 
 				const { data } = await axios.get(url);
+				console.log("API Response Data:", data);
 
 				if (abortSignal?.aborted) {
 					console.log("🚫 GetSchedAlignEngineLMDPPermissions handler: Aborted after axios call");
 					return { error: "Request aborted" };
 				}
 
-				const permissionList =
-					data?.data?.map((item) => ({
-						maxDaysUnavailable: item?.maxDaysUnavailable,
-						requireWeekendDay: item?.requireWeekendDay,
-						maxTimeOffLength: item?.maxTimeOffLength,
-						approveNeutralRequests: item?.approveNeutralRequests,
-						requireOpenShiftApproval: item?.requireOpenShiftApproval,
-						canCreateLDMPGroups: item?.canCreateLDMPGroups,
-						chatResponsesVisible: item?.chatResponsesVisible,
-					})) || [];
+				const item = data.data;
+				const permissionList = item
+					? {
+							maxDaysUnavailable: item?.maxDaysUnavailable,
+							requireWeekendDay: item?.requireWeekendDay,
+							maxTimeOffLength: item?.maxTimeOffLength,
+							approveNeutralRequests: item?.approveNeutralRequests,
+							requireOpenShiftApproval: item?.requireOpenShiftApproval,
+							canCreateLDMPGroups: item?.canCreateLDMPGroups,
+							chatResponsesVisible: item?.chatResponsesVisible,
+					  }
+					: {};
 
 				return await processIntentAndFormatResponse({
 					userMessage,
@@ -1137,17 +1172,16 @@ module.exports = [
 							"Returns the default scheduling and permission settings defined by the manager. Includes max unavailable days, max time-off length, weekend requirement, and permissions for approving neutral/open shift requests.",
 						isSuitableForGraph: false,
 					},
-					exampleResponse: [
-						{
-							maxDaysUnavailable: 2,
-							requireWeekendDay: false,
-							maxTimeOffLength: 2,
-							approveNeutralRequests: true,
-							requireOpenShiftApproval: false,
-							canCreateLDMPGroups: false,
-							chatResponsesVisible: false,
-						},
-					],
+					exampleResponse: {
+						maxDaysUnavailable: 2,
+						requireWeekendDay: false,
+						maxTimeOffLength: 2,
+						approveNeutralRequests: true,
+						requireOpenShiftApproval: false,
+						canCreateLDMPGroups: false,
+						chatResponsesVisible: false,
+					},
+
 					actualData: permissionList,
 					params,
 					session,
@@ -1188,16 +1222,18 @@ module.exports = [
 					return { error: "Request aborted" };
 				}
 
-				const permissionList =
-					data?.data?.map((item) => ({
-						maxDaysUnavailable: item?.maxDaysUnavailable,
-						requireWeekendDay: item?.requireWeekendDay,
-						maxTimeOffLength: item?.maxTimeOffLength,
-						approveNeutralRequests: item?.approveNeutralRequests,
-						requireOpenShiftApproval: item?.requireOpenShiftApproval,
-						canCreateLDMPGroups: item?.canCreateLDMPGroups,
-						chatResponsesVisible: item?.chatResponsesVisible,
-					})) || [];
+				const item = data.data;
+				const permissionList = item
+					? {
+							maxDaysUnavailable: item?.maxDaysUnavailable,
+							requireWeekendDay: item?.requireWeekendDay,
+							maxTimeOffLength: item?.maxTimeOffLength,
+							approveNeutralRequests: item?.approveNeutralRequests,
+							requireOpenShiftApproval: item?.requireOpenShiftApproval,
+							canCreateLDMPGroups: item?.canCreateLDMPGroups,
+							chatResponsesVisible: item?.chatResponsesVisible,
+					  }
+					: {};
 
 				return { data: permissionList };
 			} catch (err) {
@@ -1415,7 +1451,7 @@ module.exports = [
 
 				const defaultRules = rulesData
 					? {
-							maxHrs: data.data.maxHrs,
+							maxHrs: rulesData.maxHrs,
 							maxConsecutiveDaysWork: rulesData.maxConsecutiveDaysWork,
 							maxConsecutiveHrsWork: rulesData.maxConsecutiveHrsWork,
 							maxStandbyShifts: rulesData.maxStandbyShifts,
@@ -1460,7 +1496,7 @@ module.exports = [
 			try {
 				const { data } = await axios.get(`${API_BASE}/GetSchedAlignEngineWeeklySetting?ClientId=${params.ClientId}`);
 
-				const defaultRules = data?.data
+				const defaultRules = data?.data[0]
 					? {
 							maxHrs: data.data.maxHrs,
 							maxConsecutiveDaysWork: data.data.maxConsecutiveDaysWork,
@@ -1480,7 +1516,6 @@ module.exports = [
 			}
 		},
 	},
-
 	//14.GetOperationListForBackEnd
 	{
 		name: "GetOperationListForBackEnd",
@@ -1775,7 +1810,7 @@ module.exports = [
 				shiftTypeColor: "#0096FF",
 				shiftTypeFontColor: "#FFFFFF",
 				deliveryDate: "2025-07-27T00:00:00",
-				isAccept: 1,
+				isAccept: 3,
 				arrivalTime: "TBD",
 				arrivalLocationName: "TBD",
 				arrivalLatitude: "TBD",
@@ -1799,7 +1834,6 @@ module.exports = [
 
 			try {
 				const url = `${API_BASE}/GetOpenShiftForBackEnd?ClientId=${params.ClientId}`;
-				console.log(url);
 
 				const { data } = await axios.get(url);
 
@@ -1980,7 +2014,7 @@ module.exports = [
 
 				const preferenceHistory =
 					data?.data?.map((item) => ({
-						driverId: item?.driverId,
+						driverId: item?.driverID,
 						driverName: item?.driverName,
 						preferenceType: item?.preferenceType,
 						preferenceDescription: item?.preferenceDescription,
