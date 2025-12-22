@@ -42,7 +42,7 @@ const startLmdpAutoRefresh = () => {
 
 					// 4️⃣ Format driver list
 					const updatedDriverList = response.data.data.map((driver) => ({
-						driverId: driver.driverId || driver.DriverId,
+						driverId: driver.driverId,
 						driverName: driver.firstName + " " + driver.lastName,
 					}));
 
@@ -68,21 +68,97 @@ const startLmdpAutoRefresh = () => {
 			}
 
 			console.log("\n========================================");
-			console.log("✅ AUTOMATED REFRESH COMPLETED");
+			console.log("✅ AUTOMATED LMDP REFRESH COMPLETED");
 			console.log(`Success: ${successCount}, Errors: ${errorCount}`);
 			console.log("========================================\n");
 		} catch (err) {
-			console.error("❌ FATAL ERROR in automated refresh:", err);
+			console.error("❌ FATAL ERROR in automated LMDP refresh:", err);
 		}
 	});
 
 	console.log("✅ LMDP Auto-refresh scheduler started (runs daily at 2 AM)");
 };
 
+// 🔹 AUTOMATED WEEK DAYS REFRESH - Runs every 24 hours
+const startWeekDaysAutoRefresh = () => {
+	// Run at 3 AM every day
+	cron.schedule("0 3 * * *", async () => {
+		console.log("\n========================================");
+		console.log("🔄 STARTING AUTOMATED WEEK DAYS REFRESH");
+		console.log(`Scheduled at: ${new Date().toLocaleString()}`);
+		console.log("========================================");
+
+		try {
+			// 1️⃣ Find all unique ClientIds
+			const uniqueClientIds = await Session.distinct("ClientId");
+			console.log(`Found ${uniqueClientIds.length} unique ClientIds`);
+
+			let successCount = 0;
+			let errorCount = 0;
+
+			// 2️⃣ Loop through each unique ClientId
+			for (const clientId of uniqueClientIds) {
+				try {
+					console.log(`\n📍 Processing ClientId: ${clientId}`);
+
+					// 3️⃣ Fetch week list from API
+					const response = await axios.get(`${API_BASE}/GetWeekList?ClientId=${clientId}`);
+
+					if (!response?.data || !Array.isArray(response.data.data) || response.data.data.length === 0) {
+						console.error(`⚠️ Invalid response for ClientId: ${clientId}`);
+						errorCount++;
+						continue;
+					}
+
+					// 4️⃣ Get the last week object
+					const lastWeek = response.data.data[response.data.data.weeks.length - 1];
+
+					// 5️⃣ Extract dates and get day names
+					const weekStartDate = new Date(lastWeek.client_WeekStarting);
+					const weekEndDate = new Date(lastWeek.client_WeekEnding);
+
+					const dayNames = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+					const startDayName = dayNames[weekStartDate.getDay()];
+					const endDayName = dayNames[weekEndDate.getDay()];
+
+					console.log(`✅ Fetched week days - Start: ${startDayName}, End: ${endDayName}`);
+
+					// 6️⃣ Update ALL sessions with this ClientId
+					const updateResult = await Session.updateMany(
+						{ ClientId: clientId },
+						{
+							$set: {
+								clientWeekStartDay: startDayName,
+								clientWeekEndDay: endDayName,
+								updatedAt: new Date(),
+							},
+						}
+					);
+
+					console.log(`✅ Updated ${updateResult.modifiedCount} sessions for ClientId: ${clientId}`);
+					successCount++;
+				} catch (err) {
+					console.error(`❌ Error processing ClientId ${clientId}:`, err.message);
+					errorCount++;
+				}
+			}
+
+			console.log("\n========================================");
+			console.log("✅ AUTOMATED WEEK DAYS REFRESH COMPLETED");
+			console.log(`Success: ${successCount}, Errors: ${errorCount}`);
+			console.log("========================================\n");
+		} catch (err) {
+			console.error("❌ FATAL ERROR in automated week days refresh:", err);
+		}
+	});
+
+	console.log("✅ Week Days Auto-refresh scheduler started (runs daily at 3 AM)");
+};
+
 // 🔹 ALTERNATIVE: Manual trigger with interval (if cron doesn't work)
 const startLmdpAutoRefreshWithInterval = (intervalHours = 24) => {
 	// const intervalMs = intervalHours * 60 * 60 * 1000;
-	const intervalMs= 5 * 60 * 1000;  //5 minute for testing
+	const intervalMs = 5 * 60 * 1000; //5 minute for testing
 
 	setInterval(async () => {
 		console.log("\n========================================");
@@ -100,8 +176,9 @@ const startLmdpAutoRefreshWithInterval = (intervalHours = 24) => {
 			for (const clientId of uniqueClientIds) {
 				try {
 					console.log(`\n📍 Processing ClientId: ${clientId}`);
-
+					console.log(`${API_BASE}/GetDriverByClientId?ClientId=${clientId}`);
 					const response = await axios.get(`${API_BASE}/GetDriverByClientId?ClientId=${clientId}`);
+					console.log(response);
 
 					if (!response?.data || !Array.isArray(response.data.data)) {
 						console.error(`⚠️ Invalid response for ClientId: ${clientId}`);
@@ -110,9 +187,12 @@ const startLmdpAutoRefreshWithInterval = (intervalHours = 24) => {
 					}
 
 					const updatedDriverList = response.data.data.map((driver) => ({
-						driverId: driver.driverId || driver.DriverId,
+						driverId: driver.driverId,
 						driverName: driver.firstName + " " + driver.lastName,
 					}));
+					console.log(updatedDriverList);
+
+					console.log(`✅ Fetched ${updatedDriverList.length} drivers`);
 
 					const updateResult = await Session.updateMany(
 						{ ClientId: clientId },
@@ -133,7 +213,7 @@ const startLmdpAutoRefreshWithInterval = (intervalHours = 24) => {
 			}
 
 			console.log("\n========================================");
-			console.log("✅ AUTOMATED REFRESH COMPLETED");
+			console.log("✅ AUTOMATED LMDP REFRESH COMPLETED");
 			console.log(`Success: ${successCount}, Errors: ${errorCount}`);
 			console.log("========================================\n");
 		} catch (err) {
@@ -144,8 +224,88 @@ const startLmdpAutoRefreshWithInterval = (intervalHours = 24) => {
 	console.log(`✅ LMDP Auto-refresh scheduler started (runs every ${intervalHours} hours)`);
 };
 
-// 🔹 Export both functions
+// 🔹 ALTERNATIVE: Manual trigger with interval for week days (if cron doesn't work)
+const startWeekDaysAutoRefreshWithInterval = (intervalHours = 24) => {
+	// const intervalMs = intervalHours * 60 * 60 * 1000;
+	const intervalMs = 12 * 60 * 1000; //5 minute for testing
+
+	setInterval(async () => {
+		console.log("\n========================================");
+		console.log("🔄 STARTING AUTOMATED WEEK DAYS REFRESH (Interval-based)");
+		console.log(`Next refresh in ${intervalHours} hours`);
+		console.log("========================================");
+
+		try {
+			const uniqueClientIds = await Session.distinct("ClientId");
+			console.log(`Found ${uniqueClientIds.length} unique ClientIds`);
+
+			let successCount = 0;
+			let errorCount = 0;
+
+			for (const clientId of uniqueClientIds) {
+				try {
+					console.log(`\n📍 Processing ClientId: ${clientId}`);
+					const response = await axios.get(`${API_BASE}/GetWeekList?ClientId=${clientId}`, {
+						headers: {
+							Authorization: `Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJVc2VySWQiOiI4MiIsIkNsaWVudElkIjoiMiIsImV4cCI6MTc2NjQ3MjI1NywiaXNzIjoiaHR0cHM6Ly9sb2NhbGhvc3Q6NzAwNyIsImF1ZCI6Imh0dHBzOi8vbG9jYWxob3N0OjcwMDcifQ.q-tlg0kjehPDPUXfoaqFXFJ6s5avOyLevDftPTSRkuo`,
+						},
+					});
+					console.log(response.data);
+
+					if (!response?.data || !Array.isArray(response.data.data.weeks) || response.data.data.weeks.length === 0) {
+						console.error(`⚠️ Invalid response for ClientId: ${clientId}`);
+						errorCount++;
+						continue;
+					}
+
+					const lastWeek = response.data.data.weeks[response.data.data.weeks.length - 1];
+					const weekStartDate = new Date(lastWeek.client_WeekStarting);
+					const weekEndDate = new Date(lastWeek.client_WeekEnding);
+
+					console.log(weekStartDate.getDay());
+					console.log(weekEndDate.getDay());
+
+					const dayNames = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday","Sunday"];
+					const startDayName = dayNames[weekStartDate.getDay()];
+					const endDayName = dayNames[weekEndDate.getDay()];
+
+					console.log(`✅ Fetched week days - Start: ${startDayName}, End: ${endDayName}`);
+
+					const updateResult = await Session.updateMany(
+						{ ClientId: clientId },
+						{
+							$set: {
+								clientWeekStartDay: startDayName,
+								clientWeekEndDay: endDayName,
+								updatedAt: new Date(),
+							},
+						}
+					);
+
+					console.log(`✅ Updated ${updateResult.modifiedCount} sessions for ClientId: ${clientId}`);
+					successCount++;
+				} catch (err) {
+					console.error(`❌ Error processing ClientId ${clientId}:`, err.message);
+					errorCount++;
+				}
+			}
+
+			console.log("\n========================================");
+			console.log("✅ AUTOMATED WEEK DAYS REFRESH COMPLETED");
+			console.log(`Success: ${successCount}, Errors: ${errorCount}`);
+			console.log("========================================\n");
+		} catch (err) {
+			console.error("❌ FATAL ERROR in automated week days refresh:", err);
+		}
+	}, intervalMs);
+
+	console.log(`✅ Week Days Auto-refresh scheduler started (runs every ${intervalHours} hours)`);
+};
+
+// 🔹 Export all functions
 module.exports = {
-	startLmdpAutoRefresh, // Uses cron (preferred)
-	startLmdpAutoRefreshWithInterval, // Uses setInterval (fallback)
+	startLmdpAutoRefresh, // LMDP cron-based refresh
+	startWeekDaysAutoRefresh, // Week days cron-based refresh
+	startLmdpAutoRefreshWithInterval, // LMDP interval-based refresh (fallback)
+	startWeekDaysAutoRefreshWithInterval, // Week days interval-based refresh (fallback)
 };

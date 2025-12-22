@@ -8,6 +8,244 @@ const { handleMultiIntentApis } = require("./handleMultiIntentApis");
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
+// 🔹 NEW: Helper to find DriverId from driver name
+function findDriverIdByName(driverName, lmdpLists) {
+	console.log("\n========================================");
+	console.log("🔍 FINDING DRIVER ID BY NAME");
+	console.log("========================================");
+	console.log("Search Name:", driverName);
+
+	// 🔹 Validation: Check all inputs
+	if (!driverName) {
+		console.warn("⚠️ Driver name is empty/null/undefined");
+		return null;
+	}
+
+	if (!lmdpLists || !Array.isArray(lmdpLists)) {
+		console.warn("⚠️ lmdpLists is not an array or is undefined");
+		return null;
+	}
+
+	if (lmdpLists.length === 0) {
+		console.warn("⚠️ lmdpLists is empty");
+		return null;
+	}
+
+	// Trim and lowercase for case-insensitive matching
+	const searchName = driverName.trim().toLowerCase();
+	console.log("📍 Normalized search name:", searchName);
+
+	// 🔹 Filter out drivers with missing names
+	const validDrivers = lmdpLists.filter((driver) => {
+		const isValid = driver.driverName && typeof driver.driverName === "string";
+		if (!isValid) {
+			console.warn(`⚠️ Skipping driver with invalid name: ${JSON.stringify(driver)}`);
+		}
+		return isValid;
+	});
+
+	console.log(`📊 Valid drivers after filtering: ${validDrivers.length}/${lmdpLists.length}`);
+
+	if (validDrivers.length === 0) {
+		console.error("❌ No valid drivers found in list");
+		return null;
+	}
+
+	// 🔹 Match 1: Direct full name match
+	console.log("\n🔄 Attempt 1: Direct full name match...");
+	const directMatch = validDrivers.find((driver) => driver.driverName.toLowerCase() === searchName);
+	if (directMatch) {
+		console.log(`✅ MATCH FOUND (Direct): "${directMatch.driverName}" → ID: ${directMatch.driverId}`);
+		console.log("========================================\n");
+		return directMatch.driverId;
+	}
+	console.log("❌ No direct match found");
+
+	// 🔹 Match 2: Partial match (e.g., "jordan" matches "Jordan Valecia")
+	console.log("\n🔄 Attempt 2: Partial match...");
+	const partialMatch = validDrivers.find((driver) => {
+		const driverNameLower = driver.driverName.toLowerCase();
+		const matches = driverNameLower.includes(searchName);
+		if (matches) {
+			console.log(`  ✓ "${driverNameLower}" includes "${searchName}"`);
+		}
+		return matches;
+	});
+	if (partialMatch) {
+		console.log(`✅ MATCH FOUND (Partial): "${partialMatch.driverName}" → ID: ${partialMatch.driverId}`);
+		console.log("========================================\n");
+		return partialMatch.driverId;
+	}
+	console.log("❌ No partial match found");
+
+	// 🔹 Match 3: Match individual words (e.g., "jordan valecia" matches "Jordan Valecia")
+	console.log("\n🔄 Attempt 3: Word-by-word match...");
+	const nameWords = searchName.split(" ").filter((w) => w.length > 0);
+	console.log("Search words:", nameWords);
+
+	const wordMatch = validDrivers.find((driver) => {
+		const driverWords = driver.driverName.toLowerCase().split(" ");
+		console.log(`  Checking "${driver.driverName}" (words: ${driverWords})`);
+
+		const isMatch = nameWords.some((word) => {
+			const wordMatches = driverWords.some((dword) => {
+				const matches = dword.includes(word) || word.includes(dword);
+				if (matches) {
+					console.log(`    ✓ "${word}" ↔ "${dword}"`);
+				}
+				return matches;
+			});
+			return wordMatches;
+		});
+
+		return isMatch;
+	});
+
+	if (wordMatch) {
+		console.log(`✅ MATCH FOUND (Word-by-word): "${wordMatch.driverName}" → ID: ${wordMatch.driverId}`);
+		console.log("========================================\n");
+		return wordMatch.driverId;
+	}
+	console.log("❌ No word match found");
+
+	// 🔹 No match found
+	console.error(`\n❌ NO DRIVER FOUND for: "${driverName}"`);
+	console.log("Available drivers:");
+	validDrivers.forEach((driver) => {
+		console.log(`  - "${driver.driverName}" (ID: ${driver.driverId})`);
+	});
+	console.log("========================================\n");
+
+	return null;
+}
+
+
+// 🔹 NEW: Helper to check if API requires driver/lmdp identification
+function doesApiRequireDriverId(matchedApi) {
+	if (!matchedApi) return false;
+	const driverRelatedFields = ["DriverId", "driverId", "LMDPId"];
+	return matchedApi.requiredFields?.some((field) => driverRelatedFields.some((drf) => drf.toLowerCase() === field.toLowerCase()));
+}
+
+
+// 🔹 NEW: Helper to extract driver names from user message using OpenAI
+async function extractDriverNamesFromMessage(userMessage) {
+	console.log("\n========================================");
+	console.log("🔍 DRIVER NAME EXTRACTION STARTING");
+	console.log("========================================");
+	console.log("Input Message:", userMessage);
+	console.log("Message Length:", userMessage.length);
+
+	try {
+		const prompt = `
+Extract person names (driver names) from this message. Return ONLY valid names, not common words or acronyms.
+
+Message: "${userMessage}"
+
+Return a JSON array of names found:
+["Name1", "Name2"]
+
+If no names found, return empty array: []
+
+Examples:
+- "Give me hours for jordan valecia" → ["jordan valecia"]
+- "Show me preferences for alex and john" → ["alex", "john"]
+- "What about anthony semidey's schedule" → ["anthony semidey"]
+- "List all drivers" → []
+- "Show API details" → []
+
+IMPORTANT: Return ONLY the JSON array in this exact format: ["name1", "name2"]
+Do NOT include any explanations, code blocks, or extra text.
+`;
+
+		console.log("\n📝 Prompt sent to OpenAI:");
+		console.log(prompt);
+
+		console.log("\n⏳ Calling gpt-3.5-turbo for name extraction...");
+		const completion = await openai.chat.completions.create({
+			model: "gpt-3.5-turbo",
+			messages: [{ role: "user", content: prompt }],
+			temperature: 0,
+			max_tokens: 100,
+		});
+
+		const rawResponse = completion.choices[0].message.content;
+		console.log("\n✅ Raw OpenAI Response:");
+		console.log("Response:", rawResponse);
+		console.log("Response Type:", typeof rawResponse);
+		console.log("Response Length:", rawResponse.length);
+
+		const trimmedResponse = rawResponse.trim();
+		console.log("\n📍 After trim:", trimmedResponse);
+
+		// 🔹 NEW: Handle markdown code blocks
+		let cleanResponse = trimmedResponse;
+		if (trimmedResponse.includes("```json")) {
+			console.log("⚠️ Response contains ```json block, extracting content...");
+			cleanResponse = trimmedResponse.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+		} else if (trimmedResponse.includes("```")) {
+			console.log("⚠️ Response contains ``` block, extracting content...");
+			cleanResponse = trimmedResponse.replace(/```\n?/g, "").trim();
+		}
+
+		console.log("📍 After cleanup:", cleanResponse);
+
+		// 🔹 NEW: Validate JSON before parsing
+		if (!cleanResponse.startsWith("[")) {
+			console.warn("⚠️ Response does not start with '[', checking for JSON content...");
+			const jsonMatch = cleanResponse.match(/\[.*\]/s);
+			if (jsonMatch) {
+				cleanResponse = jsonMatch[0];
+				console.log("📍 Extracted JSON array:", cleanResponse);
+			} else {
+				console.error("❌ No JSON array found in response");
+				return [];
+			}
+		}
+
+		console.log("\n🔄 Attempting to parse JSON...");
+		let names;
+		try {
+			names = JSON.parse(cleanResponse);
+			console.log("✅ Successfully parsed JSON");
+		} catch (parseErr) {
+			console.error("❌ JSON parse failed:", parseErr.message);
+			console.error("Attempted to parse:", cleanResponse);
+			return [];
+		}
+
+		console.log("📦 Parsed names:", names);
+		console.log("Is Array:", Array.isArray(names));
+		console.log("Array Length:", Array.isArray(names) ? names.length : "N/A");
+
+		if (!Array.isArray(names)) {
+			console.warn("⚠️ Response is not an array, converting...");
+			names = Array.isArray(names) ? names : [];
+		}
+
+		// 🔹 NEW: Validate each name
+		const validNames = names.filter((name) => {
+			const isValid = typeof name === "string" && name.trim().length > 0;
+			console.log(`  - "${name}" → Valid: ${isValid}`);
+			return isValid;
+		});
+
+		console.log("\n✅ FINAL EXTRACTED NAMES:", validNames);
+		console.log("========================================\n");
+
+		return validNames;
+	} catch (err) {
+		console.error("\n❌ CRITICAL ERROR in name extraction:");
+		console.error("Error Type:", err.name);
+		console.error("Error Message:", err.message);
+		console.error("Error Stack:", err.stack);
+		console.log("========================================\n");
+		return [];
+	}
+}
+
+
+// 🔹function for driver name matching
 async function getIntentFromOpenAI(userMessage, session, { onStream, abortSignal } = {}) {
 	if (abortSignal?.aborted) {
 		console.log("🚫 getIntentFromOpenAI: Already aborted, exiting early");
@@ -63,6 +301,9 @@ There is NO conversation history. Therefore:
 - Treat as independent query regardless of pronouns used
 `;
 
+	// 🔹 NO LMDP LIST IN PROMPT: Driver name extraction is now handled post-processing by OpenAI
+	// This saves tokens and keeps prompt clean
+
 	const systemPrompt = `
 You are an assistant that maps user queries to API operations.
 
@@ -97,7 +338,7 @@ Instructions:
 - Only include resolved parameters in the params object
 - Unresolved parameters should be null
 
-❌ DO NOT auto-fill or assume ANY parameters
+❌ DO NOT auto-fill or assume ANY parameters (except for driver name matching below)
 ❌ DO NOT default ClientId, StationId, or any other field
 ❌ DO NOT extract parameters from context unless explicitly referenced
 ❌ DO NOT invent values based on previous queries
@@ -107,14 +348,18 @@ Instructions:
 ✅ Leave params empty {} if nothing is explicitly mentioned
 ✅ Set unresolved required fields to null
 ✅ Missing field handling is done separately - your job is ONLY extraction
+✅ IF API REQUIRES DriverId AND user mentions a driver BY NAME → set DriverId to null (post-processing will handle name matching)
 
 **Examples:**
 - "Give me 15 drivers" → params: {} (no specific IDs mentioned)
-- "Show driver 1234" → params: { driverId: 1234 }
+- "Show driver 1234" → params: { DriverId: 1234 }
 - "List drivers for station 5" → params: { StationId: 5 }
+- "Give me day preference for Jordan Valecia" → params: { DriverId: null } (name will be matched post-processing)
+- "Show hours for john smith" → params: { DriverId: null } (name will be matched post-processing)
+- "Get overtime for driver 123" → params: { DriverId: 123 } (explicit numeric ID)
 - "Give me their hours" → params: {} (context-based, no explicit params)
 - API needs ClientId but not provided → { ClientId: null }
-- API needs driverId but not provided → { driverId: null }
+- API needs DriverId but name not provided → { DriverId: null }
 
 ### 1. Contextual Follow-up (HIGHEST PRIORITY - CHECK CAREFULLY!)
 **⚠️ CRITICAL: Only classify as contextual_followup if ALL conditions are met:**
@@ -158,6 +403,7 @@ If Independent (Fresh query with no reference to previous results OR no context 
    * Extract parameters ONLY if EXPLICITLY mentioned in the message.
    * Set unresolved parameters to null (NOT empty objects)
    * DO NOT assume or auto-fill ANY values.
+   * If API requires DriverId but user mentions a driver BY NAME → set DriverId to null (post-processing will extract and match the name)
 
 **⚠️ SINGLE API WITH CALCULATIONS/AGGREGATIONS:**
 If the query asks for data from ONE API with additional processing (filtering, calculations, averages, specific items):
@@ -339,6 +585,31 @@ Important:
 		}
 	}
 
+	// 🔹 NEW: Post-processing for driver name matching
+	const matchedApi = apiListData.find((api) => api.name === extracted.apiName);
+	if (
+		matchedApi &&
+		doesApiRequireDriverId(matchedApi) &&
+		session.lmdpLists?.length > 0 &&
+		extracted.params &&
+		extracted.params.DriverId === null
+	) {
+		console.log("\n🔍 Attempting to match driver name from message...");
+		const driverNames = await extractDriverNamesFromMessage(userMessage);
+		console.log("Extracted potential names:", driverNames);
+
+		if (driverNames.length > 0) {
+			// Try to find driver ID by name
+			const driverId = findDriverIdByName(driverNames[0], session.lmdpLists);
+			if (driverId) {
+				extracted.params.DriverId = driverId;
+				console.log(`✅ Matched driver: "${driverNames[0]}" → DriverId: ${driverId}`);
+			} else {
+				console.log(`⚠️ No driver match found for: "${driverNames[0]}"`);
+			}
+		}
+	}
+
 	console.log("\n========================================");
 	console.log("🎯 INTENT EXTRACTION RESULT");
 	console.log("========================================");
@@ -349,7 +620,6 @@ Important:
 	console.log("Has Context:", hasContext);
 	console.log("========================================\n");
 
-	const matchedApi = apiListData.find((api) => api.name === extracted.apiName);
 	let params = extracted.params || {};
 
 	if (abortSignal?.aborted) {

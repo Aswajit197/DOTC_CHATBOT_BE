@@ -4,54 +4,105 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 // ===== DATE UTILITY FUNCTIONS =====
 
 /**
- * Get current week number (US style: Sunday-Saturday)
- * Week 1 starts on the first Sunday of the year
+ * Map day name to day number (0 = Sunday, 1 = Monday, etc.)
  */
-function getCurrentWeekNumber() {
+function getDayNumber(dayName) {
+	const days = {
+		Sunday: 0,
+		Monday: 1,
+		Tuesday: 2,
+		Wednesday: 3,
+		Thursday: 4,
+		Friday: 5,
+		Saturday: 6,
+	};
+	return days[dayName] !== undefined ? days[dayName] : 0;
+}
+
+/**
+ * Get the day name from day number
+ */
+function getDayName(dayNumber) {
+	const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+	return days[dayNumber] || "Sunday";
+}
+
+/**
+ * Get current week number based on custom week start day
+ * @param {string} weekStartDay - Client's week start day (e.g., "Monday")
+ */
+function getCurrentWeekNumber(weekStartDay = "Sunday") {
 	const now = new Date();
+	const weekStartNum = getDayNumber(weekStartDay);
+
+	// Calculate the most recent week start date
+	const currentDayNum = now.getDay();
+	let daysToSubtract = (currentDayNum - weekStartNum + 7) % 7;
+
+	const weekStart = new Date(now);
+	weekStart.setDate(now.getDate() - daysToSubtract);
+
+	// Find the first week start day of the year
 	const startOfYear = new Date(now.getFullYear(), 0, 1);
+	const firstWeekStart = new Date(startOfYear);
+	const dayOfWeek = startOfYear.getDay();
+	const daysToFirstWeekStart = (weekStartNum - dayOfWeek + 7) % 7;
 
-	// Find the first Sunday of the year
-	const firstSunday = new Date(startOfYear);
-	const dayOfWeek = startOfYear.getDay(); // 0 = Sunday
-	if (dayOfWeek !== 0) {
-		firstSunday.setDate(startOfYear.getDate() + (7 - dayOfWeek));
+	if (daysToFirstWeekStart !== 0) {
+		firstWeekStart.setDate(startOfYear.getDate() + daysToFirstWeekStart);
 	}
 
-	// Calculate days between first Sunday and now
-	const daysSinceFirstSunday = Math.floor((now - firstSunday) / (24 * 60 * 60 * 1000));
-	const weekNumber = Math.floor(daysSinceFirstSunday / 7) + 1;
+	// Calculate week number
+	const daysDiff = Math.floor((weekStart - firstWeekStart) / (24 * 60 * 60 * 1000));
+	const weekNumber = Math.floor(daysDiff / 7) + 1;
 
-	return weekNumber;
+	return Math.max(1, weekNumber);
 }
 
 /**
- * Get start date (Sunday) of a given week number and year
+ * Get start date of a given week number based on custom week start day
+ * @param {number} weekNumber - Week number
+ * @param {number} year - Year
+ * @param {string} weekStartDay - Client's week start day
  */
-function getStartDateOfWeek(weekNumber, year) {
+function getStartDateOfWeek(weekNumber, year, weekStartDay = "Sunday") {
+	const weekStartNum = getDayNumber(weekStartDay);
+
+	// Find the first occurrence of the week start day in the year
 	const startOfYear = new Date(year, 0, 1);
+	const firstWeekStart = new Date(startOfYear);
+	const dayOfWeek = startOfYear.getDay();
+	const daysToFirstWeekStart = (weekStartNum - dayOfWeek + 7) % 7;
 
-	// Find the first Sunday of the year
-	const firstSunday = new Date(startOfYear);
-	const dayOfWeek = startOfYear.getDay(); // 0 = Sunday
-	if (dayOfWeek !== 0) {
-		firstSunday.setDate(startOfYear.getDate() + (7 - dayOfWeek));
+	if (daysToFirstWeekStart !== 0) {
+		firstWeekStart.setDate(startOfYear.getDate() + daysToFirstWeekStart);
 	}
 
-	// Add (weekNumber - 1) weeks to get to the target week's Sunday
-	const targetSunday = new Date(firstSunday);
-	targetSunday.setDate(firstSunday.getDate() + (weekNumber - 1) * 7);
+	// Add (weekNumber - 1) weeks
+	const targetDate = new Date(firstWeekStart);
+	targetDate.setDate(firstWeekStart.getDate() + (weekNumber - 1) * 7);
 
-	return targetSunday;
+	return targetDate;
 }
 
 /**
- * Get end date (Saturday) of a given week number and year
+ * Get end date of a given week number based on custom week end day
+ * @param {number} weekNumber - Week number
+ * @param {number} year - Year
+ * @param {string} weekStartDay - Client's week start day
+ * @param {string} weekEndDay - Client's week end day
  */
-function getEndDateOfWeek(weekNumber, year) {
-	const startDate = getStartDateOfWeek(weekNumber, year);
+function getEndDateOfWeek(weekNumber, year, weekStartDay = "Sunday", weekEndDay = "Saturday") {
+	const startDate = getStartDateOfWeek(weekNumber, year, weekStartDay);
+
+	// Calculate days between start and end
+	const startNum = getDayNumber(weekStartDay);
+	const endNum = getDayNumber(weekEndDay);
+	const daysDiff = (endNum - startNum + 7) % 7;
+
 	const endDate = new Date(startDate);
-	endDate.setDate(startDate.getDate() + 6); // Add 6 days to get Saturday
+	endDate.setDate(startDate.getDate() + daysDiff);
+
 	return endDate;
 }
 
@@ -66,19 +117,19 @@ function formatDate(date) {
 }
 
 /**
- * Get current week's start (Sunday) and end (Saturday) dates
+ * Get current week's start and end dates based on client's week configuration
  */
-function getCurrentWeekDates() {
-	const currentWeek = getCurrentWeekNumber();
+function getCurrentWeekDates(weekStartDay = "Sunday", weekEndDay = "Saturday") {
+	const currentWeek = getCurrentWeekNumber(weekStartDay);
 	const currentYear = new Date().getFullYear();
 
-	const fromDate = formatDate(getStartDateOfWeek(currentWeek, currentYear));
-	const toDate = formatDate(getEndDateOfWeek(currentWeek, currentYear));
+	const fromDate = formatDate(getStartDateOfWeek(currentWeek, currentYear, weekStartDay));
+	const toDate = formatDate(getEndDateOfWeek(currentWeek, currentYear, weekStartDay, weekEndDay));
 
-	console.log("\n📅 Current Week Dates:");
+	console.log("\n📅 Current Week Dates (Dynamic):");
 	console.log(`  - Week ${currentWeek}, ${currentYear}`);
-	console.log(`  - Sunday (FromDate): ${fromDate}`);
-	console.log(`  - Saturday (ToDate): ${toDate}`);
+	console.log(`  - ${weekStartDay} (FromDate): ${fromDate}`);
+	console.log(`  - ${weekEndDay} (ToDate): ${toDate}`);
 
 	return {
 		FromDate: fromDate,
@@ -90,27 +141,28 @@ function getCurrentWeekDates() {
 
 /**
  * Extract date parameters from user message using OpenAI
- * Handles week-based queries and converts them to FromDate/ToDate
+ * Now handles dynamic week start/end days
  */
-async function extractDateParamsFromOpenAI(userMessage) {
+async function extractDateParamsFromOpenAI(userMessage, weekStartDay = "Sunday", weekEndDay = "Saturday") {
 	console.log("\n📅 Extracting date parameters from user message...");
 
-	const currentWeek = getCurrentWeekNumber();
+	const currentWeek = getCurrentWeekNumber(weekStartDay);
 	const currentYear = new Date().getFullYear();
 
 	// Get actual current week dates for reference
-	const currentWeekDates = getCurrentWeekDates();
+	const currentWeekDates = getCurrentWeekDates(weekStartDay, weekEndDay);
 
 	const prompt = `
 You are a date parameter extraction assistant. Today's information:
 - Current Week Number: ${currentWeek}
 - Current Year: ${currentYear}
 - Today's Date: ${new Date().toISOString().split("T")[0]}
-- Current Week Range: ${currentWeekDates.FromDate} (Sunday) to ${currentWeekDates.ToDate} (Saturday)
+- Client's Week Configuration: ${weekStartDay} to ${weekEndDay}
+- Current Week Range: ${currentWeekDates.FromDate} (${weekStartDay}) to ${currentWeekDates.ToDate} (${weekEndDay})
 
 Extract week and year parameters from the user's message and return the ACTUAL WEEK NUMBERS.
 
-**IMPORTANT: Weeks run from SUNDAY to SATURDAY**
+**IMPORTANT: Weeks run from ${weekStartDay} to ${weekEndDay} for this client**
 
 Rules:
 1. For "last N weeks" or "past N weeks": 
@@ -195,34 +247,42 @@ IMPORTANT: Only set hasDateHint to true if the user explicitly mentioned a time 
 
 /**
  * Main handler to extract and format FromDate and ToDate
+ * Now uses client's week configuration from session
  * @param {string} userMessage - The user's query
+ * @param {string} weekStartDay - Client's week start day (from session.clientWeekStartDay)
+ * @param {string} weekEndDay - Client's week end day (from session.clientWeekEndDay)
  * @returns {Promise<{FromDate: string, ToDate: string}>} - Formatted dates (YYYY-MM-DD)
  */
-async function handleFromDateToDate(userMessage) {
-	console.log("\n🔍 Handling FromDate and ToDate extraction...");
+async function handleFromDateToDate(userMessage, weekStartDay = "Sunday", weekEndDay = "Saturday") {
+	console.log("\n🔍 Handling FromDate and ToDate extraction (Dynamic)...");
 	console.log("User message:", userMessage);
+	console.log("Client Week Config:", `${weekStartDay} - ${weekEndDay}`);
 
-	// Extract week parameters using AI
-	const { WeekStarting, WeekEnding, Year, hasDateHint } = await extractDateParamsFromOpenAI(userMessage);
+	// Extract week parameters using AI with client's week config
+	const { WeekStarting, WeekEnding, Year, hasDateHint } = await extractDateParamsFromOpenAI(
+		userMessage,
+		weekStartDay,
+		weekEndDay
+	);
 
 	// If no date hints in message, use current week
 	if (!hasDateHint || WeekStarting === null || WeekEnding === null) {
 		console.log("📅 No date hints found - using current week");
-		const currentWeekDates = getCurrentWeekDates();
+		const currentWeekDates = getCurrentWeekDates(weekStartDay, weekEndDay);
 		return currentWeekDates;
 	}
 
 	// Use provided year or default to current year
 	const year = Year || new Date().getFullYear();
 
-	// Convert week numbers to actual dates
-	const FromDate = formatDate(getStartDateOfWeek(WeekStarting, year));
-	const ToDate = formatDate(getEndDateOfWeek(WeekEnding, year));
+	// Convert week numbers to actual dates using client's week config
+	const FromDate = formatDate(getStartDateOfWeek(WeekStarting, year, weekStartDay));
+	const ToDate = formatDate(getEndDateOfWeek(WeekEnding, year, weekStartDay, weekEndDay));
 
-	console.log("📅 Extracted dates:");
+	console.log("📅 Extracted dates (Dynamic):");
 	console.log("  - Week Range:", `Week ${WeekStarting} - Week ${WeekEnding}, ${year}`);
-	console.log("  - FromDate (Sunday):", FromDate);
-	console.log("  - ToDate (Saturday):", ToDate);
+	console.log("  - FromDate (${weekStartDay}):", FromDate);
+	console.log("  - ToDate (${weekEndDay}):", ToDate);
 
 	return { FromDate, ToDate };
 }
@@ -243,111 +303,11 @@ function formatToISODate(dateStr) {
 	}
 }
 
-// ===== UPDATED API HANDLER =====
-
-/**
- * Updated GetDriverWeeklyWorkingHrList handler with date extraction
- */
-const GetDriverWeeklyWorkingHrListHandler = async (params, userMessage, session, onStream, abortSignal, isContextual = false) => {
-	console.log("\n🔹 GetDriverWeeklyWorkingHrList Handler");
-
-	if (abortSignal?.aborted) {
-		console.log("🚫 GetDriverWeeklyWorkingHrList handler: Aborted before execution");
-		return { error: "Request aborted" };
-	}
-
-	// Set default ClientId if not provided
-	if (!params?.ClientId) params.ClientId = session.ClientId || 2;
-
-	// 🔹 Handle FromDate and ToDate extraction
-	if (!params.FromDate || !params.ToDate) {
-		console.log("\n⚠️ FromDate or ToDate missing - extracting from user message...");
-
-		try {
-			const { FromDate, ToDate } = await handleFromDateToDate(userMessage);
-			params.FromDate = FromDate;
-			params.ToDate = ToDate;
-
-			console.log("✅ Date parameters set:");
-			console.log("  - FromDate:", params.FromDate);
-			console.log("  - ToDate:", params.ToDate);
-		} catch (err) {
-			console.error("❌ Date extraction failed:", err.message);
-
-			// Fallback to current week
-			const currentWeekDates = getCurrentWeekDates();
-			params.FromDate = currentWeekDates.FromDate;
-			params.ToDate = currentWeekDates.ToDate;
-
-			console.log("⚠️ Using current week as fallback:", params.FromDate, "-", params.ToDate);
-		}
-	}
-
-	try {
-		if (abortSignal?.aborted) {
-			console.log("🚫 GetDriverWeeklyWorkingHrList handler: Aborted before axios call");
-			return { error: "Request aborted" };
-		}
-
-		// Build API URL with all parameters
-		const apiUrl = `${API_BASE}/GetDriverWeeklyWorkingHrList?ClientId=${params.ClientId}&FromDate=${params.FromDate}&ToDate=${params.ToDate}`;
-		console.log("📡 API URL:", apiUrl);
-
-		const { data } = await axios.get(apiUrl);
-		console.log("📊 API Response length:", data?.data?.length);
-
-		if (abortSignal?.aborted) {
-			console.log("🚫 GetDriverWeeklyWorkingHrList handler: Aborted after axios call");
-			return { error: "Request aborted" };
-		}
-
-		const driversWeeklyWorkingHrList =
-			data?.data?.map((item) => ({
-				driverId: item?.driverId,
-				driverName: item?.driverName,
-				hours: item?.hours,
-			})) || [];
-
-		console.log("📋 Processed data length:", driversWeeklyWorkingHrList.length);
-		console.log("📋 Sample item:", driversWeeklyWorkingHrList[0]);
-
-		return await processIntentAndFormatResponse({
-			userMessage,
-			api: {
-				name: "GetDriverWeeklyWorkingHrList",
-				description:
-					"Returns a list of drivers with their total weekly working hours preference for the given station and date range.",
-				isSuitableForGraph: true,
-			},
-			exampleResponse: [
-				{ driverId: 1482, driverName: "Alejandro Reyes", hours: 30 },
-				{ driverId: 1484, driverName: "Hele Reyes", hours: 40 },
-			],
-			actualData: driversWeeklyWorkingHrList,
-			params,
-			session,
-			onStream,
-			abortSignal,
-			isContextual,
-			followupItem: "driverId",
-		});
-	} catch (err) {
-		if (abortSignal?.aborted) {
-			console.log("🚫 GetDriverWeeklyWorkingHrList handler: Aborted during execution");
-			return { error: "Request aborted" };
-		}
-
-		console.error("❌ API Error:", err.message);
-		return {
-			error: true,
-			message: err.response?.data?.message || "Failed to fetch drivers' working hours list.",
-		};
-	}
-};
-
 // ===== EXPORTS =====
 
 module.exports = {
+	getDayNumber,
+	getDayName,
 	getCurrentWeekNumber,
 	getStartDateOfWeek,
 	getEndDateOfWeek,
@@ -356,5 +316,4 @@ module.exports = {
 	formatToISODate,
 	extractDateParamsFromOpenAI,
 	handleFromDateToDate,
-	GetDriverWeeklyWorkingHrListHandler,
 };

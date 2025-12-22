@@ -11,77 +11,78 @@ function getCurrentWeekNumber() {
 }
 
 // Helper to extract date-related fields from OpenAI
-async function extractDateParamsFromOpenAI(userMessage) {
-	console.log("entered Here 💬💬💬💬");
+// async function extractDateParamsFromOpenAI(userMessage) {
+// 	console.log("entered Here 💬💬💬💬");
 
-	const currentWeek = getCurrentWeekNumber();
-	const currentYear = new Date().getFullYear();
+// 	const currentWeek = getCurrentWeekNumber();
+// 	const currentYear = new Date().getFullYear();
 
-	const prompt = `
-You are a date parameter extraction assistant. Today's information:
-- Current Week Number: ${currentWeek}
-- Current Year: ${currentYear}
+// 	const prompt = `
+// You are a date parameter extraction assistant. Today's information:
+// - Current Week Number: ${currentWeek}
+// - Current Year: ${currentYear}
 
-Extract week and year parameters from the user's message and return the ACTUAL WEEK NUMBERS.
+// Extract week and year parameters from the user's message and return the ACTUAL WEEK NUMBERS.
 
-Rules:
-1. For "last N weeks" or "past N weeks": 
-   - WeekStarting = current week - N + 1
-   - WeekEnding = current week
-   
-2. For "last week" (singular):
-   - WeekStarting = current week - 1
-   - WeekEnding = current week - 1
-   
-3. For "current week" or "this week":
-   - WeekStarting = current week
-   - WeekEnding = current week
-   
-4. For "week N" (specific week):
-   - WeekStarting = N
-   - WeekEnding = N
-   
-5. If year is mentioned, use it. Otherwise, use current year.
+// Rules:
+// 1. For "last N weeks" or "past N weeks":
+//    - WeekStarting = current week - N + 1
+//    - WeekEnding = current week
 
-6. If no time period is mentioned, return null for all fields.
+// 2. For "last week" (singular):
+//    - WeekStarting = current week - 1
+//    - WeekEnding = current week - 1
 
-User message: "${userMessage}"
+// 3. For "current week" or "this week":
+//    - WeekStarting = current week
+//    - WeekEnding = current week
 
-Return ONLY a valid JSON object with actual week numbers (integers):
-{
-  "WeekStarting": number or null,
-  "WeekEnding": number or null,
-  "Year": number or null
-}
+// 4. For "week N" (specific week):
+//    - WeekStarting = N
+//    - WeekEnding = N
 
-Examples:
-- "last 4 weeks" → {"WeekStarting": ${currentWeek - 4 + 1}, "WeekEnding": ${currentWeek}, "Year": ${currentYear}}
-- "last week" → {"WeekStarting": ${currentWeek - 1}, "WeekEnding": ${currentWeek - 1}, "Year": ${currentYear}}
-- "current week" → {"WeekStarting": ${currentWeek}, "WeekEnding": ${currentWeek}, "Year": ${currentYear}}
-- "week 35" → {"WeekStarting": 35, "WeekEnding": 35, "Year": ${currentYear}}
-`;
+// 5. If year is mentioned, use it. Otherwise, use current year.
 
-	try {
-		const completion = await openai.chat.completions.create({
-			messages: [{ role: "user", content: prompt }],
-			model: "gpt-4",
-			temperature: 0,
-		});
+// 6. If no time period is mentioned, return null for all fields.
 
-		const response = completion.choices[0].message.content.trim();
-		console.log(response, "response params");
-		return JSON.parse(response);
-	} catch (err) {
-		console.warn("OpenAI param extraction failed:", err.message);
-		return {
-			WeekStarting: null,
-			WeekEnding: null,
-			Year: null,
-		};
-	}
-}
+// User message: "${userMessage}"
+
+// Return ONLY a valid JSON object with actual week numbers (integers):
+// {
+//   "WeekStarting": number or null,
+//   "WeekEnding": number or null,
+//   "Year": number or null
+// }
+
+// Examples:
+// - "last 4 weeks" → {"WeekStarting": ${currentWeek - 4 + 1}, "WeekEnding": ${currentWeek}, "Year": ${currentYear}}
+// - "last week" → {"WeekStarting": ${currentWeek - 1}, "WeekEnding": ${currentWeek - 1}, "Year": ${currentYear}}
+// - "current week" → {"WeekStarting": ${currentWeek}, "WeekEnding": ${currentWeek}, "Year": ${currentYear}}
+// - "week 35" → {"WeekStarting": 35, "WeekEnding": 35, "Year": ${currentYear}}
+// `;
+
+// 	try {
+// 		const completion = await openai.chat.completions.create({
+// 			messages: [{ role: "user", content: prompt }],
+// 			model: "gpt-4",
+// 			temperature: 0,
+// 		});
+
+// 		const response = completion.choices[0].message.content.trim();
+// 		console.log(response, "response params");
+// 		return JSON.parse(response);
+// 	} catch (err) {
+// 		console.warn("OpenAI param extraction failed:", err.message);
+// 		return {
+// 			WeekStarting: null,
+// 			WeekEnding: null,
+// 			Year: null,
+// 		};
+// 	}
+// }
 
 // Main param handler
+
 async function handleParamsForApi(matchedApi, params, userMessage, session, { onStream, abortSignal } = {}, type) {
 	console.log(params, "params in param handler");
 
@@ -156,7 +157,7 @@ async function handleParamsForApi(matchedApi, params, userMessage, session, { on
 
 	if (needsFromToExtraction) {
 		try {
-			const { FromDate, ToDate } = await handleFromDateToDate(userMessage);
+			const { FromDate, ToDate } = await handleFromDateToDate(userMessage, session.clientWeekStartDay, session.clientWeekEndDay);
 
 			// Validate ISO format or fix it
 			params.FromDate = formatToISODate(FromDate);
@@ -172,9 +173,7 @@ async function handleParamsForApi(matchedApi, params, userMessage, session, { on
 	missingFields = matchedApi.requiredFields.filter((f) => !params[f]);
 	console.log(params, "final resolved params");
 	console.log(missingFields, "missing fields");
-
 	return { params, missingFields };
 }
 
 module.exports = { handleParamsForApi };
-

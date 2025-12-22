@@ -173,7 +173,7 @@ function applyContextualFilter(actualData, contextInfo) {
 	if (filteredData.length > 0) {
 		console.log(
 			"  - Sample matched IDs:",
-			filteredData.slice(0, 3).map((item) => getNestedValue(item, entityFieldName))
+			filteredResult.slice(0, 3).map((item) => getNestedValue(item, entityFieldName))
 		);
 	}
 
@@ -437,14 +437,17 @@ ${JSON.stringify(preCalculatedResults.result, null, 2)}
 6. **Structure your response**:
    - Introductory <p> sentence
    - Main content (table/list/paragraph)
-   - <div class="summary"> with key insights
+   - **IMPORTANT:** Only add a <div class="summary"> with key insights if displaying MULTIPLE items or aggregate data
+   - **If displaying a SINGLE specific item** (e.g., one driver, one shift, one record), DO NOT include a summary section
 7. **Format dates** in readable format (e.g., "January 15, 2025")
 
 ${
 	api?.isSuitableForGraph
 		? `
-8. **After the summary**, add:
-<p class="followup-message">Would you like me to turn this into a graph or chart for easier analysis?</p>
+8. **Follow-up message decision:**
+   - If displaying MULTIPLE items or comparative data, add after summary:
+     <p class="followup-message">Would you like me to turn this into a graph or chart for easier analysis?</p>
+   - If displaying a SINGLE specific item, do NOT add this follow-up message
 `
 		: ""
 }
@@ -472,7 +475,6 @@ After your response, add this hidden meta tag with tracking information:
    `
 				: "null"
 		}
-
 **Important:** Use exact field names: ${api.optionalFilteredField ? api.optionalFilteredField.join(", ") : "none"}
 
 ### Output Format
@@ -538,7 +540,7 @@ Generate the response now:
 				console.log("  - Count:", displayedInfo.values?.length);
 				console.log("  - Sample:", displayedInfo.values?.slice(0, 5));
 
-				// 🔹 Extract filter params from meta tag
+				// Extract filter params from meta tag
 				if (displayedInfo.filterParams) {
 					extractedFilterParams = displayedInfo.filterParams;
 					console.log("  ✅ Extracted filter params:", extractedFilterParams);
@@ -550,40 +552,6 @@ Generate the response now:
 			}
 		} else {
 			console.log("  - No meta tag found");
-
-			// 🔹 FALLBACK: Try to detect filters from user message
-			if (!isContextual && api.optionalFilteredField && api.optionalFilteredField.length > 0) {
-				console.log("\n🔍 Fallback: Attempting to extract filter params from user message...");
-
-				// Check for specific name patterns (e.g., "for Gerald Olson")
-				const forPattern = /for\s+([a-z]+\s+[a-z]+)/i;
-				const forMatch = userMessage.match(forPattern);
-
-				if (forMatch) {
-					const nameQuery = forMatch[1];
-					console.log("  - Detected name reference:", nameQuery);
-
-					// Try to find matching driver in actualData
-					const matchedItem = actualData.find((item) => {
-						const driverName = item.driverName?.toLowerCase() || "";
-						return driverName.includes(nameQuery.toLowerCase());
-					});
-
-					if (matchedItem && api.optionalFilteredField.includes("DriverId")) {
-						extractedFilterParams = { DriverId: matchedItem.driverId };
-						console.log("  ✅ Matched driver:", matchedItem.driverName, "ID:", matchedItem.driverId);
-					}
-				}
-
-				// Check for specific ID patterns (e.g., "driver 1482")
-				const idPattern = /driver\s+(\d+)/i;
-				const idMatch = userMessage.match(idPattern);
-
-				if (idMatch && api.optionalFilteredField.includes("DriverId")) {
-					extractedFilterParams = { DriverId: parseInt(idMatch[1]) };
-					console.log("  ✅ Extracted driver ID from message:", extractedFilterParams.DriverId);
-				}
-			}
 		}
 
 		// Remove meta tag from final response
@@ -664,12 +632,12 @@ Do not include any explanation, just the JSON array.`;
 		console.log("✅ Response generation complete");
 		console.log("========================================\n");
 
-		// 🔹 RETURN WITH FILTER PARAMS
+		// Return with filter params
 		return {
 			userReply: cleanReply,
 			params,
 			api,
-			filterParams: extractedFilterParams, // 🔹 NEW: Return extracted filter params
+			filterParams: extractedFilterParams,
 		};
 	} catch (err) {
 		if (abortSignal?.aborted) return { error: "Request aborted" };

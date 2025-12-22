@@ -1,6 +1,6 @@
 const mongoose = require("mongoose");
 const API_BASE = process.env.API_BASE_URL;
-
+const axios = require("axios");
 const sessionSchema = new mongoose.Schema(
 	{
 		userId: { type: String, required: true },
@@ -52,6 +52,7 @@ const sessionSchema = new mongoose.Schema(
 			{
 				driverId: { type: Number },
 				driverName: { type: String },
+				_id: false,
 			},
 		],
 		missingField: {
@@ -60,7 +61,8 @@ const sessionSchema = new mongoose.Schema(
 			lastParams: { type: mongoose.Schema.Types.Mixed },
 			missingFields: [{ type: String }],
 		},
-
+		clientWeekStartDay: { type: String, enum: ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"], default: "Sunday" },
+		clientWeekEndDay: { type: String, enum: ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"], default: "Saturday" },
 		createdAt: {
 			type: Date,
 			default: Date.now,
@@ -158,12 +160,11 @@ sessionSchema.methods.isDriverListExpired = function () {
 // 🔄 Refresh driver list
 sessionSchema.methods.refreshDriverList = async function () {
 	try {
-		const axios = require("axios");
 		const response = await axios.get(`${API_BASE}/GetDriverByClientId?ClientId=${this.ClientId}`);
 
 		if (response?.data && Array.isArray(response.data.data)) {
 			this.lmdpLists = response.data.data.map((driver) => ({
-				driverId: driver.driverId || driver.DriverId,
+				driverId: driver.driverId,
 				driverName: driver.firstName + " " + driver.lastName,
 			}));
 			await this.save();
@@ -172,6 +173,56 @@ sessionSchema.methods.refreshDriverList = async function () {
 
 		return { success: false, error: "Invalid driver response" };
 	} catch (err) {
+		return { success: false, error: err.message };
+	}
+};
+
+// 🔄 Refresh client week start and end days
+sessionSchema.methods.refreshWeekDays = async function () {
+	try {
+		const response = await axios.get(`${API_BASE}/GetWeekList?ClientId=${this.ClientId}`, {
+			headers: {
+				Authorization: `Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJVc2VySWQiOiI4MiIsIkNsaWVudElkIjoiMiIsImV4cCI6MTc2NjQ3MjI1NywiaXNzIjoiaHR0cHM6Ly9sb2NhbGhvc3Q6NzAwNyIsImF1ZCI6Imh0dHBzOi8vbG9jYWxob3N0OjcwMDcifQ.q-tlg0kjehPDPUXfoaqFXFJ6s5avOyLevDftPTSRkuo`,
+			},
+		});
+		console.log(response)
+
+		if (response?.data && Array.isArray(response.data.data) && response.data.data.length > 0) {
+			// Get the last object from the array
+			const lastWeek = response.data.data[response.data.data.length - 1];
+
+			// Extract dates
+			const weekStartDate = new Date(lastWeek.client_WeekStarting);
+			const weekEndDate = new Date(lastWeek.client_WeekEnding);
+
+			// Get day names (Sunday, Monday, Tuesday, etc.)
+			const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+			
+			const startDayName = dayNames[weekStartDate.getDay()];
+			const endDayName = dayNames[weekEndDate.getDay()];
+
+			// Assign to session
+			this.clientWeekStartDay = startDayName;
+			this.clientWeekEndDay = endDayName;
+
+			await this.save();
+
+			console.log("✅ Week days updated");
+			console.log(`Week Start Day: ${startDayName} (${weekStartDate.toLocaleDateString()})`);
+			console.log(`Week End Day: ${endDayName} (${weekEndDate.toLocaleDateString()})`);
+
+			return {
+				success: true,
+				clientWeekStartDay: startDayName,
+				clientWeekEndDay: endDayName,
+				weekStartDate: weekStartDate.toLocaleDateString(),
+				weekEndDate: weekEndDate.toLocaleDateString(),
+			};
+		}
+
+		return { success: false, error: "Invalid week list response" };
+	} catch (err) {
+		console.error("❌ Error refreshing week days:", err.message);
 		return { success: false, error: err.message };
 	}
 };
