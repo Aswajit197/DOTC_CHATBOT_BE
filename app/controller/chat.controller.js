@@ -288,38 +288,7 @@ chat.sendMessage = async (req, res) => {
 		}
 	}
 };
-// 🆕 NEW: Add this to your routes - Stop endpoint
-chat.stopMessage = async (req, res) => {
-	try {
-		const { sessionId } = req.body;
 
-		console.log("🛑 STOP REQUEST RECEIVED for session:", sessionId);
-
-		if (!sessionId) {
-			return res.status(400).json({ error: "Missing sessionId" });
-		}
-
-		// Set stop flag in memory/cache for this session
-		global.stoppedSessions = global.stoppedSessions || new Set();
-		global.stoppedSessions.add(sessionId);
-
-		console.log("✅ Session marked as stopped:", sessionId);
-		console.log("📊 Currently stopped sessions:", Array.from(global.stoppedSessions));
-
-		// Clean up after 30 seconds to prevent memory leaks
-		setTimeout(() => {
-			if (global.stoppedSessions) {
-				global.stoppedSessions.delete(sessionId);
-				console.log("🧹 Cleaned up stopped session:", sessionId);
-			}
-		}, 30000);
-
-		res.json({ success: true, message: "Stop signal received" });
-	} catch (error) {
-		console.error("❌ Error in stop endpoint:", error);
-		res.status(500).json({ error: "Internal server error" });
-	}
-};
 // 🔹 Create Session Controller
 chat.createSession = async (req, res) => {
 	try {
@@ -343,7 +312,38 @@ chat.createSession = async (req, res) => {
 			console.error("Driver fetch error:", err.message);
 		}
 
-		// 2️⃣ Greeting message
+		// 2️⃣ Fetch week days configuration
+		let clientWeekStartDay = "Sunday";
+		let clientWeekEndDay = "Saturday";
+		try {
+			const weekResponse = await axios.get(`${API_BASE}/GetWeekList?ClientId=${clientId}`, {
+				headers: {
+					Authorization: `Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJVc2VySWQiOiI4MiIsIkNsaWVudElkIjoiMiIsImV4cCI6MTc2NjQ3MjI1NywiaXNzIjoiaHR0cHM6Ly9sb2NhbGhvc3Q6NzAwNyIsImF1ZCI6Imh0dHBzOi8vbG9jYWxob3N0OjcwMDcifQ.q-tlg0kjehPDPUXfoaqFXFJ6s5avOyLevDftPTSRkuo`,
+				},
+			});
+
+			if (weekResponse?.data && Array.isArray(weekResponse.data.data.weeks) && weekResponse.data.data.weeks.length > 0) {
+				// Get the last week object
+				const lastWeek = weekResponse.data.data.weeks[weekResponse.data.data.weeks.length - 1];
+
+				// Extract dates
+				const weekStartDate = new Date(lastWeek.client_WeekStarting);
+				const weekEndDate = new Date(lastWeek.client_WeekEnding);
+
+				// Get day names (Monday, Tuesday, etc.)
+				const dayNames = ["Sunday","Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+				clientWeekStartDay = dayNames[weekStartDate.getDay()];
+				clientWeekEndDay = dayNames[weekEndDate.getDay()];
+
+				console.log(`✅ Week days fetched - Start: ${clientWeekStartDay}, End: ${clientWeekEndDay}`);
+			}
+		} catch (err) {
+			console.error("Week days fetch error:", err.message);
+			console.log("⚠️ Using default week days (Sunday-Saturday)");
+		}
+
+		// 3️⃣ Greeting message
 		const greetingMessage = {
 			sender: "bot",
 			message: `Hi! 👋 I'm your SchedAI assistant. Ask me anything related to your tasks, drivers, or station work and I'll help you out!`,
@@ -353,7 +353,9 @@ chat.createSession = async (req, res) => {
 			timestamp: new Date(),
 		};
 
-		// 3️⃣ Create session + store drivers
+		console.log(clientWeekStartDay, clientWeekEndDay, "week days to be stored in session");
+
+		// 4️⃣ Create session + store drivers + store week days
 		const session = await Session.create({
 			ClientId: clientId,
 			StationId: clientId,
@@ -361,21 +363,27 @@ chat.createSession = async (req, res) => {
 			sessionName: "New Chat",
 			history: [greetingMessage],
 			lmdpLists: driverList,
+			clientWeekStartDay,
+			clientWeekEndDay,
 		});
 
-		// 4️⃣ 🔹 UPDATE ALL SESSIONS WITH SAME ClientId
-		// This ensures all sessions for this client have the latest driver list
+		// 5️⃣ 🔹 UPDATE ALL SESSIONS WITH SAME ClientId
+		// This ensures all sessions for this client have the latest driver list AND week days configuration
 		await Session.updateMany(
 			{ ClientId: clientId },
 			{
 				$set: {
 					lmdpLists: driverList,
+					clientWeekStartDay,
+					clientWeekEndDay,
 					updatedAt: new Date(),
 				},
 			}
 		);
 
-		console.log(`✅ Session created and driver list updated for all ClientId: ${clientId} sessions`);
+		console.log(`✅ Session created and updated for ClientId: ${clientId}`);
+		console.log(`   - Driver list: ${driverList.length} drivers`);
+		console.log(`   - Week days: ${clientWeekStartDay} - ${clientWeekEndDay}`);
 
 		return res.json({
 			message: "Session created successfully",

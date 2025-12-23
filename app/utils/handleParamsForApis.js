@@ -116,7 +116,7 @@ async function handleParamsForApi(matchedApi, params, userMessage, session, { on
 	const needsDateExtraction = missingFields.some((f) => dateFields.includes(f));
 
 	if (needsDateExtraction) {
-		const extracted = await extractDateParamsFromOpenAI(userMessage);
+		const extracted = await extractDateParamsFromOpenAI(userMessage,session.clientWeekStartDay,session.clientWeekEndDay);
 
 		if (abortSignal?.aborted) {
 			console.log("🚫 handleParamsForApi aborted during date extraction");

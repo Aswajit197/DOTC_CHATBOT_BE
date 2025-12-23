@@ -117,7 +117,7 @@ const startWeekDaysAutoRefresh = () => {
 					const weekStartDate = new Date(lastWeek.client_WeekStarting);
 					const weekEndDate = new Date(lastWeek.client_WeekEnding);
 
-					const dayNames = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+					const dayNames = ["Sunday","Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 					const startDayName = dayNames[weekStartDate.getDay()];
 					const endDayName = dayNames[weekEndDate.getDay()];
 
@@ -227,7 +227,7 @@ const startLmdpAutoRefreshWithInterval = (intervalHours = 24) => {
 // 🔹 ALTERNATIVE: Manual trigger with interval for week days (if cron doesn't work)
 const startWeekDaysAutoRefreshWithInterval = (intervalHours = 24) => {
 	// const intervalMs = intervalHours * 60 * 60 * 1000;
-	const intervalMs = 12 * 60 * 1000; //5 minute for testing
+	const intervalMs = 2 * 60 * 1000; //5 minute for testing
 
 	setInterval(async () => {
 		console.log("\n========================================");
@@ -265,7 +265,7 @@ const startWeekDaysAutoRefreshWithInterval = (intervalHours = 24) => {
 					console.log(weekStartDate.getDay());
 					console.log(weekEndDate.getDay());
 
-					const dayNames = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday","Sunday"];
+					const dayNames = ["Sunday","Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 					const startDayName = dayNames[weekStartDate.getDay()];
 					const endDayName = dayNames[weekEndDate.getDay()];
 

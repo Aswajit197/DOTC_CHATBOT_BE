@@ -82,6 +82,7 @@ function getStartDateOfWeek(weekNumber, year, weekStartDay = "Sunday") {
 	const targetDate = new Date(firstWeekStart);
 	targetDate.setDate(firstWeekStart.getDate() + (weekNumber - 1) * 7);
 
+	console.log("Start Date Calculated:", targetDate);
 	return targetDate;
 }
 
@@ -92,6 +93,7 @@ function getStartDateOfWeek(weekNumber, year, weekStartDay = "Sunday") {
  * @param {string} weekStartDay - Client's week start day
  * @param {string} weekEndDay - Client's week end day
  */
+
 function getEndDateOfWeek(weekNumber, year, weekStartDay = "Sunday", weekEndDay = "Saturday") {
 	const startDate = getStartDateOfWeek(weekNumber, year, weekStartDay);
 
@@ -102,6 +104,7 @@ function getEndDateOfWeek(weekNumber, year, weekStartDay = "Sunday", weekEndDay 
 
 	const endDate = new Date(startDate);
 	endDate.setDate(startDate.getDate() + daysDiff);
+	console.log("End Date Calculated:", endDate);
 
 	return endDate;
 }
@@ -254,6 +257,7 @@ IMPORTANT: Only set hasDateHint to true if the user explicitly mentioned a time 
  * @returns {Promise<{FromDate: string, ToDate: string}>} - Formatted dates (YYYY-MM-DD)
  */
 async function handleFromDateToDate(userMessage, weekStartDay = "Sunday", weekEndDay = "Saturday") {
+	console.log(weekStartDay, weekEndDay, "week days in date param handler");
 	console.log("\n🔍 Handling FromDate and ToDate extraction (Dynamic)...");
 	console.log("User message:", userMessage);
 	console.log("Client Week Config:", `${weekStartDay} - ${weekEndDay}`);

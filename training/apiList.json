@@ -52,7 +52,7 @@
 	},
 	{
 		"name": "GetDriverByClientId",
-		"description": "Retrieves the complete list of all drivers associated with the client. Use this intent when the user asks for 'all drivers list', 'give me the driver list', 'list all LMDPs', 'show all drivers with their details', or 'driver directory'. It returns each driver's ID, first name, last name, mobile number, email, and unique identifier. Always output in table format for easy viewing",
+		"description": "Retrieves the complete list of ALL drivers/LMDPs associated with the client. Use this intent when user asks for 'all drivers list', 'give me the driver list', 'list all LMDPs', 'list all drivers', 'show all drivers with details', 'driver directory', 'get all LMDPs', or any general driver listing query. Returns driver ID, first name, last name, mobile, email, and details. Always output in table format.",
 		"requiredFields": ["ClientId"]
 	},
 	{
@@ -87,7 +87,7 @@
 	},
 	{
 		"name": "GetLMDPLocationPreferenceList",
-		"description": "Returns the location preference list for all LMDPs/ drivers",
+		"description": "Retrieves the location preferences (preferred work locations, station preferences, geographic zones) for a SPECIFIC driver/LMDP. Use this ONLY when user explicitly asks about 'location preferences', 'geographic preferences', 'station preferences', 'work location preferences' for a SPECIFIC driver (e.g., 'Show location preferences for driver Alex', 'What are John's location preferences'). REQUIRES a specific DriverId - do NOT use for general driver list queries.",
 		"requiredFields": ["DriverId", "ClientId"]
 	},
 	{

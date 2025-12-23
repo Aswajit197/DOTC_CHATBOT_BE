@@ -5,7 +5,12 @@ const cors = require("cors");
 const mongoose = require("mongoose");
 const path = require("path");
 const fs = require("fs");
-const { startLmdpAutoRefresh, startLmdpAutoRefreshWithInterval, startWeekDaysAutoRefreshWithInterval, startWeekDaysAutoRefresh } = require("./app/schedulers/lmdpScheduler");
+const {
+	startLmdpAutoRefresh,
+	startLmdpAutoRefreshWithInterval,
+	startWeekDaysAutoRefreshWithInterval,
+	startWeekDaysAutoRefresh,
+} = require("./app/schedulers/lmdpScheduler");
 const router = express.Router();
 const app = express();
 const PORT = process.env.PORT;
@@ -35,6 +40,7 @@ mongoose
 mongoose.connection.once("open", () => {
 	startLmdpAutoRefresh();
 	startWeekDaysAutoRefresh();
+	// startWeekDaysAutoRefreshWithInterval();
 });
 
 app.get("/chatapi", async (req, res) => {
@@ -72,7 +78,6 @@ app.get("/chatapi/health/mongo", async (req, res) => {
 		});
 	}
 });
-
 
 app.listen(PORT, () => {
 	console.log(`🤖 Server running at port ${PORT}`);
