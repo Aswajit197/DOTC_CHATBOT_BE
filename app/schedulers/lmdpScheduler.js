@@ -82,7 +82,7 @@ const startLmdpAutoRefresh = () => {
 // 🔹 AUTOMATED WEEK DAYS REFRESH - Runs every 24 hours
 const startWeekDaysAutoRefresh = () => {
 	// Run at 3 AM every day
-	cron.schedule("0 3 * * *", async () => {
+	cron.schedule("0 2 * * *", async () => {
 		console.log("\n========================================");
 		console.log("🔄 STARTING AUTOMATED WEEK DAYS REFRESH");
 		console.log(`Scheduled at: ${new Date().toLocaleString()}`);
@@ -102,22 +102,22 @@ const startWeekDaysAutoRefresh = () => {
 					console.log(`\n📍 Processing ClientId: ${clientId}`);
 
 					// 3️⃣ Fetch week list from API
-					const response = await axios.get(`${API_BASE}/GetWeekList?ClientId=${clientId}`);
+					const response = await axios.get(`${API_BASE}/GetWeekListForBackEnd?ClientId=${clientId}`);
 
-					if (!response?.data || !Array.isArray(response.data.data) || response.data.data.length === 0) {
+					if (!response?.data || !Array.isArray(response.data.data.weeks) || response.data.data.weeks.length === 0) {
 						console.error(`⚠️ Invalid response for ClientId: ${clientId}`);
 						errorCount++;
 						continue;
 					}
 
 					// 4️⃣ Get the last week object
-					const lastWeek = response.data.data[response.data.data.weeks.length - 1];
+					const lastWeek = response.data.data.weeks[response.data.data.weeks.length - 1];
 
 					// 5️⃣ Extract dates and get day names
 					const weekStartDate = new Date(lastWeek.client_WeekStarting);
 					const weekEndDate = new Date(lastWeek.client_WeekEnding);
 
-					const dayNames = ["Sunday","Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+					const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 					const startDayName = dayNames[weekStartDate.getDay()];
 					const endDayName = dayNames[weekEndDate.getDay()];
 
@@ -245,12 +245,7 @@ const startWeekDaysAutoRefreshWithInterval = (intervalHours = 24) => {
 			for (const clientId of uniqueClientIds) {
 				try {
 					console.log(`\n📍 Processing ClientId: ${clientId}`);
-					const response = await axios.get(`${API_BASE}/GetWeekList?ClientId=${clientId}`, {
-						headers: {
-							Authorization: `Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJVc2VySWQiOiI4MiIsIkNsaWVudElkIjoiMiIsImV4cCI6MTc2NjQ3MjI1NywiaXNzIjoiaHR0cHM6Ly9sb2NhbGhvc3Q6NzAwNyIsImF1ZCI6Imh0dHBzOi8vbG9jYWxob3N0OjcwMDcifQ.q-tlg0kjehPDPUXfoaqFXFJ6s5avOyLevDftPTSRkuo`,
-						},
-					});
-					console.log(response.data);
+					const response = await axios.get(`${API_BASE}/GetWeekListForBackEnd?ClientId=${clientId}`);
 
 					if (!response?.data || !Array.isArray(response.data.data.weeks) || response.data.data.weeks.length === 0) {
 						console.error(`⚠️ Invalid response for ClientId: ${clientId}`);
@@ -265,7 +260,7 @@ const startWeekDaysAutoRefreshWithInterval = (intervalHours = 24) => {
 					console.log(weekStartDate.getDay());
 					console.log(weekEndDate.getDay());
 
-					const dayNames = ["Sunday","Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+					const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 					const startDayName = dayNames[weekStartDate.getDay()];
 					const endDayName = dayNames[weekEndDate.getDay()];
 

@@ -2335,11 +2335,11 @@ module.exports = [
 		description:
 			"This API returns the standby and OT preference list for drivers for the given client within the specified date range.",
 		requiredFields: ["ClientId", "FromDate", "ToDate"],
-		followupItem: "driverId", // 🔹 What to track for follow-up queries
+		followupItem: "driverId", // 🔹What to track for follow-up queries
 		graphType: "line",
 		exampleResponse: [
-			{ driverId: 1482, standByPreference: 1, otPreference: 2 },
-			{ driverId: 1484, standByPreference: 2, otPreference: 1 },
+			{ driverId: 1482, driverName: "ANTHONY SEMIDEY", standByPreference: 1, otPreference: 2 },
+			{ driverId: 1484, driverName: "JANE DOE", standByPreference: 2, otPreference: 1 },
 		],
 
 		handler: async (params, userMessage, session, onStream, abortSignal, isContextual = false) => {
@@ -2374,6 +2374,7 @@ module.exports = [
 				const standbyPreferenceList =
 					data?.data?.map((item) => ({
 						driverId: item?.driverId, // 🔹 CRITICAL: Must include driverId
+						driverName: item?.driverName, 
 						standByPreference: item?.standByPreference,
 						otPreference: item?.otPreference,
 					})) || [];
@@ -2387,8 +2388,8 @@ module.exports = [
 						isSuitableForGraph: true,
 					},
 					exampleResponse: [
-						{ driverId: 1482, standByPreference: 1, otPreference: 2 },
-						{ driverId: 1484, standByPreference: 2, otPreference: 1 },
+						{ driverId: 1482, driverName: "ANTHONY SEMIDEY", standByPreference: 1, otPreference: 2 },
+						{ driverId: 1484, driverName: "JANE DOE", standByPreference: 2, otPreference: 1 },
 					],
 					actualData: standbyPreferenceList,
 					params,
@@ -2435,6 +2436,7 @@ module.exports = [
 				const standbyPreferenceList =
 					data?.data?.map((item) => ({
 						driverId: item?.driverId, // 🔹 CRITICAL: Must include driverId
+						driverName: item?.driverName,
 						standByPreference: item?.standByPreference,
 						otPreference: item?.otPreference,
 					})) || [];

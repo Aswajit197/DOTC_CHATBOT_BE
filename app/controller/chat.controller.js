@@ -10,6 +10,8 @@ const chat = {};
 // 🔹 Send Message Controller
 chat.sendMessage = async (req, res) => {
 	let isAborted = false;
+	let streamedContent = ""; // 🔹 NEW: Track streamed content
+	
 	try {
 		const { sessionId, message } = req.body;
 		if (!sessionId || !message) {
@@ -104,6 +106,9 @@ chat.sendMessage = async (req, res) => {
 				}
 
 				if (chunk) {
+					// 🔹 NEW: Accumulate streamed content
+					streamedContent += chunk;
+					
 					try {
 						res.write(`data: ${JSON.stringify({ type: "partial", text: chunk })}\n\n`);
 					} catch (writeError) {
@@ -118,6 +123,25 @@ chat.sendMessage = async (req, res) => {
 
 		if (isAborted) {
 			console.log("⚠️ Request aborted after intent processing");
+			// 🔹 NEW: Save streamed content if exists
+			if (streamedContent.trim()) {
+				console.log("💾 Saving streamed content before abort:", streamedContent.substring(0, 100) + "...");
+				session.history.push({
+					sender: "bot",
+					message: streamedContent,
+					isIncomplete: true, // 🔹 Mark as incomplete
+					timestamp: new Date(),
+					context: {
+						lastIntent: intentResult?.api?.name || null,
+						lastUserMessage: intentResult?.userMessage || message,
+						lastParams: intentResult?.params || {},
+						lastResponseMessage: streamedContent,
+						lastFilterParams: intentResult?.filterParams || null,
+					},
+				});
+				await session.save();
+				console.log("✅ Incomplete response saved to session");
+			}
 			return;
 		}
 
@@ -258,6 +282,7 @@ chat.sendMessage = async (req, res) => {
 				const botHistoryEntry = {
 					sender: "bot",
 					message: intentResult.formattedReply,
+					isIncomplete: false, // 🔹 Mark as complete
 					context: {
 						lastIntent: intentResult?.api?.name,
 						lastUserMessage: intentResult?.userMessage,
@@ -305,7 +330,7 @@ chat.createSession = async (req, res) => {
 			if (driverResponse?.data) {
 				driverList = driverResponse.data.data.map((d) => ({
 					driverId: d.driverId || d.DriverId,
-					driverName: d.driverName || d.DriverName,
+					driverName: d.firstName + " " + d.lastName,
 				}));
 			}
 		} catch (err) {
@@ -316,11 +341,7 @@ chat.createSession = async (req, res) => {
 		let clientWeekStartDay = "Sunday";
 		let clientWeekEndDay = "Saturday";
 		try {
-			const weekResponse = await axios.get(`${API_BASE}/GetWeekList?ClientId=${clientId}`, {
-				headers: {
-					Authorization: `Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJVc2VySWQiOiI4MiIsIkNsaWVudElkIjoiMiIsImV4cCI6MTc2NjQ3MjI1NywiaXNzIjoiaHR0cHM6Ly9sb2NhbGhvc3Q6NzAwNyIsImF1ZCI6Imh0dHBzOi8vbG9jYWxob3N0OjcwMDcifQ.q-tlg0kjehPDPUXfoaqFXFJ6s5avOyLevDftPTSRkuo`,
-				},
-			});
+			const weekResponse = await axios.get(`${API_BASE}/GetWeekListForBackEnd?ClientId=${clientId}`);
 
 			if (weekResponse?.data && Array.isArray(weekResponse.data.data.weeks) && weekResponse.data.data.weeks.length > 0) {
 				// Get the last week object

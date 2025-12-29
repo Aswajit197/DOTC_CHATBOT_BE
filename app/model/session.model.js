@@ -13,6 +13,7 @@ const sessionSchema = new mongoose.Schema(
 				message: String,
 				chatType: String,
 				data: { type: mongoose.Schema.Types.Mixed },
+				isIncomplete: { type: Boolean, default: false },
 				context: {
 					lastIntent: { type: String },
 					lastUserMessage: { type: String },
@@ -66,7 +67,7 @@ const sessionSchema = new mongoose.Schema(
 		createdAt: {
 			type: Date,
 			default: Date.now,
-			expires: 5 * 60 * 60 * 24,
+			// expires: 5 * 60 * 60 * 24,
 		},
 	},
 	{ timestamps: true }
@@ -141,12 +142,12 @@ ${idx + 1}. ${ctx.entityIntent} (${ctx.entityType})
 };
 
 // 🔹 Clear old contexts (optional - for cleanup)
-sessionSchema.methods.clearOldContexts = function (olderThanMinutes = 30) {
-	if (!this.contextHistory || this.contextHistory.length === 0) return;
+// sessionSchema.methods.clearOldContexts = function (olderThanMinutes = 30) {
+// 	if (!this.contextHistory || this.contextHistory.length === 0) return;
 
-	const cutoffTime = new Date(Date.now() - olderThanMinutes * 60 * 1000);
-	this.contextHistory = this.contextHistory.filter((ctx) => new Date(ctx.timestamp) > cutoffTime);
-};
+// 	const cutoffTime = new Date(Date.now() - olderThanMinutes * 60 * 1000);
+// 	this.contextHistory = this.contextHistory.filter((ctx) => new Date(ctx.timestamp) > cutoffTime);
+// };
 
 // ⏳ Check if driver list is older than 24 hours
 sessionSchema.methods.isDriverListExpired = function () {
@@ -180,11 +181,7 @@ sessionSchema.methods.refreshDriverList = async function () {
 // 🔄 Refresh client week start and end days
 sessionSchema.methods.refreshWeekDays = async function () {
 	try {
-		const response = await axios.get(`${API_BASE}/GetWeekList?ClientId=${this.ClientId}`, {
-			headers: {
-				Authorization: `Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJVc2VySWQiOiI4MiIsIkNsaWVudElkIjoiMiIsImV4cCI6MTc2NjQ3MjI1NywiaXNzIjoiaHR0cHM6Ly9sb2NhbGhvc3Q6NzAwNyIsImF1ZCI6Imh0dHBzOi8vbG9jYWxob3N0OjcwMDcifQ.q-tlg0kjehPDPUXfoaqFXFJ6s5avOyLevDftPTSRkuo`,
-			},
-		});
+		const response = await axios.get(`${API_BASE}/GetWeekListForBackEnd?ClientId=${this.ClientId}`);
 		console.log(response)
 
 		if (response?.data && Array.isArray(response.data.data) && response.data.data.length > 0) {
