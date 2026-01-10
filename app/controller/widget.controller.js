@@ -186,6 +186,20 @@ widget.getWidget = async (req, res) => {
 		res.status(500).json({ error: "Widget fetch failed", details: err.message });
 	}
 };
+widget.getWidgetByClientId = async (req, res) => {
+	try {
+		const { clientId } = req.params;
+		const widgetData = await Widget.find({ ClientId: clientId });
+
+		res.status(200).json({
+			message: "Widget(s) fetched successfully",
+			data: widgetData,
+		});
+	} catch (err) {
+		console.error("Error fetching widget(s):", err);
+		res.status(500).json({ error: "Widget fetch failed", details: err.message });
+	}
+};
 
 // 🔹 Delete Widget Controller
 widget.deleteWidget = async (req, res) => {
