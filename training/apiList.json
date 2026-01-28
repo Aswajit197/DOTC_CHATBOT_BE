@@ -37,7 +37,7 @@
 	},
 	{
 		"name": "GetTimeOffRequestForBackend",
-		"description": "Returns a list of driver's time-off requests, including details such as driver name, request dates, reason for leave, and the current status (approved, declined, or pending). This API helps track when drivers have requested time off and whether those requests were accepted or not. Example queries include: 'Which driver takes the most leaves?', 'Give me pending leave requests', 'Show me drivers time-off requests.",
+		"description": "Returns a list of driver's time-off requests, including details such as driver name, request dates, reason for leave, and the current status (approved, declined, or pending). This API helps track when drivers have requested time off and whether those requests were accepted or not. It should also be used when users ask about 'no-shows', 'absences', or 'who didn't show up' yesterday, today, or in the past. Example queries include: 'Which driver takes the most leaves?', 'Give me pending leave requests', 'Show me drivers time-off requests', 'who didn't show up yesterday?', 'who was absent last week?'.",
 		"requiredFields": ["ClientId"]
 	},
 	{

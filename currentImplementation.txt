@@ -1,0 +1,102 @@
+# SchedAI ChatBot - Current Implementation Flow
+
+This document details the step-by-step flow of how a user message is processed by the SchedAI ChatBot backend, specifically focusing on the `sendMessage` process.
+
+## 1. Entry Point: `chat.sendMessage`
+**File:** `app/controller/chat.controller.js`
+
+1.  **Request Reception:** Receives `sessionId` and `message` from the frontend.
+2.  **Session Retrieval:** Fetches the session from MongoDB.
+3.  **Title Generation:** If it's the first message, uses GPT-3.5 to generate a 2-4 word chat title.
+4.  **SSE Setup:** Sets up Server-Sent Events (SSE) headers (`text/event-stream`) to stream the response back to the client.
+5.  **Abort Handling:** Sets up an `AbortController` to handle client disconnects and stop internal processing.
+6.  **Persistence:** Saves the user's message to the session history.
+7.  **Intent Processing Trigger:** Calls `getIntentFromOpenAI`.
+
+---
+
+## 2. Intent Detection: `getIntentFromOpenAI`
+**File:** `app/utils/getIntentFromOpenAi.js`
+
+This is the "Brain" of the operation. It decides what the user wants to do.
+
+1.  **Vector Search:** Calls `searchAPIs(userMessage)` which uses embeddings to find the top most relevant APIs from `apiDetails.js`.
+2.  **Context Building:** Prepares a summary of the conversation history (rolling context) to determine if this is a follow-up query.
+### Intent Types & Internal Flows:
+
+*   **`independent` (Fresh Query):**
+    1.  Calls `handleParamsForApi` to normalize parameters and extract dates if needed.
+    2.  If required fields are missing, generates a fallback prompt via OpenAI to ask the user.
+    3.  If all fields are present, calls the API's `handler` (which usually calls the backend and then `processIntentAndFormatResponse`).
+
+*   **`contextual_followup` (Referring to previous results):**
+    1.  Triggered when user uses pronouns like "their", "them", or phrases like "the above drivers".
+    2.  System calls `handleParamsForApi{isContextual: true}`.
+    3.  Calls the API's `handler{isContextual: true}`.
+    4.  **Internal Magic:** `processIntentAndFormatResponse` calls `applyContextualFilter`. It retrieves the IDs of entities displayed in the *previous* turn (stored in session context) and filters the *current* API's `actualData` to include ONLY those specific entities.
+
+*   **`multi_intent` (Multiple APIs needed):**
+    1.  Calls `handleMultiIntentApis`.
+    2.  Internally loops through each requested API.
+    3.  For each, it calls `handleParamsForApi` and the API's `multiHandler` to get raw data.
+    4.  **Final Step:** Calls OpenAI to intelligently merge all results into one cohesive HTML response (e.g., merging driver info and schedules into a single table).
+
+*   **`refinement_request` (Filtering/Sorting/Refining last response):**
+    1.  Calls `refineResponseFromLastResponse`.
+    2.  Uses OpenAI (`isSameIntent`) to check if the request is redundant.
+    3.  If unique, OpenAI processes the `lastSuccessApiResponse` (cached data) and applies the user's requested filter or sort.
+    4.  **Result:** Generates a new HTML response WITHOUT a new backend API call.
+
+*   **`visualization_request` (Request for Chart/Graph):**
+    1.  Calls `getGraphJsonFromLastResponse`.
+    2.  OpenAI reads the HTML from the `lastResponseMessage`.
+    3.  It converts that HTML table/list into a clean JSON array matching the API's schema.
+    4.  Returns this JSON to the frontend for rendering charts (Bar, Pie, etc.).
+
+*   **`handle_missing_field` (Providing required information):**
+    1.  Triggered when the user answers a question like "Which station?".
+    2.  System merges the new input into `session.missingField.lastParams`.
+    3.  Resumes the original intended flow by calling `handleParamsForApi` and the API handler.
+
+### Core Internal Utilities:
+
+*   **Parameter Extraction (OpenAI):**
+    - Done during intent detection. OpenAI extracts IDs (like `StationId: 5`) or marks them as `null` if the user provided a name instead of an ID (e.g., "for Jordan").
+
+*   **Driver Name Matching:**
+    - If `DriverId` is `null` but the API requires it:
+    - Calls `extractDriverNamesFromMessage` (OpenAI) to extract names from the message.
+    - Calls `findDriverIdByName` (Fuzzy matching) to find the ID in the session's `lmdpLists`.
+
+*   **Parameter Handling (`handleParamsForApis.js`):**
+    - **Auto-Fill:** Automatically adds `ClientId` and `StationId` from the active session.
+    - **Date Logic:** If `WeekStarting` or `FromDate` are missing/required, calls `extractDateParamsFromOpenAI` or `handleFromDateToDate` to interpret "last week", "current week", etc.
+
+---
+
+## 3. Data Retrieval & Processing: API Handlers
+**File:** `apiDetails.js`
+
+1.  **Data Fetching:** Handlers typically use `axios` to fetch data from the actual backend API.
+2.  **Data Mapping:** Maps the raw API response to a clean, structured object list.
+3.  **Formatting Trigger:** Calls `processIntentAndFormatResponse`.
+
+---
+
+## 4. Final Formatting: `processIntentAndFormatResponse`
+**File:** `app/utils/ProcessIntentAndFormatResponse.js`
+
+1.  **Contextual Filtering:** If `isContextual` is true, it filters the data to only include entities referenced in the previous turn (e.g., the specific 10 drivers mentioned earlier).
+2.  **Calculation Intent:** Calls `detectCalculationIntent` (via OpenAI) to see if the user wants math done (average, sum, etc.) that the API doesn't already provide.
+3.  **Response Generation:** Calls GPT-4o-mini to generate a final HTML response.
+    *   It uses either the raw data or pre-calculated results.
+    *   It decides on the format (Table, List, or Paragraph).
+    *   It adds a "summary" div if multiple items are shown.
+    *   It appends a `meta` tag for tracking "displayed-items" (used for the rolling context in the next turn).
+4.  **Streaming:** The chunks from OpenAI are streamed directly back to the controller's `onStream` callback, which sends them to the client via SSE.
+5.  **Persistence:** Saves the final bot response and any new context entities to the database.
+
+---
+
+## Summary of the Chain
+`Frontend` → `chat.sendMessage` → `getIntentFromOpenAI` → `API Handler` → `processIntentAndFormatResponse` → `OpenAI (Streaming)` → `Frontend`

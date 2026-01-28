@@ -78,35 +78,66 @@ function findDriverIdByName(driverName, lmdpLists) {
 	}
 	console.log("❌ No partial match found");
 
-	// 🔹 Match 3: Match individual words (e.g., "jordan valecia" matches "Jordan Valecia")
-	console.log("\n🔄 Attempt 3: Word-by-word match...");
+	// 🔹 Match 3: Match individual words - ALL search words must match (e.g., "jordan valecia" requires both "jordan" AND "valecia" to match)
+	console.log("\n🔄 Attempt 3: Word-by-word match (ALL words must match)...");
 	const nameWords = searchName.split(" ").filter((w) => w.length > 0);
 	console.log("Search words:", nameWords);
 
-	const wordMatch = validDrivers.find((driver) => {
-		const driverWords = driver.driverName.toLowerCase().split(" ");
-		console.log(`  Checking "${driver.driverName}" (words: ${driverWords})`);
+	// If only one word in search, use looser matching
+	if (nameWords.length === 1) {
+		console.log("Single word search - using partial match");
+		const singleWordMatch = validDrivers.find((driver) => {
+			const driverWords = driver.driverName.toLowerCase().split(" ");
+			console.log(`  Checking "${driver.driverName}" (words: ${driverWords})`);
 
-		const isMatch = nameWords.some((word) => {
-			const wordMatches = driverWords.some((dword) => {
-				const matches = dword.includes(word) || word.includes(dword);
-				if (matches) {
-					console.log(`    ✓ "${word}" ↔ "${dword}"`);
+			const matches = driverWords.some((dword) => {
+				const isMatch = dword.includes(nameWords[0]) || nameWords[0].includes(dword);
+				if (isMatch) {
+					console.log(`    ✓ "${nameWords[0]}" ↔ "${dword}"`);
 				}
-				return matches;
+				return isMatch;
 			});
-			return wordMatches;
+			return matches;
 		});
 
-		return isMatch;
-	});
+		if (singleWordMatch) {
+			console.log(`✅ MATCH FOUND (Single word): "${singleWordMatch.driverName}" → ID: ${singleWordMatch.driverId}`);
+			console.log("========================================\n");
+			return singleWordMatch.driverId;
+		}
+	} else {
+		// Multiple words - ALL must match
+		console.log("Multiple words search - ALL words must match");
+		const multiWordMatch = validDrivers.find((driver) => {
+			const driverWords = driver.driverName.toLowerCase().split(" ");
+			console.log(`  Checking "${driver.driverName}" (words: ${driverWords})`);
 
-	if (wordMatch) {
-		console.log(`✅ MATCH FOUND (Word-by-word): "${wordMatch.driverName}" → ID: ${wordMatch.driverId}`);
-		console.log("========================================\n");
-		return wordMatch.driverId;
+			// Check if ALL search words have a match in driver name
+			const allWordsMatch = nameWords.every((word) => {
+				const wordMatches = driverWords.some((dword) => {
+					const matches = dword.includes(word) || word.includes(dword);
+					if (matches) {
+						console.log(`    ✓ "${word}" ↔ "${dword}"`);
+					}
+					return matches;
+				});
+				if (!wordMatches) {
+					console.log(`    ✗ "${word}" has no match`);
+				}
+				return wordMatches;
+			});
+
+			return allWordsMatch;
+		});
+
+		if (multiWordMatch) {
+			console.log(`✅ MATCH FOUND (All words matched): "${multiWordMatch.driverName}" → ID: ${multiWordMatch.driverId}`);
+			console.log("========================================\n");
+			return multiWordMatch.driverId;
+		}
 	}
-	console.log("❌ No word match found");
+
+	console.log("❌ No word-by-word match found");
 
 	// 🔹 No match found
 	console.error(`\n❌ NO DRIVER FOUND for: "${driverName}"`);
@@ -119,14 +150,12 @@ function findDriverIdByName(driverName, lmdpLists) {
 	return null;
 }
 
-
 // 🔹 NEW: Helper to check if API requires driver/lmdp identification
 function doesApiRequireDriverId(matchedApi) {
 	if (!matchedApi) return false;
 	const driverRelatedFields = ["DriverId", "driverId", "LMDPId"];
 	return matchedApi.requiredFields?.some((field) => driverRelatedFields.some((drf) => drf.toLowerCase() === field.toLowerCase()));
 }
-
 
 // 🔹 NEW: Helper to extract driver names from user message using OpenAI
 async function extractDriverNamesFromMessage(userMessage) {
@@ -138,24 +167,31 @@ async function extractDriverNamesFromMessage(userMessage) {
 
 	try {
 		const prompt = `
-Extract person names (driver names) from this message. Return ONLY valid names, not common words or acronyms.
+Extract person names (driver names) from this message. Return ONLY valid names that appear in the message, not common words or acronyms.
 
 Message: "${userMessage}"
 
-Return a JSON array of names found:
-["Name1", "Name2"]
+Rules:
+1. ONLY extract actual person names that appear in the message
+2. DO NOT return names from the examples below
+3. DO NOT return generic terms like "driver", "drivers", "list", etc.
+4. If the message contains NO specific person names, return empty array: []
 
-If no names found, return empty array: []
-
-Examples:
+Examples of what to extract:
 - "Give me hours for jordan valecia" → ["jordan valecia"]
 - "Show me preferences for alex and john" → ["alex", "john"]
 - "What about anthony semidey's schedule" → ["anthony semidey"]
+
+Examples of what NOT to extract:
 - "List all drivers" → []
 - "Show API details" → []
+- "give driver's day preference list" → []
+- "Show me driver schedules" → []
 
-IMPORTANT: Return ONLY the JSON array in this exact format: ["name1", "name2"]
-Do NOT include any explanations, code blocks, or extra text.
+IMPORTANT: 
+- Return ONLY the JSON array in this exact format: ["name1", "name2"]
+- Do NOT include any explanations, code blocks, or extra text
+- Do NOT return names from the examples - ONLY extract names from the actual message
 `;
 
 		console.log("\n📝 Prompt sent to OpenAI:");
@@ -182,7 +218,10 @@ Do NOT include any explanations, code blocks, or extra text.
 		let cleanResponse = trimmedResponse;
 		if (trimmedResponse.includes("```json")) {
 			console.log("⚠️ Response contains ```json block, extracting content...");
-			cleanResponse = trimmedResponse.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+			cleanResponse = trimmedResponse
+				.replace(/```json\n?/g, "")
+				.replace(/```\n?/g, "")
+				.trim();
 		} else if (trimmedResponse.includes("```")) {
 			console.log("⚠️ Response contains ``` block, extracting content...");
 			cleanResponse = trimmedResponse.replace(/```\n?/g, "").trim();
@@ -243,7 +282,6 @@ Do NOT include any explanations, code blocks, or extra text.
 		return [];
 	}
 }
-
 
 // 🔹function for driver name matching
 async function getIntentFromOpenAI(userMessage, session, { onStream, abortSignal } = {}) {
@@ -312,7 +350,7 @@ ${topApis
 	.map(
 		(api, i) =>
 			`${i + 1}. ${api.name}: ${api.description}
-	 Required fields: ${api.requiredFields && api.requiredFields.length ? api.requiredFields.join(", ") : "None"}`
+	 Required fields: ${api.requiredFields && api.requiredFields.length ? api.requiredFields.join(", ") : "None"}`,
 	)
 	.join("\n")}
 
@@ -658,6 +696,9 @@ Important:
 		}
 
 		if (missingFields.length) {
+			// 🔹 Replace DriverId with Driver Name for user-friendly prompt
+			const userFriendlyMissingFields = missingFields.map((field) => (field === "DriverId" ? "Driver Name" : field));
+
 			const fallbackHelpPrompt = `
 You are a helpful assistant for a Driver Management platform.
 The user said: "${userMessage}"
@@ -665,10 +706,11 @@ You are about to call the API: "${matchedApi.name}".
 This API requires the following fields: ${matchedApi.requiredFields.join(", ")}.
 
 Already provided/handled fields should NOT be asked again.
-The only missing fields are: ${missingFields.join(", ")}.
+The only missing fields are: ${userFriendlyMissingFields.join(", ")}.
 
 Your task:
 - Politely ask ONLY for the missing fields.
+- If asking for Driver Name, request the driver's full name.
 - Respond in plain text, friendly tone.
 `;
 
@@ -707,7 +749,7 @@ Your task:
 				session,
 				onStream,
 				abortSignal,
-				true // 🔹 isContextual = true
+				true, // 🔹 isContextual = true
 			);
 
 			if (abortSignal?.aborted) {
@@ -826,6 +868,9 @@ Respond ONLY with plain text.
 			return { error: "Request aborted" };
 		}
 
+		// 🔹 Replace DriverId with Driver Name for user-friendly prompt
+		const userFriendlyMissingFields = missingFields.map((field) => (field === "DriverId" ? "Driver Name" : field));
+
 		const fallbackHelpPrompt = `
 You are a helpful assistant for a Driver Management platform.
 The user said: "${userMessage}"
@@ -833,10 +878,11 @@ You are about to call the API: "${matchedApi.name}".
 This API requires the following fields: ${matchedApi.requiredFields.join(", ")}.
 
 Already provided/handled fields should NOT be asked again.
-The only missing fields are: ${missingFields.join(", ")}.
+The only missing fields are: ${userFriendlyMissingFields.join(", ")}.
 
 Your task:
 - Politely ask ONLY for the missing fields.
+- If asking for Driver Name, request the driver's full name.
 - Respond in plain text, friendly tone.
 `;
 
@@ -878,7 +924,7 @@ Your task:
 			session,
 			onStream,
 			abortSignal,
-			false // 🔹 isContextual = false (independent query)
+			false, // 🔹 isContextual = false (independent query)
 		);
 
 		if (abortSignal?.aborted) {

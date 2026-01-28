@@ -34,7 +34,7 @@ module.exports = [
 				}
 
 				const { data } = await axios.get(
-					`${API_BASE}/GetDriverWeeklyWorkingHrList?ClientId=${params.ClientId}&FromDate=${params.FromDate}&ToDate=${params.ToDate}`
+					`${API_BASE}/GetDriverWeeklyWorkingHrList?ClientId=${params.ClientId}&FromDate=${params.FromDate}&ToDate=${params.ToDate}`,
 				);
 
 				console.log("📊 API Response length:", data?.data?.length);
@@ -283,8 +283,8 @@ module.exports = [
 					session,
 					onStream,
 					abortSignal,
-					isContextual, // 🔹 Pass this
-					followupItem: "shiftTitle", // 🔹 Pass this
+					isContextual, 
+					followupItem: "shiftTitle", 
 				});
 			} catch (err) {
 				if (abortSignal?.aborted) {
@@ -375,7 +375,7 @@ module.exports = [
 				}
 
 				const { data } = await axios.get(
-					`${API_BASE}/GetLMDPDayPreferenceList?DriverId=${params.DriverId}&ClientId=${params.ClientId}`
+					`${API_BASE}/GetLMDPDayPreferenceList?DriverId=${params.DriverId}&ClientId=${params.ClientId}`,
 				);
 
 				if (abortSignal?.aborted) {
@@ -443,7 +443,7 @@ module.exports = [
 				}
 
 				const { data } = await axios.get(
-					`${API_BASE}/GetLMDPDayPreferenceList?DriverId=${params.DriverId}&ClientId=${params.ClientId}`
+					`${API_BASE}/GetLMDPDayPreferenceList?DriverId=${params.DriverId}&ClientId=${params.ClientId}`,
 				);
 
 				if (abortSignal?.aborted) {
@@ -617,7 +617,7 @@ module.exports = [
 					return { error: "Request aborted" };
 				}
 				const { data } = await axios.get(
-					`${API_BASE}/GetLMDPMaxQualificationsList?ClientId=${params.ClientId}&FromDate=${params.FromDate}&ToDate=${params.ToDate}`
+					`${API_BASE}/GetLMDPMaxQualificationsList?ClientId=${params.ClientId}&FromDate=${params.FromDate}&ToDate=${params.ToDate}`,
 				);
 
 				if (abortSignal?.aborted) {
@@ -680,7 +680,7 @@ module.exports = [
 				}
 
 				const { data } = await axios.get(
-					`${API_BASE}/GetLMDPMaxQualificationsList?ClientId=${params.ClientId}&FromDate=${params.FromDate}&ToDate=${params.ToDate}`
+					`${API_BASE}/GetLMDPMaxQualificationsList?ClientId=${params.ClientId}&FromDate=${params.FromDate}&ToDate=${params.ToDate}`,
 				);
 
 				if (abortSignal?.aborted) {
@@ -868,7 +868,7 @@ module.exports = [
 	{
 		name: "GetTimeOffRequestForBackend",
 		description:
-			"Returns a list of driver's time-off requests, including details such as driver name, request dates, reason for leave, and the current status (approved, declined, or pending). This API helps track when drivers have requested time off and whether those requests were accepted or not. Example queries include: 'Which driver takes the most leaves?', 'Give me pending leave requests', 'Show me drivers time-off requests.",
+			"Returns a list of driver's time-off requests, including details such as driver name, request dates, reason for leave, and the current status (approved, declined, or pending). This API helps track when drivers have requested time off and whether those requests were accepted or not. It should also be used when users ask about 'no-shows', 'absences', or 'who didn't show up' yesterday, today, or in the past. Example queries include: 'Which driver takes the most leaves?', 'Give me pending leave requests', 'Show me drivers time-off requests', 'who didn't show up yesterday?', 'who was absent last week?'.",
 		requiredFields: ["ClientId"],
 		exampleResponse: [
 			{
@@ -1134,8 +1134,6 @@ module.exports = [
 				console.log("🚫 GetSchedAlignEngineLMDPPermissions handler: Aborted before execution");
 				return { error: "Request aborted" };
 			}
-			console.log(params);
-			console.log(params.clientId);
 
 			if (!params?.ClientId) params.ClientId = session.ClientId || 2;
 
@@ -1161,7 +1159,7 @@ module.exports = [
 							requireOpenShiftApproval: item?.requireOpenShiftApproval,
 							canCreateLDMPGroups: item?.canCreateLDMPGroups,
 							chatResponsesVisible: item?.chatResponsesVisible,
-					  }
+						}
 					: {};
 
 				return await processIntentAndFormatResponse({
@@ -1232,7 +1230,7 @@ module.exports = [
 							requireOpenShiftApproval: item?.requireOpenShiftApproval,
 							canCreateLDMPGroups: item?.canCreateLDMPGroups,
 							chatResponsesVisible: item?.chatResponsesVisible,
-					  }
+						}
 					: {};
 
 				return { data: permissionList };
@@ -1457,7 +1455,7 @@ module.exports = [
 							maxStandbyShifts: rulesData.maxStandbyShifts,
 							tolerableThreshold: rulesData.tolerableThreshold,
 							intolerableThreshold: rulesData.intolerableThreshold,
-					  }
+						}
 					: null;
 
 				return await processIntentAndFormatResponse({
@@ -1504,7 +1502,7 @@ module.exports = [
 							maxStandbyShifts: data.data.maxStandbyShifts,
 							tolerableThreshold: data.data.tolerableThreshold,
 							intolerableThreshold: data.data.intolerableThreshold,
-					  }
+						}
 					: null;
 
 				return { data: defaultRules };
@@ -1618,7 +1616,7 @@ module.exports = [
 					return { error: "Request aborted" };
 				}
 				const { data } = await axios.get(
-					`${API_BASE}/GetOperationListForBackEnd?ClientId=${params.ClientId}&FromDate=${params.FromDate}&ToDate=${params.ToDate}`
+					`${API_BASE}/GetOperationListForBackEnd?ClientId=${params.ClientId}&FromDate=${params.FromDate}&ToDate=${params.ToDate}`,
 				);
 
 				if (abortSignal?.aborted) {
@@ -1760,7 +1758,7 @@ module.exports = [
 				}
 
 				const { data } = await axios.get(
-					`${API_BASE}/GetOperationListForBackEnd?ClientId=${params.ClientId}&FromDate=${params.FromDate}&ToDate=${params.ToDate}`
+					`${API_BASE}/GetOperationListForBackEnd?ClientId=${params.ClientId}&FromDate=${params.FromDate}&ToDate=${params.ToDate}`,
 				);
 
 				if (abortSignal?.aborted) {
@@ -2248,7 +2246,7 @@ module.exports = [
 				console.log(`${API_BASE}/GetLMDPLocationPreferenceList?DriverId=${params.DriverId}&ClientId=${params.ClientId}`);
 
 				const { data } = await axios.get(
-					`${API_BASE}/GetLMDPLocationPreferenceList?DriverId=${params.DriverId}&ClientId=${params.ClientId}`
+					`${API_BASE}/GetLMDPLocationPreferenceList?DriverId=${params.DriverId}&ClientId=${params.ClientId}`,
 				);
 
 				if (abortSignal?.aborted) {
@@ -2308,7 +2306,7 @@ module.exports = [
 
 			try {
 				const { data } = await axios.get(
-					`${API_BASE}/GetLMDPLocationPreferenceList?DriverId=${params.DriverId}&ClientId=${params.ClientId}`
+					`${API_BASE}/GetLMDPLocationPreferenceList?DriverId=${params.DriverId}&ClientId=${params.ClientId}`,
 				);
 
 				const locationPreferenceList =
@@ -2361,7 +2359,7 @@ module.exports = [
 				}
 
 				const { data } = await axios.get(
-					`${API_BASE}/GetStandByPreferenceList?ClientId=${params.ClientId}&FromDate=${params.FromDate}&ToDate=${params.ToDate}`
+					`${API_BASE}/GetStandByPreferenceList?ClientId=${params.ClientId}&FromDate=${params.FromDate}&ToDate=${params.ToDate}`,
 				);
 
 				console.log("📊 API Response length:", data?.data?.length);
@@ -2374,7 +2372,7 @@ module.exports = [
 				const standbyPreferenceList =
 					data?.data?.map((item) => ({
 						driverId: item?.driverId, // 🔹 CRITICAL: Must include driverId
-						driverName: item?.driverName, 
+						driverName: item?.driverName,
 						standByPreference: item?.standByPreference,
 						otPreference: item?.otPreference,
 					})) || [];
@@ -2716,7 +2714,7 @@ module.exports = [
 				}
 
 				const { data } = await axios.get(
-					`${API_BASE}/GetLMDPShiftTypeList?DriverId=${params.DriverId}&ClientId=${params.ClientId}`
+					`${API_BASE}/GetLMDPShiftTypeList?DriverId=${params.DriverId}&ClientId=${params.ClientId}`,
 				);
 
 				if (abortSignal?.aborted) {
@@ -2778,7 +2776,7 @@ module.exports = [
 
 			try {
 				const { data } = await axios.get(
-					`${API_BASE}/GetLMDPShiftTypeList?DriverId=${params.DriverId}&ClientId=${params.ClientId}`
+					`${API_BASE}/GetLMDPShiftTypeList?DriverId=${params.DriverId}&ClientId=${params.ClientId}`,
 				);
 
 				const locationPreferenceList =
