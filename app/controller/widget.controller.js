@@ -2,6 +2,7 @@ const Widget = require("../model/widget.model");
 const apiListData = require("../../apiDetails");
 const { OpenAI } = require("openai");
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const { performCalculations } = require("../utils/calculations.util");
 
 async function extractJsonFromTable(htmlString, intent) {
 	try {
@@ -33,7 +34,7 @@ ${JSON.stringify(exampleResponse, null, 2)}
 
 		// Call OpenAI
 		const response = await openai.chat.completions.create({
-			model: "gpt-3.5-turbo",
+			model: "gpt-4o-mini",
 			messages: [
 				{ role: "system", content: systemPrompt },
 				{ role: "user", content: htmlString },
@@ -48,6 +49,50 @@ ${JSON.stringify(exampleResponse, null, 2)}
 	} catch (err) {
 		console.error("extractJsonFromTable error:", err);
 		return null;
+	}
+}
+
+// 🔹 AI Calculation Intent Detection (Internal Helper)
+async function detectCalculationIntent(userMessage, apiData, apiDescription) {
+	try {
+		const dataSample = Array.isArray(apiData) ? apiData.slice(0, 3) : apiData;
+
+		const response = await openai.chat.completions.create({
+			model: "gpt-4o-mini",
+			messages: [
+				{
+					role: "system",
+					content: `You are an intelligent calculation intent analyzer. Your job is to understand what mathematical operations the user wants performed on their data. Only recommend calculation if the API does NOT already provide that specific metric.
+					
+					Response Format (JSON only):
+					{
+					  "needsCalculation": boolean,
+					  "calculationType": "average" | "sum" | "deviation" | "percentageDeviation" | "minMax" | "none",
+					  "fieldPath": "field.name" or null,
+					  "excludeZeros": boolean
+					}
+					
+					Guidance:
+					- Use "percentageDeviation" if the user wants to see how individual items (e.g., drivers, days) compare to the group average or total.
+					- Use "deviation" for aggregate standard deviation/variance.
+					- Use "average" for simple group mean.`,
+				},
+				{
+					role: "user",
+					content: `User Message: "${userMessage}"
+					API Description: ${apiDescription || "No description provided"}
+					Data Structure: ${Array.isArray(apiData) && apiData.length > 0 ? Object.keys(apiData[0] || {}).join(", ") : "N/A"}
+					Data Sample: ${JSON.stringify(dataSample, null, 2)}`,
+				},
+			],
+			temperature: 0.1,
+			response_format: { type: "json_object" },
+		});
+
+		return JSON.parse(response.choices[0].message.content);
+	} catch (error) {
+		console.error("❌ detectCalculationIntent failed:", error.message);
+		return { needsCalculation: false, calculationType: "none" };
 	}
 }
 
@@ -244,11 +289,41 @@ widget.refreshWidget = async (req, res) => {
 		console.log("=== REFRESH WIDGET START ===");
 		console.log("Request Body:", JSON.stringify(req.body, null, 2));
 
-		const { widgetLastIntent, widgetLastParams, widgetLastResponse, widgetSampleJSON, _id, widgetLastFilterParams } = req.body;
+		const { _id, widgetLastFilterParams: filterParamsFromReq, widgetLastParams: paramsFromReq } = req.body;
 
-		console.log("📋 Extracted Parameters:");
+		if (!_id) {
+			console.error("❌ No widget ID provided for refresh");
+			return res.status(400).json({ error: "Widget ID (_id) is required for refresh." });
+		}
+
+		// 🔹 Fetch widget from DB as the SINGLE SOURCE OF TRUTH
+		console.log("\n🔍 Fetching widget from DB:", _id);
+		const widget = await Widget.findById(_id);
+
+		if (!widget) {
+			console.error("❌ Widget not found:", _id);
+			return res.status(404).json({ error: "Widget not found." });
+		}
+
+		console.log("✅ Widget found:", widget._id);
+
+		// 🔹 Use DB data for everything except optional new filter params
+		const {
+			widgetLastIntent,
+			widgetLastParams: dbParams,
+			widgetLastResponse,
+			widgetSampleJSON,
+			widgetLastUserMessage,
+			widgetLastFilterParams: dbFilterParams,
+		} = widget;
+
+		const widgetLastFilterParams = filterParamsFromReq || dbFilterParams;
+		const widgetLastParams = paramsFromReq || dbParams;
+
+		console.log("📋 Extracted Parameters (Source: DB):");
 		console.log("  - Intent:", widgetLastIntent);
-		console.log("  - Filter Params:", JSON.stringify(widgetLastFilterParams, null, 2));
+		console.log("  - Filter Params (Current):", JSON.stringify(widgetLastFilterParams, null, 2));
+		console.log("  - Params (Current):", JSON.stringify(widgetLastParams, null, 2));
 		console.log("  - Has Filters:", !!(widgetLastFilterParams && Object.keys(widgetLastFilterParams).length > 0));
 
 		let allResults = [];
@@ -309,18 +384,36 @@ widget.refreshWidget = async (req, res) => {
 			console.log(`  [${idx}] ${result.api}: ${result.rawData.length} records`);
 		});
 
+		// 🔹 TRIGGER CALCULATION ENGINE (Mirroring ProcessIntentAndFormatResponse logic)
+		console.log("\n🤖 Detecting calculation intent for refresh...");
+		// Use the first API description if available
+		const firstApi = apiListData.find((api) => api.name === widgetLastIntent.split(",")[0].trim());
+		const primaryData = allResults[0]?.rawData || [];
+
+		const calculationIntent = await detectCalculationIntent(widgetLastUserMessage, primaryData, firstApi?.description);
+		console.log("🎯 Calculation Intent Detected:", JSON.stringify(calculationIntent, null, 2));
+
+		let preCalculatedResults = null;
+		if (calculationIntent.needsCalculation && calculationIntent.calculationType !== "none") {
+			console.log("📊 Pre-calculation triggered for refresh...");
+			preCalculatedResults = performCalculations(primaryData, calculationIntent);
+			console.log("✅ Pre-calculated Results:", JSON.stringify(preCalculatedResults, null, 2));
+		} else {
+			console.log("ℹ️ No calculation needed for this refresh.");
+		}
+
 		// 🔹 Build system prompt with stronger filtering emphasis
 		let systemPrompt = `
 You are a data filtering and formatting assistant. Your job is to:
 1. Filter raw API data based on provided filter parameters
 2. Format the filtered data to match the exact JSON structure provided
+3. **USE PRE-CALCULATED RESULTS** for any metrics provided (Average, Sum, Deviation, etc.)
 
 CRITICAL RULES:
 - When filter parameters are provided, you MUST filter the data first before formatting
 - ONLY return data that matches ALL filter criteria exactly
-- Match filter values precisely (compare numbers as numbers, strings as strings)
-- Look for the filter field in various formats (driverId, DriverId, driver_id, id, etc.)
-- If no matches are found after filtering, return an empty array []
+- If pre-calculated results are provided (Average, Sum, Mean, etc.), you MUST use them for the corresponding fields in your JSON output instead of calculating them yourself.
+- **CRITICAL**: If you are providing a "Deviation" field in the JSON and a "mean" or "average" is provided in pre-calculated results, you MUST calculate it as: deviation = itemValue - average. DO NOT use any other value.
 - Output ONLY valid JSON - no explanations, no markdown, no extra text
 
 Target JSON structure to match:
@@ -350,9 +443,7 @@ Context:
 Raw API data to filter and format:
 ${JSON.stringify(allResults, null, 2)}
 
-CRITICAL: If driverId filter is ${widgetLastFilterParams.driverId}, you MUST only return data where the driver's ID matches ${
-				widgetLastFilterParams.driverId
-			} exactly. Ignore all other records.
+CRITICAL: If driverId filter is ${widgetLastFilterParams.driverId}, you MUST only return data where the driver's ID matches ${widgetLastFilterParams.driverId} exactly. Ignore all other records.
 `;
 		} else {
 			console.log("  ℹ️ No filters - formatting all data");
@@ -365,6 +456,17 @@ Original Response: "${widgetLastResponse}"
 
 Raw API data:
 ${JSON.stringify(allResults, null, 2)}
+
+${
+	preCalculatedResults
+		? `
+### Pre-Calculated Results
+**Note: You MUST use these values for any relevant fields in the JSON.**
+These results contain mathematical aggregates (Average, Sum, etc.) calculated on the REAL data.
+${JSON.stringify(preCalculatedResults, null, 2)}
+`
+		: ""
+}
 `;
 		}
 
@@ -375,7 +477,7 @@ ${JSON.stringify(allResults, null, 2)}
 		const startTime = Date.now();
 
 		const completion = await openai.chat.completions.create({
-			model: "gpt-3.5-turbo",
+			model: "gpt-4o-mini",
 			messages: [
 				{ role: "system", content: systemPrompt },
 				{ role: "user", content: userPrompt },
@@ -438,17 +540,6 @@ ${JSON.stringify(allResults, null, 2)}
 		}
 
 		console.log("\n📊 Structured JSON:", JSON.stringify(structuredJson, null, 2));
-
-		// 🔹 Get widget from DB (without updating)
-		console.log("\n🔍 Fetching widget from DB:", _id);
-		const widget = await Widget.findById(_id);
-
-		if (!widget) {
-			console.error("❌ Widget not found:", _id);
-			return res.status(404).json({ error: "Widget not found." });
-		}
-
-		console.log("✅ Widget found:", widget._id);
 
 		// 🔹 Send response with refreshed data (not saved to DB)
 		console.log("\n📤 Sending response...");

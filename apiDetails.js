@@ -97,7 +97,9 @@ module.exports = [
 					return { error: "Request aborted" };
 				}
 
-				const { data } = await axios.get(`${API_BASE}/GetDriverWeeklyWorkingHrList?ClientId=${params.ClientId}`);
+				const { data } = await axios.get(
+					`${API_BASE}/GetDriverWeeklyWorkingHrList?ClientId=${params.ClientId}&FromDate=${params.FromDate}&ToDate=${params.ToDate}`,
+				);
 
 				if (abortSignal?.aborted) {
 					console.log("🚫 GetDriverWeeklyWorkingHrList multiHandler: Aborted after axios call");
@@ -283,8 +285,8 @@ module.exports = [
 					session,
 					onStream,
 					abortSignal,
-					isContextual, 
-					followupItem: "shiftTitle", 
+					isContextual,
+					followupItem: "shiftTitle",
 				});
 			} catch (err) {
 				if (abortSignal?.aborted) {
@@ -2113,7 +2115,8 @@ module.exports = [
 	// 17. GetPreferenceValueList
 	{
 		name: "GetPreferenceValueList",
-		description: "Returns the PreferenceValueList",
+		description:
+			"Fetches the master reference list of preference values used across the system. This API does not return driver-specific data. It only explains what each numeric preference value means (e.g., assign, avoid, neutral). Use this intent only when the user is asking about: The meaning of preference values or The available preference options in the system or How preference numbers map to human-readable labels.",
 		requiredFields: [],
 		exampleResponse: [
 			{
@@ -2122,7 +2125,7 @@ module.exports = [
 				preferenceText: "Do Not Assign",
 			},
 		],
-		followupItem: "preferenceText", // 🔹 What to track for follow-up queries
+		followupItem: "preferenceText",
 		graphType: "stackedArea",
 
 		handler: async (params, userMessage, session, onStream, abortSignal, isContextual = false) => {

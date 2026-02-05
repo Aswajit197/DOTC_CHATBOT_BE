@@ -59,7 +59,7 @@ Match the key names and structure exactly as shown in the example above.
 
 		// 🔹 Step 3: Call OpenAI
 		const completion = await openai.chat.completions.create({
-			model: "gpt-3.5-turbo",
+			model: "gpt-4o-mini",
 			messages: [
 				{ role: "system", content: systemPrompt },
 				{ role: "user", content: session.lastResponseMessage },

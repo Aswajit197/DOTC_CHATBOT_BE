@@ -36,11 +36,25 @@ This is the "Brain" of the operation. It decides what the user wants to do.
     4.  **Internal Magic:** `processIntentAndFormatResponse` calls `applyContextualFilter`. It retrieves the IDs of entities displayed in the *previous* turn (stored in session context) and filters the *current* API's `actualData` to include ONLY those specific entities.
 
 *   **`multi_intent` (Multiple APIs needed):**
-    1.  Calls `handleMultiIntentApis`.
-    2.  Internally loops through each requested API.
-    3.  For each, it calls `handleParamsForApi` and the API's `multiHandler` to get raw data.
-    4.  **Final Step:** Calls OpenAI to intelligently merge all results into one cohesive HTML response (e.g., merging driver info and schedules into a single table).
+    1.  Calls `handleMultiIntentApis` (Detailed below).
+    2.  Aggregates data from multiple sources (e.g., Leave Requests + Weekly Hours).
+    3.  **Final Step:** Calls OpenAI to intelligently merge all results into one cohesive HTML response, mapping data across APIs by common fields (like `DriverName`).
 
+---
+
+### Detailed Multi-Intent Implementation Logic:
+**File:** `app/utils/handleMultiIntentApis.js`
+
+1.  **API Iteration:** The system loops through each API identified by OpenAI.
+2.  **Parameter Resolution:** For each API, it calls `handleParamsForApi` to resolve `ClientId`, `StationId`, and date ranges (`FromDate`, `ToDate`).
+3.  **Data Fetching:** It calls the `multiHandler` of each API to fetch raw datasets. Unlike the standard `handler`, `multiHandler` returns raw data instead of a formatted string.
+4.  **OpenAI Merging Prompt:** A specialized prompt is sent to GPT-4o-mini with the following rules:
+    - **Data Integrity:** Explicitly distinguishes between `FORMAT_GUIDE_ONLY` (example schema) and `ACTUAL_REAL_DATA` (real records). AI is strictly forbidden from using example data.
+    - **Entity Merging:** If APIs share a common entity (e.g., `driverName`), the AI creates a single unified <table>. If they are unrelated, it creates sequential sections.
+    - **Key Normalization:** Matches entity names case-insensitively and handles minor spacing differences.
+    - **HTML Enforcement:** Strictly valid HTML (no markdown), utilizing semantic tags (`<table>`, `<ul>`, `<p>`).
+    - **Summary Insight:** Every multi-intent response must include a `<div class="summary">` with precise entity counts and meaningful insights.
+5.  **Streaming:** The merged response is streamed back to the user chunk-by-chunk.
 *   **`refinement_request` (Filtering/Sorting/Refining last response):**
     1.  Calls `refineResponseFromLastResponse`.
     2.  Uses OpenAI (`isSameIntent`) to check if the request is redundant.
@@ -87,14 +101,33 @@ This is the "Brain" of the operation. It decides what the user wants to do.
 **File:** `app/utils/ProcessIntentAndFormatResponse.js`
 
 1.  **Contextual Filtering:** If `isContextual` is true, it filters the data to only include entities referenced in the previous turn (e.g., the specific 10 drivers mentioned earlier).
-2.  **Calculation Intent:** Calls `detectCalculationIntent` (via OpenAI) to see if the user wants math done (average, sum, etc.) that the API doesn't already provide.
-3.  **Response Generation:** Calls GPT-4o-mini to generate a final HTML response.
-    *   It uses either the raw data or pre-calculated results.
-    *   It decides on the format (Table, List, or Paragraph).
-    *   It adds a "summary" div if multiple items are shown.
-    *   It appends a `meta` tag for tracking "displayed-items" (used for the rolling context in the next turn).
-4.  **Streaming:** The chunks from OpenAI are streamed directly back to the controller's `onStream` callback, which sends them to the client via SSE.
-5.  **Persistence:** Saves the final bot response and any new context entities to the database.
+4.  **Calculation Intent:** Calls `detectCalculationIntent` (via OpenAI).
+    - **Detection:** AI analyzes the `userMessage` against the `apiDescription` and a sample of `actualData`.
+    - **Logic:** It decides if math is needed (e.g., "Give me the average hours") and identifies the target `fieldPath` while ignoring metadata fields like IDs.
+    - **Execution:** If math is required, it calls `performCalculations` from `app/utils/calculations.util.js`.
+5.  **Response Generation:** Calls GPT-4o-mini to generate a final HTML response.
+
+---
+
+### AI-Powered Calculation Engine:
+**Files:** `app/utils/calculations.util.js` & `app/utils/ProcessIntentAndFormatResponse.js`
+
+1.  **Detection Phase (`detectCalculationIntent`):**
+    - The system uses OpenAI to determine if the user is asking for a metric that the API doesn't already provide (e.g., Sum, Average, Multi-column deviation).
+    - It returns a JSON object with `calculationType`, `fieldPath`, and `excludeZeros`.
+
+2.  **Mathematical Processing (`calculations.util.js`):**
+    - **Data Extraction:** `extractNumbers` recursively traverses the API data. It uses `isMetadataField` to strictly ignore IDs, timestamps, and status codes, ensuring math is only performed on meaningful numeric values.
+    - **Nested Support:** `getNestedValue` allows the engine to calculate values deep within objects (e.g., `shifts.totalHours`).
+    - **Operations:**
+        - **Sum/Average:** Standard arithmetic on extracted numeric arrays.
+        - **Deviation:** Calculates sample or population standard deviation.
+        - **Percentage Deviation:** A complex operation that compares individual entities (like drivers) against the group average, identifying outliers and sorting them by impact.
+        - **Min/Max:** Finds the range and extremes of the dataset.
+
+3.  **Result Integration:**
+    - The pre-calculated results are injected into the final OpenAI prompt under `### Pre-Calculated Results`.
+    - The AI is instructed: **"Pre-calculated results are provided. You MUST use them."** This ensures mathematical accuracy by preventing GPT from performing the math itself, which can be prone to errors.
 
 ---
 

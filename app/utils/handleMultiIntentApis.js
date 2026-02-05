@@ -38,7 +38,7 @@ async function handleMultiIntentApis(extracted, userMessage, session, { onStream
 			userMessage,
 			session,
 			{ onStream, abortSignal },
-			type
+			type,
 		);
 
 		if (abortSignal?.aborted) {
@@ -91,13 +91,19 @@ You're a smart assistant. The user asked:
 
 You have data from one or more APIs. Your tasks:
 
-1. **Intent Check**  
+1. **Data Source Identification (CRITICAL)**
+   - You are provided with two types of information for each API:
+     • **FORMAT_GUIDE_ONLY**: This is a sample object showing the data structure. **NEVER USE THIS FOR ACTUAL DATA**.
+     • **ACTUAL_REAL_DATA**: This is the real data fetched from the database. **ONLY USE THIS** to generate your response.
+   - If ACTUAL_REAL_DATA is empty or null, state that no data was found instead of using the FORMAT_GUIDE_ONLY.
+
+2. **Intent Check**  
    - Determine if the user's request requires a *merged response* (e.g., APIs share a common entity such as driverName, driverId, or another key).  
    - If YES → Only output a single unified merged result. Do **not** show any individual API data before merging.  
    - If NO → Present each API's data separately, one section after another, in the same message.  
    - If an API is used only as a filter (e.g., qualifications, status checks, min/max limits), its results must never be displayed separately. They should only constrain the merged output.
 
-2. **Formatting Rules**  
+3. **Formatting Rules**  
    - Output must be **strictly valid HTML**.  
    - Never use Markdown (\`\`\`html, \`\`\`, etc.).  
    - Never repeat the same dataset in multiple formats.  
@@ -113,7 +119,7 @@ You have data from one or more APIs. Your tasks:
         - short additional meaningful insights (e.g., distribution of overtime preferences, highest/lowest values)  
      • Never use vague phrases like "several", "some", "a few". Always compute and display the precise number. 
 
-3. **Merging Behavior**  
+4. **Merging Behavior**  
    - If APIs share a common entity (e.g., drivers/LMDPs), always merge them into a single table.  
    - Each row must represent one entity, with all relevant fields from all APIs combined into columns.  
    - **Never output raw lists of entities separately** (e.g., “Here are the drivers …”).  
@@ -124,19 +130,19 @@ You have data from one or more APIs. Your tasks:
       • Ignore minor differences in spacing/capitalization  
       • If an entity appears in the filter list but is missing from another API, still include it in the merged table with "N/A" for the missing fields.
 
-4. **Filters & Requirements**  
+5. **Filters & Requirements**  
    - Apply all user-specified conditions (e.g., "only active drivers", "qualification = 3", "show overtime preference").  
    - Only include data relevant to these filters.  
 
-5. **Multiple APIs**  
+6. **Multiple APIs**  
    - If unrelated: Present sequentially → finish one section completely before starting the next.  
    - If related: Merge results → create a single, cohesive table.  
 
-6. **Strict Merge Enforcement**  
+7. **Strict Merge Enforcement**  
    - If the intent is a merged request, stream the response only **after merging all relevant API data**.  
    - Do not first output single-API results and then later merge them.  
 
-7. **Ending**  
+8. **Ending**  
    - After the entire response, always append:
      ###END###
 
@@ -146,9 +152,9 @@ You have data from one or more APIs. Your tasks:
 ${results
 	.map(
 		(r) => `
-Example Response: ${JSON.stringify(r.exampleResponse, null, 2)}
-Raw Data: ${JSON.stringify(r?.rawData?.data, null, 2)}
-`
+FORMAT_GUIDE_ONLY (STRUCTURE): ${JSON.stringify(r.exampleResponse, null, 2)}
+ACTUAL_REAL_DATA (PROCESS THIS): ${JSON.stringify(r?.rawData?.data, null, 2)}
+`,
 	)
 	.join("\n\n")}
 ---
@@ -189,7 +195,7 @@ Raw Data: ${JSON.stringify(r?.rawData?.data, null, 2)}
 					lastSuccessParams: apiParams,
 					lastSuccessApiResponse: results.map((r) => r.rawData),
 				},
-			}
+			},
 		);
 
 		return { type: "multi_intent", results, combinedReply: finalReply };

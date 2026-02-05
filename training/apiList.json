@@ -1,7 +1,7 @@
 [
 	{
 		"name": "GetDriverWeeklyWorkingHrList",
-		"description": "This API should be triggered whenever the user asks about a driver’s preferred weekly working hours. It provides the number of hours each driver wishes to work in a week along with their name. This is useful for managers to align schedules with driver availability and preferences. Use this API when the user asks questions such as: “How many hours does Alejandro Reyes want to work per week?”, “Show me all drivers with their weekly working hour preferences”, “Who prefers 40 hours per week?”, “List drivers with less than 35 weekly hours preference”, or “What is Anthony Semidey’s weekly working hour preference?”",
+		"description": "This API should be triggered whenever the user asks about a driver's preferred weekly working hours. It provides the number of hours each driver wishes to work in a week along with their name. This is useful for managers to align schedules with driver availability and preferences. Use this API when the user asks questions such as: “How many hours does Alejandro Reyes want to work per week?”, “Show me all drivers with their weekly working hour preferences”, “Who prefers 40 hours per week?”, “List drivers with less than 35 weekly hours preference”, or “What is Anthony Semidey's weekly working hour preference?”",
 		"requiredFields": ["ClientId", "FromDate", "ToDate"]
 	},
 	{
@@ -17,7 +17,7 @@
 	},
 	{
 		"name": "GetLMDPDayPreferenceList",
-		"description": "This API is used to fetch a driver’s day-wise work preference, showing which days they prefer to work, avoid, or are neutral about. The preference field represents the main value to consider, while oldPreference can be ignored. Use this intent when the user wants to know a driver’s preferred working days or availability patterns. For example: “What is Anthony Semidey’s day preference?”, “Show me which days Alejandro Reyes prefers to work”, “List all drivers and their day preferences”, or “Which days does a driver not want to work?” This helps managers align schedules with driver availability and reduce conflicts.",
+		"description": "This API is used to fetch a driver's day-wise work preference, showing which days they prefer to work, avoid, or are neutral about. The preference field represents the main value to consider, while oldPreference can be ignored. Use this intent when the user wants to know a driver's preferred working days or availability patterns. For example: “What is Anthony Semidey's day preference?”, “Show me which days Alejandro Reyes prefers to work”, “List all drivers and their day preferences”, or “Which days does a driver not want to work?” This helps managers align schedules with driver availability and reduce conflicts.",
 		"requiredFields": ["DriverId", "ClientId"]
 	},
 	{
@@ -82,7 +82,7 @@
 	},
 	{
 		"name": "GetPreferenceValueList",
-		"description": "Returns the GetPreferenceValueList",
+		"description": "Fetches the master reference list of preference values used across the system. This API does not return driver-specific data. It only explains what each numeric preference value means (e.g., assign, avoid, neutral). Use this intent only when the user is asking about: The meaning of preference values or The available preference options in the system or How preference numbers map to human-readable labels.",
 		"requiredFields": []
 	},
 	{

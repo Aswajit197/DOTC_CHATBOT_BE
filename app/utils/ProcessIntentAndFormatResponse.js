@@ -173,7 +173,7 @@ function applyContextualFilter(actualData, contextInfo) {
 	if (filteredData.length > 0) {
 		console.log(
 			"  - Sample matched IDs:",
-			filteredResult.slice(0, 3).map((item) => getNestedValue(item, entityFieldName))
+			filteredResult.slice(0, 3).map((item) => getNestedValue(item, entityFieldName)),
 		);
 	}
 
@@ -286,7 +286,7 @@ const processIntentAndFormatResponse = async ({
 						lastSuccessParams: params,
 						missingField: null,
 					},
-				}
+				},
 			);
 
 			return { userReply: htmlMessage, params, api };
@@ -349,7 +349,7 @@ const processIntentAndFormatResponse = async ({
 								lastSuccessParams: params,
 								missingField: null,
 							},
-						}
+						},
 					);
 
 					return { userReply: htmlMessage, params, api };
@@ -572,7 +572,7 @@ Generate the response now:
 					lastSuccessParams: params,
 					missingField: null,
 				},
-			}
+			},
 		);
 
 		// ============================================================
